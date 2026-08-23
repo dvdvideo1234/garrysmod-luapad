@@ -30,8 +30,24 @@ local KEYWORD_TOKENS = {
   ["||"      ] = true,
   ["&&"      ] = true
 }
+--[[
+ |¶| : The end of a paragraph (pressing Enter)
+ |·| : A standard space bar press between words
+ |→| : A tab stop jump (pressing the Tab key)
+ |°| : A non-breaking space (Ctrl + Shift + Space)
+ |↵| : A soft line break (Shift + Enter)
+ |¤| : The end of a table cell or a table row
+ |¬| : A soft hyphen used for conditional word wrapping
+ |■| : Appears in the left margin to show paragraph layout
+]]
+local SHOW_PARAGRAPH = {
+}
 
--- TODO: Color customization?
+--[[
+ * TODO: Color customization
+ * [1] : Current color used for a bunch of text
+ * [2] : Use bold text style when drawing
+]]
 local COLOR_HIGHLIGHT = {
   ["none"       ] = {Color(0, 0, 0, 255)      , false},
   ["number"     ] = {Color(218, 165, 32, 255) , false},
