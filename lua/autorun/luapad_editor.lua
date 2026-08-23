@@ -131,36 +131,36 @@ end
 function luapad.EditorPanel:OnMousePressed(code)
   if (code == MOUSE_LEFT) then
     local cucar = self:CursorToCaret()
-    if ((CurTime() - self.LastClick) < 1 and self.tmp and cucar[1] == self.Caret[1] and cucar[2] == self.Caret[2]) then
+    if ((CurTime() - self.LastClick) < 1 and self.Temp and cucar[1] == self.Caret[1] and cucar[2] == self.Caret[2]) then
       self.Start = self:getWordStart(self.Caret)
       self.Caret = self:getWordEnd(self.Caret)
-      self.tmp = false
+      self.Temp = false
       return
     end
 
-    self.tmp = true
+    self.Temp = true
 
     self.LastClick = CurTime()
     self:RequestFocus()
     self.Blink = RealTime()
     self.MouseDown = true
-
     self.Caret = self:CursorToCaret()
+
     if (not input.IsKeyDown(KEY_LSHIFT) and not input.IsKeyDown(KEY_RSHIFT)) then
       self.Start = self:CursorToCaret()
     end
   elseif (code == MOUSE_RIGHT) then
-    local menu = DermaMenu()
+    local pMenu = DermaMenu()
 
     if (self:CanUndo()) then
-      menu:AddOption(
+      pMenu:AddOption(
         "Undo", function()
           self:DoUndo()
         end
       )
     end
     if (self:CanRedo()) then
-      menu:AddOption(
+      pMenu:AddOption(
         "Redo", function()
           self:DoRedo()
         end
@@ -168,11 +168,11 @@ function luapad.EditorPanel:OnMousePressed(code)
     end
 
     if (self:CanUndo() or self:CanRedo()) then
-      menu:AddSpacer()
+      pMenu:AddSpacer()
     end
 
     if (self:HasSelection()) then
-      menu:AddOption(
+      pMenu:AddOption(
         "Cut", function()
           if (self:HasSelection()) then
             self.clipboard = self:GetSelection()
@@ -182,7 +182,7 @@ function luapad.EditorPanel:OnMousePressed(code)
           end
         end
       )
-      menu:AddOption(
+      pMenu:AddOption(
         "Copy", function()
           if (self:HasSelection()) then
             self.clipboard = self:GetSelection()
@@ -193,7 +193,7 @@ function luapad.EditorPanel:OnMousePressed(code)
       )
     end
 
-    menu:AddOption(
+    pMenu:AddOption(
       "Paste", function()
         if (self.clipboard) then
           self:SetSelection(self.clipboard)
@@ -204,22 +204,22 @@ function luapad.EditorPanel:OnMousePressed(code)
     )
 
     if (self:HasSelection()) then
-      menu:AddOption(
+      pMenu:AddOption(
         "Delete", function()
           self:SetSelection()
         end
       )
     end
 
-    menu:AddSpacer()
+    pMenu:AddSpacer()
 
-    menu:AddOption(
+    pMenu:AddOption(
       "Select all", function()
         self:SelectAll()
       end
     )
 
-    menu:Open()
+    pMenu:Open()
   end
 end
 
@@ -230,7 +230,7 @@ function luapad.EditorPanel:OnMouseReleased(code)
 
   if (code == MOUSE_LEFT) then
     self.MouseDown = nil
-    if (not self.tmp) then
+    if (not self.Temp) then
       return
     end
     self.Caret = self:CursorToCaret()
