@@ -28,11 +28,8 @@ local DEBG_FORMAT = "Found routine [%s] in %s"
 local COLOR_STATUS = {
   ["#STATUS"] = Color(0 ,  0 ,  0,  0 ),
   ["STAT_OK"] = Color(72, 205, 72, 255),
+  ["STAT_WR"] = Color(205,140, 72, 255),
   ["STAT_ER"] = Color(205, 72, 72, 255),
-  ["OPEN_OK"] = Color(72, 205, 72, 255),
-  ["OPEN_ER"] = Color(205, 72, 72, 255),
-  ["SAVE_OK"] = Color(72, 205, 72, 255),
-  ["SAVE_ER"] = Color(205, 72, 72, 255),
   ["RUNC_OK"] = Color(72, 205, 72, 255),
   ["RUNC_ER"] = Color(205, 72, 72, 255),
   ["RUNS_UP"] = Color(92, 205, 92, 255),
@@ -96,10 +93,9 @@ local RESTRICTED_FILES = {
   "data/"..BASE_FOLDER.."welcome.txt",
   "data/"..BASE_FOLDER.."saved_tabs.txt",
   "data/"..BASE_FOLDER.."server_globals.txt",
-  "data/"..BASE_FOLDER.."cached_server_globals.txt",
+  "addons/luapad/data/"..BASE_FOLDER.."welcome.txt",
   "addons/luapad/data/"..BASE_FOLDER.."saved_tabs.txt",
   "addons/luapad/data/"..BASE_FOLDER.."server_globals.txt",
-  "addons/luapad/data/"..BASE_FOLDER.."cached_server_globals.txt"
 }
 
 local FMSYNTAX_HILIGHT = {
@@ -326,9 +322,9 @@ function luapad.SaveTabs()
   local tI = luapad.PropertySheet:GetItems()
   for iD = 1, #tI do
     local tP = tI[iD]
-    local tTc = tP.Tab:GetStreamInfo()
-    tO[1], tO[2] = tTc.Name , tTc.Path
-    tO[3], tO[4] = (tTc.Label or ""), tTc.Icon
+    local tS = tP.Tab:GetStreamInfo()
+    tO[1], tO[2] = tS.Name , tS.Path
+    tO[3], tO[4] = (tS.Label or ""), tS.Icon
     table.insert(tW, table.concat(tO, BASE_DELIMS))
   end
   file.Write(BASE_FOLDER.."saved_tabs.txt", table.concat(tW, "\n"))
@@ -399,8 +395,8 @@ function luapad.Toggle()
 
   function luapad.PropertySheet:OnActiveTabChanged(oT, nT)
     if(IsValid(nT)) then
-      local tTc = nT:GetStreamInfo()
-      luapad.Frame:SetTitle("Luapad - " .. tTc.Path .. tTc.Name)
+      local tS = nT:GetStreamInfo()
+      luapad.Frame:SetTitle("Luapad - " .. tS.Path .. tS.Name)
     else
       luapad.Frame:SetTitle("Luapad")
     end
@@ -523,12 +519,12 @@ function luapad.CloseTab(name, label)
   -- The context menu option is available
   for iD = 1, #tI do
     local tP = tI[iD]
-    local tTc = tP.Tab:GetStreamInfo()
-    if(tTc.Label and tTc.Label:find(sName, 1, true)) then
+    local tS = tP.Tab:GetStreamInfo()
+    if(tS.Label and tS.Label:find(sName, 1, true)) then
       pSheet:CloseTab(tP.Tab, true)
       break
     end
-    if(tTc.Name and tTc.Name:find(sName, 1, true)) then
+    if(tS.Name and tS.Name:find(sName, 1, true)) then
       pSheet:CloseTab(tP.Tab, true)
       break
     end
@@ -628,10 +624,12 @@ function luapad.RefreshActiveTab()
 
     local sCon = file.Read(sF, "DATA")
     if(sCon) then aT:SetContents(sCon)
-      luapad.SetStatus("File successfully refreshed!", "OPEN_OK")
+      luapad.SetStatus("File successfully refreshed!", "STAT_OK")
     else
-      luapad.SetStatus("File ["..sF.."] refresh failed!", "OPEN_ER")
+      luapad.SetStatus("File ["..sF.."] not found!", "STAT_ER")
     end
+  else
+    luapad.SetStatus("File ["..sF.."] refresh not supported!", "STAT_WR")
   end
 end
 
@@ -664,11 +662,11 @@ function luapad.AddTab(name, content, path, label, icon)
   local pTab  = tInfo.Tab; pTab[PANEL_STORKY] = {}
   local tSor  = pTab[PANEL_STORKY]
 
-  tSor.Name  = sNam
-  tSor.Path  = sPth
-  tSor.Label = sLab
-  tSor.Icon  = sIco
-  tSor.Full  = sPth .. sNam
+  tSor.Name  = sNam -- The actual file name associated wth the tab
+  tSor.Path  = sPth -- File path always relative to the game folder
+  tSor.Label = sLab -- Tab label in case provided is displayed instead of name
+  tSor.Icon  = sIco -- Custom tab icon usually defined by the file extension
+  tSor.Full  = sPth .. sNam -- Full path relative to the game folder
 
   pTab:SetTooltip(tSor.Full)
 
@@ -813,12 +811,12 @@ function luapad.IsOpen(name, path)
   local tI = luapad.PropertySheet:GetItems()
   for iD = 1, #tI do
     local tP = tI[iD]
-    local tTc = tP.Tab:GetStreamInfo()
+    local tS = tP.Tab:GetStreamInfo()
     if(sPth ~= "") then
-      if(tTc.Full == sNam) then return true end
+      if(tS.Full == sNam) then return true end
     else
-      if(tTc.Name == sNam) then return true end
-      if(tTc.Label == sNam) then return true end
+      if(tS.Name == sNam) then return true end
+      if(tS.Label == sNam) then return true end
     end
   end; return false
 end
@@ -840,12 +838,19 @@ function luapad.NewTab(content)
 
   if(iF) then -- Index is present open the file
     luapad.AddTab(BASE_FMNAME:format(iF), sCon, sB)
-    luapad.SetStatus("Open the next name available!", "OPEN_OK")
+    luapad.SetStatus("Open the next name available!", "STAT_OK")
   else -- Rise a status bar message
-    luapad.SetStatus("Open new tab failed! Clean origin ["..sB.."]", "OPEN_ER")
+    luapad.SetStatus("Open new tab failed! Clean origin ["..sB.."]", "STAT_ER")
   end
 end
 
+--[[
+ * Every request is relative to the main game folder
+ * Paths starting with `data/` use the `data` folder
+ * This is done so that the file can be reloaded properly
+ * Otherwise it will just read the game file system where
+ * the content is refreshed during the game startup
+]]
 function luapad.OpenTree()
   if (luapad.BrowserTree) then
     luapad.BrowserTree:Remove()
@@ -923,16 +928,24 @@ function luapad.OpenTree()
           -- Click a file
           function pC:DoClick()
             if(not self.IsFile) then return end
-            local sP, sF = self.DirPath, self:GetText()
-            if(luapad.IsOpen(sF, sP)) then return end
+            local sD, sF = self.DirPath, self:GetText()
+            if(luapad.IsOpen(sF, sD)) then return end
             local sE = string.GetExtensionFromFilename(sF)
             local tE = (sE and ENABLE_EXTENS[sE] or nil)
             local sI = (tE and tE.Icon or nil)
-            luapad.AddTab(sF, file.Read(sP .. sF, "GAME"), sP, nil, sI)
+            if(string.find(sD, "^data/") == 1) then
+              local sB = sD:rep(1) -- Copy of the path
+                    sB = string.gsub(sB, "^data/", "", 1)
+                    sB = string.gsub(sB, "^../", "", 1)
+              -- The contents in the data folder are refreshed on write
+              luapad.AddTab(sF, file.Read(sB .. sF, "DATA"), sD, nil, sI)
+            else
+              luapad.AddTab(sF, file.Read(sD .. sF, "GAME"), sD, nil, sI)
+            end
           end
           function pC:DoRightClick()
-            local sP, sF = self.DirPath, self:GetText()
-            SetClipboardText(sP .. sF)
+            local sD, sF = self.DirPath, self:GetText()
+            SetClipboardText(sD .. sF)
           end
           pC.DoDoubleClick = pC.DoClick
         end
@@ -963,10 +976,10 @@ function luapad.OpenTab()
   else
     local aT = luapad.PropertySheet:GetActiveTab()
     if(not IsValid(aT)) then return end
-    local tTc = aT:GetStreamInfo()
+    local tS = aT:GetStreamInfo()
     luapad.OpenTree()
-    luapad.BrowserTree:PopulateTree(tTc.Path)
-    luapad.SetStatus("Using ["..tTc.Path.."] as source folder.", "STAT_OK")
+    luapad.BrowserTree:PopulateTree(tS.Path)
+    luapad.SetStatus("Using source ["..tS.Path.."] as base folder.", "STAT_OK")
   end
 end
 
@@ -983,8 +996,8 @@ function luapad.SaveScript()
   local pTab = luapad.PropertySheet:GetActiveTab()
   if(not IsValid(pTab)) then return end
 
-  local tTc = pTab:GetStreamInfo()
-  local sD, sN = tTc.Path, tTc.Name
+  local tS = pTab:GetStreamInfo()
+  local sD, sN = tS.Path, tS.Name
 
   if(string.find(sD, "^data/") == 1) then
     local sB = sD:rep(1) -- Copy of the path
@@ -996,18 +1009,20 @@ function luapad.SaveScript()
       luapad.SaveAsScript()
     else
       if (table.HasValue(RESTRICTED_FILES, sD .. sN)) then
-        luapad.SetStatus("Save failed! (this file is marked as restricted)", "SAVE_ER")
+        luapad.SetStatus("Save failed! (this file is marked as restricted)", "STAT_ER")
         return
       end
 
       file.Write(sF, sT)
 
       if file.Exists(sF, "DATA") then
-        luapad.SetStatus("File successfully saved!", "SAVE_OK")
+        luapad.SetStatus("File successfully saved!", "STAT_OK")
       else
-        luapad.SetStatus("Save failed! (check your filename for illegal characters)", "SAVE_ER")
+        luapad.SetStatus("Save failed! (check your filename for illegal characters)", "STAT_ER")
       end
     end
+  else
+    luapad.SetStatus("File [" ..sD..sN.. "] cannot be overwritten!", "STAT_WR")
   end
 end
 
@@ -1015,15 +1030,15 @@ function luapad.SaveAsScript()
   local pTab = luapad.PropertySheet:GetActiveTab()
   if(not IsValid(pTab)) then return end
 
-  local tTc = pTab:GetStreamInfo()
+  local tS = pTab:GetStreamInfo()
 
   Derma_StringRequest(
     "Luapad", "You are about to save a file, please enter the desired filename.",
-    tTc.Path .. tTc.Name,
+    tS.Path .. tS.Name,
 
     function(sName)
       if (table.HasValue(RESTRICTED_FILES, sName)) then
-        luapad.SetStatus("Save failed! (this file is marked as restricted)", "SAVE_ER")
+        luapad.SetStatus("Save failed! (this file is marked as restricted)", "STAT_ER")
         return
       end
 
@@ -1040,14 +1055,15 @@ function luapad.SaveAsScript()
         file.Write(sF, sT)
 
         if file.Exists(sF, "DATA") then
-          luapad.SetStatus("File successfully saved!", "SAVE_OK")
-          tTc.Name = string.GetFileFromFilename(sN)
-          tTc.Path = string.GetPathFromFilename(sD)
-          pTab:SetText(tTc.Name)
+          luapad.SetStatus("File successfully saved!", "STAT_OK")
+          tS.Path, tS.Name = sD, sN -- Update path and name
+          pTab:SetText(tS.Name)
           luapad.PropertySheet:SetActiveTab(pTab)
         else
-          luapad.SetStatus("Save failed! (check your filename for illegal characters)", "SAVE_ER")
+          luapad.SetStatus("Save failed! (check your filename for illegal characters)", "STAT_ER")
         end
+      else
+        luapad.SetStatus("File [" ..sD..sN.. "] cannot be overwritten!", "STAT_WR")
       end
     end, nil, "Save", "Cancel"
   )
