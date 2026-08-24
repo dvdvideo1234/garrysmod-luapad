@@ -22,7 +22,8 @@ local BASE_DELIMS = "|"
 local BASE_FOLDER = "luapad/"
 local ICON_FORMAT = "icon16/%s.png"
 local BASE_FMNAME = "untitled%d.txt"
-local PANEL_STORKY = "gmod_luapad"
+local PANL_STORKY = "gmod_luapad"
+local DATM_FORMAT = "%Y-%m-%d %H:%M:%S"
 local DEBG_FORMAT = "Found routine [%s] in %s"
 
 local COLOR_STATUS = {
@@ -104,6 +105,52 @@ local FMSYNTAX_HILIGHT = {
   D = "luapad._sG[\"%s\"][\"%s\"] = \"%s\";"
 }
 
+local FMSYNTAX_METATYP = {
+  "string"             = {ID = TYPE_STRING          },
+  "table"              = {ID = TYPE_TABLE           },
+  "thread"             = {ID = TYPE_THREAD          },
+  "Entity"             = {ID = TYPE_ENTITY          },
+  "Player"             = {ID = TYPE_ENTITY          },
+  "Weapon"             = {ID = TYPE_ENTITY          },
+  "NPC"                = {ID = TYPE_ENTITY          },
+  "Vehicle"            = {ID = TYPE_ENTITY          },
+  "CSEnt"              = {ID = TYPE_ENTITY          },
+  "NextBot"            = {ID = TYPE_ENTITY          },
+  "Vector"             = {ID = TYPE_VECTOR          },
+  "Angle"              = {ID = TYPE_ANGLE           },
+  "PhysObj"            = {ID = TYPE_PHYSOBJ         },
+  "ISave"              = {ID = TYPE_SAVE            },
+  "IRestore"           = {ID = TYPE_RESTORE         },
+  "CTakeDamageInfo"    = {ID = TYPE_DAMAGEINFO      },
+  "CEffectData"        = {ID = TYPE_EFFECTDATA      },
+  "CMoveData"          = {ID = TYPE_MOVEDATA        },
+  "CRecipientFilter"   = {ID = TYPE_RECIPIENTFILTER },
+  "CUserCmd"           = {ID = TYPE_USERCMD         },
+  "IMaterial"          = {ID = TYPE_MATERIAL        },
+  "Panel"              = {ID = TYPE_PANEL           },
+  "CLuaParticle"       = {ID = TYPE_PARTICLE        },
+  "CLuaEmitter"        = {ID = TYPE_PARTICLEEMITTER },
+  "ITexture"           = {ID = TYPE_TEXTURE         },
+  "ConVar"             = {ID = TYPE_CONVAR          },
+  "IMesh"              = {ID = TYPE_IMESH           },
+  "VMatrix"            = {ID = TYPE_MATRIX          },
+  "CSoundPatch"        = {ID = TYPE_SOUND           },
+  "pixelvis_handle_t"  = {ID = TYPE_PIXELVISHANDLE  },
+  "DynamicLight"       = {ID = TYPE_DLIGHT          },
+  "IVideoWriter"       = {ID = TYPE_VIDEO           },
+  "File"               = {ID = TYPE_FILE            },
+  "CLuaLocomotion"     = {ID = TYPE_LOCOMOTION      },
+  "PathFollower"       = {ID = TYPE_PATH            },
+  "CNavArea"           = {ID = TYPE_NAVAREA         },
+  "IGModAudioChannel"  = {ID = TYPE_SOUNDHANDLE     },
+  "CNavLadder"         = {ID = TYPE_NAVLADDER       },
+  "CNewParticleEffect" = {ID = TYPE_PARTICLESYSTEM  },
+  "ProjectedTexture"   = {ID = TYPE_PROJECTEDTEXTURE},
+  "PhysCollide"        = {ID = TYPE_PHYSCOLLIDE     },
+  "SurfaceInfo"        = {ID = TYPE_SURFACEINFO     },
+  "Color"              = {ID = TYPE_COLOR           }
+}
+
 local function CanUseLuapad(ply)
   if not IsValid(ply) then
     return false
@@ -144,39 +191,33 @@ if (SERVER) then
       fSin:Write("-- This is an automatically generated cache file for server-side\n")
       fSin:Write("-- The content includes global functions, meta-tables, and enumerations\n")
       fSin:Write("-- Don't touch it, or you'll probably mess up your syntax highlighting\n")
-      fSin:Write("\nluapad._sG = {};\n")
+      fSin:Write("-- The timestamp of this generated file is ["..os.date(DATM_FORMAT).."]\n")
+      fSin:Write("\nluapad._sG = {};\n\n")
+
+      fSin:Write("\n\n-- Globals and libraries\n\n")
 
       for k, v in pairs(_G) do
         if (isfunction(v)) then
           fSin:Write(FMSYNTAX_HILIGHT.V:format(k, "f"))
           fSin:Write("\n")
-        elseif (istable(v)) then
-          local hasfunc = false
-          for k1, v1 in pairs(v) do
-            if (isfunction(v1)) then
-              hasfunc = true
-              break
-            end
-          end
-
-          if (hasfunc) then
-            fSin:Write(FMSYNTAX_HILIGHT.T:format(k))
-            fSin:Write("\n")
-            for k2, v2 in pairs(v) do
-              if (isfunction(v2)) then
-                fSin:Write(FMSYNTAX_HILIGHT.D:format(k, k2, "f"))
-                fSin:Write("\n")
+        elseif (istable(v)) then local bH = true
+          for n, e in pairs(v) do
+            if (isfunction(e)) then
+              if(bH) then
+                fSin:Write(FMSYNTAX_HILIGHT.T:format(k))
+                fSin:Write("\n"); bH = false
               end
+              fSin:Write(FMSYNTAX_HILIGHT.D:format(k, n, "f"))
+              fSin:Write("\n")
             end
           end
         end
       end
 
       fSin:Write("\n\n-- Enumerations\n\n")
-
-      if (_E) then
-        for k, v in pairs(_E) do
-          if ((isfunction(v) or istable(v)) and string.upper(k) == k) then
+      if (_E) then -- Enumerators are neither functions nor tables
+        for k, v in pairs(_E) do -- Enumerators have uppercase names
+          if (not (isfunction(v) or istable(v)) and string.upper(k) == k) then
             fSin:Write(FMSYNTAX_HILIGHT.V:format(k, "e"))
             fSin:Write("\n")
           end
@@ -184,22 +225,15 @@ if (SERVER) then
       end
 
       fSin:Write("\n\n-- Meta-tables\n\n")
-
-      for k, v in pairs(debug.getregistry()) do
-        if (istable(v)) then
-          local hasfunc = false
-          for k1, v1 in pairs(v) do
-            if (isfunction(v1)) then
-              hasfunc = true
-              break
-            end
-          end
-
-          if (hasfunc) then
-            for k2, v2 in pairs(v) do
-              if (isfunction(v2) and not tMeta[k2]) then
-                fSin:Write(FMSYNTAX_HILIGHT.V:format(k2, "m"))
-                fSin:Write("\n")
+      -- https://wiki.facepunch.com/gmod/Enums/TYPE
+      for k, v in pairs(FMSYNTAX_METATYP) do
+        if (v.ID) then -- Type exists in TypeID
+          local m = FindMetaTable(k)
+          if(m and istable(m)) then
+            for n, e in pairs(m) do
+              if (isfunction(e) and not tMeta[n]) then
+                fSin:Write(FMSYNTAX_HILIGHT.V:format(n, "m"))
+                fSin:Write("\n"); tMeta[n] = true
               end
             end
           end
@@ -659,8 +693,8 @@ function luapad.AddTab(name, content, path, label, icon)
   pText:SizeToContents()
 
   local tInfo = pSheet:AddSheet(tostring(sLab or sNam), pPan, luapad.ToIcon(sIco), false, false)
-  local pTab  = tInfo.Tab; pTab[PANEL_STORKY] = {}
-  local tSor  = pTab[PANEL_STORKY]
+  local pTab  = tInfo.Tab; pTab[PANL_STORKY] = {}
+  local tSor  = pTab[PANL_STORKY]
 
   tSor.Name  = sNam -- The actual file name associated wth the tab
   tSor.Path  = sPth -- File path always relative to the game folder
@@ -674,7 +708,7 @@ function luapad.AddTab(name, content, path, label, icon)
    * Retrieves the storage info from the tab
   ]]
   function pTab:GetStreamInfo()
-    return self[PANEL_STORKY]
+    return self[PANL_STORKY]
   end
 
   --[[
