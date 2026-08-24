@@ -100,9 +100,10 @@ local RESTRICTED_FILES = {
 }
 
 local FMSYNTAX_HILIGHT = {
-  V = "luapad._sG[\"%s\"] = \"%s\";",
-  T = "luapad._sG[\"%s\"] = {};",
-  D = "luapad._sG[\"%s\"][\"%s\"] = \"%s\";"
+  N = "luapad._sG", -- Name
+  I = "[\"%s\"]",   -- Index
+  V = " = \"%s\"",  -- Value
+  H = " = {}"       -- Header
 }
 
 local FMSYNTAX_METATYP = {
@@ -192,22 +193,27 @@ if (SERVER) then
       fSin:Write("-- The content includes global functions, meta-tables, and enumerations\n")
       fSin:Write("-- Don't touch it, or you'll probably mess up your syntax highlighting\n")
       fSin:Write("-- The timestamp of this generated file is ["..os.date(DATM_FORMAT).."]\n")
-      fSin:Write("\nluapad._sG = {};\n\n")
+      fSin:Write("\n"); fSin:Write(FMSYNTAX_HILIGHT.N); fSin:Write(FMSYNTAX_HILIGHT.H); fSin:Write("\n\n")
 
       fSin:Write("\n\n-- Globals and libraries\n\n")
-
       for k, v in pairs(_G) do
         if (isfunction(v)) then
-          fSin:Write(FMSYNTAX_HILIGHT.V:format(k, "f"))
+          fSin:Write(FMSYNTAX_HILIGHT.N)
+          fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
+          fSin:Write(FMSYNTAX_HILIGHT.V:format("f"))
           fSin:Write("\n")
         elseif (istable(v)) then local bH = true
           for n, e in pairs(v) do
             if (isfunction(e)) then
-              if(bH) then
-                fSin:Write(FMSYNTAX_HILIGHT.T:format(k))
+              if(bH) then -- Print the library header
+                fSin:Write(FMSYNTAX_HILIGHT.N)
+                fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
                 fSin:Write("\n"); bH = false
-              end
-              fSin:Write(FMSYNTAX_HILIGHT.D:format(k, n, "f"))
+              end -- Print the library members
+              fSin:Write(FMSYNTAX_HILIGHT.N)
+              fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
+              fSin:Write(FMSYNTAX_HILIGHT.I:format(n))
+              fSin:Write(FMSYNTAX_HILIGHT.V:format("f"))
               fSin:Write("\n")
             end
           end
@@ -218,7 +224,9 @@ if (SERVER) then
       if (_E) then -- Enumerators are neither functions nor tables
         for k, v in pairs(_E) do -- Enumerators have uppercase names
           if (not (isfunction(v) or istable(v)) and string.upper(k) == k) then
-            fSin:Write(FMSYNTAX_HILIGHT.V:format(k, "e"))
+            fSin:Write(FMSYNTAX_HILIGHT.N)
+            fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
+            fSin:Write(FMSYNTAX_HILIGHT.V:format("e"))
             fSin:Write("\n")
           end
         end
@@ -232,7 +240,9 @@ if (SERVER) then
           if(m and istable(m)) then
             for n, e in pairs(m) do
               if (isfunction(e) and not tMeta[n]) then
-                fSin:Write(FMSYNTAX_HILIGHT.V:format(n, "m"))
+                fSin:Write(FMSYNTAX_HILIGHT.N)
+                fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
+                fSin:Write(FMSYNTAX_HILIGHT.V:format("m"))
                 fSin:Write("\n"); tMeta[n] = true
               end
             end
