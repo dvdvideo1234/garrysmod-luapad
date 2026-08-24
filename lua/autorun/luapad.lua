@@ -31,16 +31,9 @@ local COLOR_STATUS = {
   ["STAT_OK"] = Color(72, 205, 72, 255),
   ["STAT_WR"] = Color(205,140, 72, 255),
   ["STAT_ER"] = Color(205, 72, 72, 255),
-  ["RUNC_OK"] = Color(72, 205, 72, 255),
-  ["RUNC_ER"] = Color(205, 72, 72, 255),
-  ["RUNS_UP"] = Color(92, 205, 92, 255),
-  ["RUNS_AC"] = Color(92, 205, 92, 255),
-  ["RUNS_DN"] = Color(205, 92, 92, 255),
-  ["RNCS_OK"] = Color(92, 205, 92, 255),
-  ["RNCS_ER"] = Color(205, 92, 92, 255),
-  ["RNSC_UP"] = Color(92, 205, 92, 255),
-  ["RNSC_AC"] = Color(92, 205, 92, 255),
-  ["RNSC_DN"] = Color(205, 92, 92, 255)
+  ["COMS_OK"] = Color(92, 205, 92, 255),
+  ["COMS_WR"] = Color(205,140, 92, 255),
+  ["COMS_ER"] = Color(205, 92, 92, 255),
 }
 
 local ACCEPTED_STEAMS = {
@@ -189,31 +182,34 @@ if (SERVER) then
 
       local tMeta = {}
 
+      local sN, sV = FMSYNTAX_HILIGHT.N, FMSYNTAX_HILIGHT.V
+      local sI, sH = FMSYNTAX_HILIGHT.I, FMSYNTAX_HILIGHT.H
+
       fSin:Write("-- This is an automatically generated cache file for server-side\n")
       fSin:Write("-- The content includes global functions, meta-tables, and enumerations\n")
       fSin:Write("-- Don't touch it, or you'll probably mess up your syntax highlighting\n")
       fSin:Write("-- The timestamp of this generated file is ["..os.date(DATM_FORMAT).."]\n")
-      fSin:Write("\n"); fSin:Write(FMSYNTAX_HILIGHT.N); fSin:Write(FMSYNTAX_HILIGHT.H); fSin:Write("\n\n")
+      fSin:Write("\n"); fSin:Write(sN); fSin:Write(sH); fSin:Write("\n\n")
 
       fSin:Write("\n\n-- Globals and libraries\n\n")
       for k, v in pairs(_G) do
         if (isfunction(v)) then
-          fSin:Write(FMSYNTAX_HILIGHT.N)
-          fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
-          fSin:Write(FMSYNTAX_HILIGHT.V:format("f"))
+          fSin:Write(sN)
+          fSin:Write(sI:format(k))
+          fSin:Write(sV:format("f"))
           fSin:Write("\n")
         elseif (istable(v)) then local bH = true
           for n, e in pairs(v) do
             if (isfunction(e)) then
               if(bH) then -- Print the library header
-                fSin:Write(FMSYNTAX_HILIGHT.N)
-                fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
+                fSin:Write(sN)
+                fSin:Write(sI:format(k))
                 fSin:Write("\n"); bH = false
               end -- Print the library members
-              fSin:Write(FMSYNTAX_HILIGHT.N)
-              fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
-              fSin:Write(FMSYNTAX_HILIGHT.I:format(n))
-              fSin:Write(FMSYNTAX_HILIGHT.V:format("f"))
+              fSin:Write(sN)
+              fSin:Write(sI:format(k))
+              fSin:Write(sI:format(n))
+              fSin:Write(sV:format("f"))
               fSin:Write("\n")
             end
           end
@@ -224,9 +220,9 @@ if (SERVER) then
       if (_E) then -- Enumerators are neither functions nor tables
         for k, v in pairs(_E) do -- Enumerators have uppercase names
           if (not (isfunction(v) or istable(v)) and string.upper(k) == k) then
-            fSin:Write(FMSYNTAX_HILIGHT.N)
-            fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
-            fSin:Write(FMSYNTAX_HILIGHT.V:format("e"))
+            fSin:Write(sN)
+            fSin:Write(sI:format(k))
+            fSin:Write(sV:format("e"))
             fSin:Write("\n")
           end
         end
@@ -240,9 +236,9 @@ if (SERVER) then
           if(m and istable(m)) then
             for n, e in pairs(m) do
               if (isfunction(e) and not tMeta[n]) then
-                fSin:Write(FMSYNTAX_HILIGHT.N)
-                fSin:Write(FMSYNTAX_HILIGHT.I:format(k))
-                fSin:Write(FMSYNTAX_HILIGHT.V:format("m"))
+                fSin:Write(sN)
+                fSin:Write(sI:format(k))
+                fSin:Write(sV:format("m"))
                 fSin:Write("\n"); tMeta[n] = true
               end
             end
@@ -337,8 +333,9 @@ end
 
 function luapad.CheckGlobal(func)
   if (luapad._sG[func] ~= nil) then
+    local N = sN
     if (luapad.debugmode) then
-      print(DEBG_FORMAT:format(func, "luapad._sG"))
+      print(DEBG_FORMAT:format(func, N))
     end
     return luapad._sG[func]
   end
@@ -407,14 +404,13 @@ function luapad.Toggle()
   luapad.Frame:MakePopup()
 
   if(not luapad.debugmode) then
-
     function luapad.Frame:OnClose()
       self:SetVisible(true)
       luapad.Toggle()
       luapad.SaveTabs()
     end -- Thanks Microosoft -SparkZ
-
   end
+
   luapad.Toolbar = vgui.Create("DIconLayout", luapad.Frame)
   luapad.Toolbar:SetPos(5, 30)
   luapad.Toolbar:SetSize(luapad.Frame:GetWide() - 6, 25)
@@ -468,16 +464,16 @@ function luapad.Toggle()
   luapad.Statusbar:Dock(TOP)
   luapad.Statusbar:InvalidateLayout(true)
 
-  luapad.AddToolbarItem("New (CTRL + N)", luapad.ToIcon("page_add"), luapad.NewTab)
-  luapad.AddToolbarItem("Open (CTRL + O)", luapad.ToIcon("folder_page"), luapad.OpenTab, luapad.OpenFile)
-  luapad.AddToolbarItem("Save (CTRL + S)", luapad.ToIcon("disk"), luapad.SaveScript)
-  luapad.AddToolbarItem("Save As (CTRL + ALT + S)", luapad.ToIcon("page_save"), luapad.SaveAsScript)
+  luapad.AddToolbarItem("New (CTRL + N)"          , "page_add"   , luapad.NewTab)
+  luapad.AddToolbarItem("Open (CTRL + O)"         , "folder_page", luapad.OpenTab, luapad.OpenFile)
+  luapad.AddToolbarItem("Save (CTRL + S)"         , "disk"       , luapad.SaveScript)
+  luapad.AddToolbarItem("Save As (CTRL + ALT + S)", "page_save"  , luapad.SaveAsScript)
   luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Reload Tab", luapad.ToIcon("page_refresh"), luapad.RefreshActiveTab)
-  luapad.AddToolbarItem("Close Tab", luapad.ToIcon("page_delete"), luapad.CloseActiveTab)
+  luapad.AddToolbarItem("Reload Tab", "page_refresh", luapad.RefreshActiveTab)
+  luapad.AddToolbarItem("Close Tab" , "page_delete" , luapad.CloseActiveTab)
   luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Save Tabs", luapad.ToIcon("page_white_put"), luapad.SaveTabs)
-  luapad.AddToolbarItem("Load Tabs", luapad.ToIcon("page_white_get"), luapad.LoadTabs)
+  luapad.AddToolbarItem("Save Tabs", "page_white_put", luapad.SaveTabs)
+  luapad.AddToolbarItem("Load Tabs", "page_white_get", luapad.LoadTabs)
 
   if (file.Exists(BASE_FOLDER.."saved_tabs.txt", "DATA")) then
     luapad.LoadTabs()
@@ -491,20 +487,32 @@ function luapad.Toggle()
   luapad.Toolbar:InvalidateLayout(true)
 end
 
-function luapad.AddToolbarItem(tooltip, mat, func1, func2)
-  local pBut = luapad.Toolbar:Add("DImageButton")
-  pBut:SetImage(mat)
-  pBut:SetTooltip(tooltip)
-  pBut:SetSize(22, 22)
-  if(func1) then
+function luapad.AddToolbarItem(tooltip, mater, left, right, midle, doble)
+  local pBut, nS = luapad.Toolbar:Add("DImageButton"), 22
+  pBut:SetImage(luapad.ToIcon(mater))
+  if(tooltip ~= nil) then pBut:SetTooltip(tostring(tooltip)) end
+  pBut:SetSize(nS, nS)
+  if(left) then
     function pBut:DoClick()
-      local bS, sE = pcall(func1); if(not bS) then
+      local bS, sE = pcall(left); if(not bS) then
         luapad.SetStatus("LeftClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
     end
   end
-  if(func2) then
+  if(right) then
     function pBut:DoRightClick()
-      local bS, sE = pcall(func2); if(not bS) then
+      local bS, sE = pcall(right); if(not bS) then
+        luapad.SetStatus("RightClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
+    end
+  end
+  if(midle) then
+    function pBut:DoRightClick()
+      local bS, sE = pcall(midle); if(not bS) then
+        luapad.SetStatus("MiddleClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
+    end
+  end
+  if(doble) then
+    function pBut:DoRightClick()
+      local bS, sE = pcall(doble); if(not bS) then
         luapad.SetStatus("RightClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
     end
   end
@@ -553,37 +561,57 @@ function luapad.SetStatus(str, idx)
   surface.PlaySound("common/wpn_select.wav")
 end
 
+--[[
+ * Closes a tab via name or label
+ * Closes only one tab if matched
+]]
 function luapad.CloseTab(name, label)
-  local pSheet = luapad.PropertySheet
-  if(not IsValid(pSheet)) then return end
-
-  local tI = pSheet:GetItems()
-  local sName  = tostring(label or name)
-
-  -- The context menu option is available
-  for iD = 1, #tI do
-    local tP = tI[iD]
-    local tS = tP.Tab:GetStreamInfo()
-    if(tS.Label and tS.Label:find(sName, 1, true)) then
-      pSheet:CloseTab(tP.Tab, true)
-      break
-    end
-    if(tS.Name and tS.Name:find(sName, 1, true)) then
-      pSheet:CloseTab(tP.Tab, true)
-      break
-    end
-  end; pSheet:InvalidateLayout()
-end
-
-function luapad.CloseTabLeft(pTab, bInc)
-  if(not IsValid(pTab)) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-  local iT = pS:GetTabIndex(pTab)
-  if(not iT) then return end
-   if(not bInc) then iT = iT - 1 end
+  -- Check the property sheet tab
   local tI = pS:GetItems()
- -- Calculated closed tabs count
+  local nI = #tI
+  if(nI == 0) then
+    return -- Nothing to close
+  else -- At least one tab
+    local sName  = tostring(label or name)
+    -- The context menu option is available
+    for iD = 1, #tI do
+      local tP = tI[iD]
+      local tS = tP.Tab:GetStreamInfo()
+      if(tS.Label and tS.Label:find(sName, 1, true)) then
+        if(nI > 1) then -- More tabs
+          pS:CloseTab(tP.Tab, true)
+        else -- Only one tab is open
+          pS:Clear()
+        end; break
+      end
+      if(tS.Name and tS.Name:find(sName, 1, true)) then
+         if(nI > 1) then -- More tabs
+          pS:CloseTab(tP.Tab, true)
+        else -- Only one tab is open
+          pS:Clear()
+        end; break
+      end
+    end; pS:InvalidateLayout()
+  end
+end
+
+--[[
+ * Closes all tabs to the left
+ * No tabs are found the index is empty
+ * pTre > The tab to use as reference
+ * bInc > Close also the reference tab
+]]
+function luapad.CloseTabLeft(pTre, bInc)
+  if(not IsValid(pTre)) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  local iT = pS:GetTabIndex(pTre)
+  if(not iT) then return end
+  if(not bInc) then iT = iT - 1 end
+  local tI = pS:GetItems()
+  -- Calculated closed tabs count
   local cT, nT = tI[1].Tab, iT
   -- Close all to the left including last
   if(iT == #tI) then pS:Clear(); return end
@@ -597,11 +625,17 @@ function luapad.CloseTabLeft(pTab, bInc)
   end
 end
 
-function luapad.CloseTabRight(pTab, bInc)
-  if(not IsValid(pTab)) then return end
+--[[
+ * Closes all tabs to the right
+ * No tabs are found the index is empty
+ * pTre > The tab to use as reference
+ * bInc > Close also the reference tab
+]]
+function luapad.CloseTabRight(pTre, bInc)
+  if(not IsValid(pTre)) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-  local iT = pS:GetTabIndex(pTab)
+  local iT = pS:GetTabIndex(pTre)
   if(not iT) then return end
   local tI = pS:GetItems()
   if(not bInc) then iT = iT + 1 end
@@ -620,6 +654,9 @@ function luapad.CloseTabRight(pTab, bInc)
   end
 end
 
+--[[
+ * Closes the active tab
+]]
 function luapad.CloseActiveTab()
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1121,18 +1158,18 @@ function luapad.RunScriptClient()
                      objectDefintions .. luapad.PropertySheet:GetActiveTab():GetContents()
                    )
   if bS then
-    luapad.SetStatus("Code ran successfully!", "RUNC_OK")
+    luapad.SetStatus("Code ran successfully!", "STAT_OK")
   else
-    luapad.SetStatus("Runtime error: "..sE, "RUNC_ER")
+    luapad.SetStatus("Runtime error: "..sE, "STAT_ER")
   end
 end
 
 function luapad.RunScriptClientFromServer(script)
   local bS, sE = pcall(RunString, script)
   if bS then
-    luapad.SetStatus("Code ran successfully!", "RNCS_OK")
+    luapad.SetStatus("Code ran successfully!", "COMS_OK")
   else
-    luapad.SetStatus("Runtime error: "..sE, "RNCS_ER")
+    luapad.SetStatus("Runtime error: "..sE, "COMS_ER")
   end
 end
 
@@ -1154,12 +1191,12 @@ function luapad.RunScriptServer()
   net.WriteString(objectDefintions .. luapad.PropertySheet:GetActiveTab():GetContents())
   net.SendToServer()
 
-  luapad.SetStatus("Upload to server completed! Check server console for possible errors.", "RUNS_UP")
+  luapad.SetStatus("Upload to server completed! Check server console for possible errors.", "COMS_OK")
 
   if (accepted) then
-    luapad.SetStatus("Upload accepted, now uploading...", "RUNS_AC")
+    luapad.SetStatus("Upload accepted, now uploading...", "COMS_OK")
   else
-    luapad.SetStatus("Upload denied by server! This could be due you not being an admin.", "RUNS_DN")
+    luapad.SetStatus("Upload denied by server! Maybe you are not an admin.", "COMS_ER")
   end
 
 end
@@ -1182,12 +1219,12 @@ function luapad.RunScriptServerClient()
   net.WriteString(objectDefintions .. luapad.PropertySheet:GetActiveTab():GetContents())
   net.SendToServer()
 
-  luapad.SetStatus("Upload to client completed!", "RNSC_UP")
+  luapad.SetStatus("Upload to client completed!", "COMS_OK")
 
   if (accepted) then
-    luapad.SetStatus("Upload accepted, now uploading...", "RNSC_AC")
+    luapad.SetStatus("Upload accepted, now uploading...", "COMS_OK")
   else
-    luapad.SetStatus("Upload denied by server! This could be due you not being an admin.", "RNSC_DN")
+    luapad.SetStatus("Upload denied by server! Maybe you are not an admin.", "COMS_ER")
   end
 
 end
