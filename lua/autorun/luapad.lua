@@ -27,7 +27,7 @@ local DATM_FORMAT = "%Y-%m-%d %H:%M:%S"
 local DEBG_FORMAT = "Found routine [%s] in %s"
 
 local COLOR_STATUS = {
-  ["#STATUS"] = Color(0 ,  0 ,  0,  0 ),
+  ["#TEMCO#"] = Color(0 ,  0 ,  0,  0 ),
   ["STAT_OK"] = Color(72, 205, 72, 255),
   ["STAT_WR"] = Color(205,140, 72, 255),
   ["STAT_ER"] = Color(205, 72, 72, 255),
@@ -365,7 +365,7 @@ function luapad.SaveTabs()
     local tP = tI[iD]
     local tS = tP.Tab:GetStreamInfo()
     tO[1], tO[2] = tS.Name , tS.Path
-    tO[3], tO[4] = (tS.Label or ""), tS.Icon
+    tO[3], tO[4] = (tS.Logo or ""), tS.Icon
     table.insert(tW, table.concat(tO, BASE_DELIMS))
   end
   file.Write(BASE_FOLDER.."saved_tabs.txt", table.concat(tW, "\n"))
@@ -433,21 +433,38 @@ function luapad.Toggle()
   luapad.PropertySheet:DockPadding(2,2,2,2)
   luapad.PropertySheet:Dock(TOP)
 
-  function luapad.PropertySheet:OnActiveTabChanged(oT, nT)
-    if(IsValid(nT)) then
-      local tS = nT:GetStreamInfo()
+  function luapad.PropertySheet:OnActiveTabChanged(pO, pN)
+    if(IsValid(pN)) then
+      local tS = pN:GetStreamInfo()
       luapad.Frame:SetTitle("Luapad - " .. tS.Path .. tS.Name)
     else
       luapad.Frame:SetTitle("Luapad")
     end
   end
 
-  function luapad.PropertySheet:GetTabIndex(pTab)
-    if(not IsValid(pTab)) then return nil end
+  function luapad.PropertySheet:GetTabIndex(pTre)
+    if(not IsValid(pTre)) then return nil end
     local tT = luapad.PropertySheet:GetItems()
     for iT = 1, #tT do local tP = tT[iT]
-      if(pTab == tP.Tab) then return iT end
+      if(pTre == tP.Tab) then return iT end
     end; return nil
+  end
+
+  function luapad.PropertySheet:RemoveTabView(pTre)
+    local tI = self:GetItems()
+    local nI = #tI
+    if(nI == 1) then local tP = tI[nI]
+      if(pTre ~= tP.Tab) then return end
+      self:Clear(); return
+    else -- More than one tabs
+      for iD = 1, #tI do
+        local tP = tI[iD]
+        if(pTre == tP.Tab) then
+          self:CloseTab(tP.Tab, true)
+          return -- Skip the rest
+        end
+      end
+    end
   end
 
   local oW, oH = luapad.Frame:GetSize()
@@ -522,7 +539,7 @@ function luapad.AddToolbarSpacer()
   local pLab = luapad.Toolbar:Add("DLabel")
   if(not IsValid(pLab)) then return end
 
-  pLab:SetText(" "..BASE_DELIMS.." ")
+  pLab:SetText(BASE_DELIMS)
   pLab:SizeToContents()
 end
 
@@ -530,7 +547,7 @@ function luapad.SetStatus(str, idx)
   if(not idx) then return end
   local cDrw = COLOR_STATUS[idx]
   if(not cDrw) then return end
-  local cSau = COLOR_STATUS["#STATUS"]
+  local cSau = COLOR_STATUS["#TEMCO#"]
   -- Moce color data to status color
   cSau.r, cSau.g = cDrw.r, cDrw.g
   cSau.b, cSau.a = cDrw.b, cDrw.a
@@ -562,10 +579,10 @@ function luapad.SetStatus(str, idx)
 end
 
 --[[
- * Closes a tab via name or label
+ * Closes a tab via name, full path or logo
  * Closes only one tab if matched
 ]]
-function luapad.CloseTab(name, label)
+function luapad.CloseTab(name, logo)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
   -- Check the property sheet tab
@@ -574,12 +591,19 @@ function luapad.CloseTab(name, label)
   if(nI == 0) then
     return -- Nothing to close
   else -- At least one tab
-    local sName  = tostring(label or name)
+    local sName  = tostring(logo or name)
     -- The context menu option is available
     for iD = 1, #tI do
       local tP = tI[iD]
       local tS = tP.Tab:GetStreamInfo()
-      if(tS.Label and tS.Label:find(sName, 1, true)) then
+      if(tS.Full and tS.Full:find(sName, 1, true)) then
+         if(nI > 1) then -- More tabs
+          pS:CloseTab(tP.Tab, true)
+        else -- Only one tab is open
+          pS:Clear()
+        end; break
+      end
+      if(tS.Logo and tS.Logo:find(sName, 1, true)) then
         if(nI > 1) then -- More tabs
           pS:CloseTab(tP.Tab, true)
         else -- Only one tab is open
@@ -714,12 +738,12 @@ function luapad.RefreshActiveTab()
   end
 end
 
-function luapad.AddTab(name, content, path, label, icon)
+function luapad.AddTab(name, content, path, logo, icon)
   local sPth = tostring(path or "")
   local sNam = tostring(name or "")
   local sCon = tostring(content or "")
   local sIco = tostring(icon or "page_white")
-  local sLab = ((label ~= nil and label ~= "") and tostring(label) or nil)
+  local sTag = ((logo ~= nil and logo ~= "") and tostring(logo) or nil)
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -739,15 +763,15 @@ function luapad.AddTab(name, content, path, label, icon)
   pText:RequestFocus()
   pText:SizeToContents()
 
-  local tInfo = pSheet:AddSheet(tostring(sLab or sNam), pPan, luapad.ToIcon(sIco), false, false)
+  local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
   local pTab  = tInfo.Tab; pTab[PANL_STORKY] = {}
   local tSor  = pTab[PANL_STORKY]
 
-  tSor.Name  = sNam -- The actual file name associated wth the tab
-  tSor.Path  = sPth -- File path always relative to the game folder
-  tSor.Label = sLab -- Tab label in case provided is displayed instead of name
-  tSor.Icon  = sIco -- Custom tab icon usually defined by the file extension
-  tSor.Full  = sPth .. sNam -- Full path relative to the game folder
+  tSor.Name = sNam -- The actual file name associated with the tab
+  tSor.Path = sPth -- File path always relative to the game folder
+  tSor.Logo = sTag -- Tab logo in case provided is displayed instead of name
+  tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
+  tSor.Full = sPth .. sNam -- Full path relative to the game folder
 
   pTab:SetTooltip(tSor.Full)
 
@@ -794,13 +818,13 @@ function luapad.AddTab(name, content, path, label, icon)
   end
 
   --[[
-   * Close the thab middle-clicked
+   * Close the tab middle-clicked
   ]]
   function pTab:DoMiddleClick()
     local pS = self:GetPropertySheet()
     local tI = pS:GetItems()
     if(#tI == 1) then pS:Clear() else
-      self:GetPropertySheet():CloseTab(self, true)
+      pS:CloseTab(self, true)
     end
   end
 
@@ -823,7 +847,7 @@ function luapad.AddTab(name, content, path, label, icon)
       SetClipboardText(self:GetStreamInfo().Name)
     end):SetImage(luapad.ToIcon("page_green"))
     pIn:AddOption("Label", function()
-      SetClipboardText(self:GetStreamInfo().Label)
+      SetClipboardText(self:GetStreamInfo().Logo)
     end):SetImage(luapad.ToIcon("tag_green"))
     pIn:AddOption("Path", function()
       SetClipboardText(self:GetStreamInfo().Path)
@@ -897,7 +921,7 @@ function luapad.IsOpen(name, path)
       if(tS.Full == sNam) then return true end
     else
       if(tS.Name == sNam) then return true end
-      if(tS.Label == sNam) then return true end
+      if(tS.Logo == sNam) then return true end
     end
   end; return false
 end
@@ -1071,6 +1095,13 @@ function luapad.OpenFile()
   -- luapad.BrowserTree:PopulateTree("addons"   )
   -- luapad.BrowserTree:PopulateTree("download" )
   -- luapad.BrowserTree:PopulateTree("gamemodes")
+end
+
+function luapad.OpenFileSource()
+  local pMenu = DermaMenu()
+  pMenu:AddOption("Name", function()
+    SetClipboardText(self:GetStreamInfo().Name)
+  end):SetImage(luapad.ToIcon("page_green"))
 end
 
 function luapad.SaveScript()
