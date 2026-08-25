@@ -76,11 +76,11 @@ local ENABLE_EXTENS = {
 
 -- Browsed folder configurations
 local ENABLE_FOLDER = {
-  ["data"     ] = {Icon = "table_save"},
-  ["lua"      ] = {Icon = "page_code" },
-  ["addons"   ] = {Icon = "package"   },
-  ["download" ] = {Icon = "transmit"  },
-  ["gamemodes"] = {Icon = "joystick"  }
+  ["data"     ] = {ID = 1, Icon = "table_save"},
+  ["lua"      ] = {ID = 2, Icon = "page_code" },
+  ["addons"   ] = {ID = 3, Icon = "package"   },
+  ["download" ] = {ID = 4, Icon = "transmit"  },
+  ["gamemodes"] = {ID = 5, Icon = "joystick"  }
 }
 
 local RESTRICTED_FILES = {
@@ -450,23 +450,6 @@ function luapad.Toggle()
     end; return nil
   end
 
-  function luapad.PropertySheet:RemoveTabView(pTre)
-    local tI = self:GetItems()
-    local nI = #tI
-    if(nI == 1) then local tP = tI[nI]
-      if(pTre ~= tP.Tab) then return end
-      self:Clear(); return
-    else -- More than one tabs
-      for iD = 1, #tI do
-        local tP = tI[iD]
-        if(pTre == tP.Tab) then
-          self:CloseTab(tP.Tab, true)
-          return -- Skip the rest
-        end
-      end
-    end
-  end
-
   local oW, oH = luapad.Frame:GetSize()
   luapad.Statusbar = vgui.Create("DIconLayout", luapad.Frame)
   luapad.Statusbar:SetPos(3, oH - 25)
@@ -504,32 +487,33 @@ function luapad.Toggle()
   luapad.Toolbar:InvalidateLayout(true)
 end
 
-function luapad.AddToolbarItem(tooltip, mater, left, right, midle, doble)
+function luapad.AddToolbarItem(vTip, sMat, actL, actR, actM, actD)
   local pBut, nS = luapad.Toolbar:Add("DImageButton"), 22
-  pBut:SetImage(luapad.ToIcon(mater))
-  if(tooltip ~= nil) then pBut:SetTooltip(tostring(tooltip)) end
+  if(not IsValid(pBut)) then return end
+  pBut:SetImage(luapad.ToIcon(sMat))
+  if(vTip ~= nil) then pBut:SetTooltip(tostring(vTip)) end
   pBut:SetSize(nS, nS)
-  if(left) then
+  if(actL) then
     function pBut:DoClick()
-      local bS, sE = pcall(left); if(not bS) then
+      local bS, sE = pcall(actL); if(not bS) then
         luapad.SetStatus("LeftClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
     end
   end
-  if(right) then
+  if(actR) then
     function pBut:DoRightClick()
-      local bS, sE = pcall(right); if(not bS) then
+      local bS, sE = pcall(actR); if(not bS) then
         luapad.SetStatus("RightClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
     end
   end
-  if(midle) then
+  if(actM) then
     function pBut:DoRightClick()
-      local bS, sE = pcall(midle); if(not bS) then
+      local bS, sE = pcall(actM); if(not bS) then
         luapad.SetStatus("MiddleClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
     end
   end
-  if(doble) then
+  if(actD) then
     function pBut:DoRightClick()
-      local bS, sE = pcall(doble); if(not bS) then
+      local bS, sE = pcall(actD); if(not bS) then
         luapad.SetStatus("RightClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
     end
   end
@@ -582,7 +566,7 @@ end
  * Closes a tab via name, full path or logo
  * Closes only one tab if matched
 ]]
-function luapad.CloseTab(name, logo)
+function luapad.CloseTabName(name, logo)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
   -- Check the property sheet tab
@@ -593,26 +577,29 @@ function luapad.CloseTab(name, logo)
   else -- At least one tab
     local sName  = tostring(logo or name)
     -- The context menu option is available
+    local sF = tS.Path .. tS.Name
+    local sN, sL = tS.Name, tS.Logo
     for iD = 1, #tI do
       local tP = tI[iD]
-      local tS = tP.Tab:GetStreamInfo()
-      if(tS.Full and tS.Full:find(sName, 1, true)) then
+      local cT = tP.Tab
+      local tS = cT:GetStreamInfo()
+      if(sF:find(sName, 1, true)) then
          if(nI > 1) then -- More tabs
-          pS:CloseTab(tP.Tab, true)
+          pS:CloseTab(cT, true)
         else -- Only one tab is open
           pS:Clear()
         end; break
       end
-      if(tS.Logo and tS.Logo:find(sName, 1, true)) then
+      if(sL and sL:find(sName, 1, true)) then
         if(nI > 1) then -- More tabs
-          pS:CloseTab(tP.Tab, true)
+          pS:CloseTab(cT, true)
         else -- Only one tab is open
           pS:Clear()
         end; break
       end
-      if(tS.Name and tS.Name:find(sName, 1, true)) then
+      if(sN:find(sName, 1, true)) then
          if(nI > 1) then -- More tabs
-          pS:CloseTab(tP.Tab, true)
+          pS:CloseTab(cT, true)
         else -- Only one tab is open
           pS:Clear()
         end; break
@@ -700,7 +687,7 @@ function luapad.CloseActiveTab()
 
     if(iT == 1) then
       pS:SetActiveTab(pS.Items[2].Tab)
-    else
+    else -- Avoid triggering active tab close
       pS:SetActiveTab(pS.Items[iT - 1].Tab)
     end
 
@@ -724,11 +711,74 @@ function luapad.RefreshActiveTab()
   if(string.find(sD, "^data/") == 1) then
     local sB = sD:rep(1) -- Copy of the path
           sB = string.gsub(sB, "^data/", "", 1)
-          sB = string.gsub(sB, "^../", "", 1)
+          sB = string.gsub(sB, "../", "")
     local sF, sT = (sB .. sN), (aT:GetContents() or "")
 
     local sCon = file.Read(sF, "DATA")
     if(sCon) then aT:SetContents(sCon)
+      luapad.SetStatus("File successfully refreshed!", "STAT_OK")
+    else
+      luapad.SetStatus("File ["..sF.."] not found!", "STAT_ER")
+    end
+  else
+    luapad.SetStatus("File ["..sF.."] refresh not supported!", "STAT_WR")
+  end
+end
+
+--[[
+ * Closes the tab by view panel reference
+ * pTre > The tab reference that must be closed
+]]
+function luapad.CloseTabView(pTre)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT = pS:GetTabIndex(pTre)
+  if(not iT) then return end
+
+  -- Avoid triggering active tab close
+  local aT = pS:GetActiveTab()
+  if(aT == pTre) then
+    luapad.CloseActiveTab()
+    return
+  end
+
+  local tI = pS:GetItems()
+
+  if(#tI == 1) then
+    pS:Clear()
+  else
+    pS:CloseTab(pTre, true)
+  end
+
+  pS:InvalidateLayout()
+end
+
+function luapad.RefreshTabView(pTre)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT = pS:GetTabIndex(pTre)
+  if(not iT) then return end
+
+  -- Avoid triggering active tab close
+  local aT = pS:GetActiveTab()
+  if(aT == pTre) then
+    luapad.RefreshActiveTab()
+    return
+  end
+
+  local tS = pTre:GetStreamInfo()
+  local sD, sN = tS.Path, tS.Name
+
+  if(string.find(sD, "^data/") == 1) then
+    local sB = sD:rep(1) -- Copy of the path
+          sB = string.gsub(sB, "^data/", "", 1)
+          sB = string.gsub(sB, "../", "")
+    local sF, sT = (sB .. sN), (pTre:GetContents() or "")
+
+    local sCon = file.Read(sF, "DATA")
+    if(sCon) then pTre:SetContents(sCon)
       luapad.SetStatus("File successfully refreshed!", "STAT_OK")
     else
       luapad.SetStatus("File ["..sF.."] not found!", "STAT_ER")
@@ -771,9 +821,8 @@ function luapad.AddTab(name, content, path, logo, icon)
   tSor.Path = sPth -- File path always relative to the game folder
   tSor.Logo = sTag -- Tab logo in case provided is displayed instead of name
   tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
-  tSor.Full = sPth .. sNam -- Full path relative to the game folder
 
-  pTab:SetTooltip(tSor.Full)
+  pTab:SetTooltip(sPth .. sNam)
 
   --[[
    * Retrieves the storage info from the tab
@@ -832,7 +881,7 @@ function luapad.AddTab(name, content, path, logo, icon)
    * Clone maybe ?
   ]]
   function pTab:DoDoubleClick()
-    -- Sublime and notepad do nothing here
+    luapad.NewTab()
   end
 
   --[[
@@ -914,14 +963,16 @@ function luapad.IsOpen(name, path)
   end
 
   local tI = luapad.PropertySheet:GetItems()
+  local sF = tS.Path .. tS.Name
+  local sN, sL = tS.Name, tS.Logo
   for iD = 1, #tI do
     local tP = tI[iD]
     local tS = tP.Tab:GetStreamInfo()
     if(sPth ~= "") then
-      if(tS.Full == sNam) then return true end
+      if(sF == sNam) then return true end
     else
-      if(tS.Name == sNam) then return true end
-      if(tS.Logo == sNam) then return true end
+      if(sN == sNam) then return true end
+      if(sL == sNam) then return true end
     end
   end; return false
 end
@@ -1041,7 +1092,7 @@ function luapad.OpenTree()
             if(string.find(sD, "^data/") == 1) then
               local sB = sD:rep(1) -- Copy of the path
                     sB = string.gsub(sB, "^data/", "", 1)
-                    sB = string.gsub(sB, "^../", "", 1)
+                    sB = string.gsub(sB, "../", "")
               -- The contents in the data folder are refreshed on write
               luapad.AddTab(sF, file.Read(sB .. sF, "DATA"), sD, nil, sI)
             else
@@ -1089,19 +1140,24 @@ function luapad.OpenTab()
 end
 
 function luapad.OpenFile()
-  luapad.OpenTree()
-  luapad.BrowserTree:PopulateTree("data"     )
-  -- luapad.BrowserTree:PopulateTree("lua"      )
-  -- luapad.BrowserTree:PopulateTree("addons"   )
-  -- luapad.BrowserTree:PopulateTree("download" )
-  -- luapad.BrowserTree:PopulateTree("gamemodes")
-end
-
-function luapad.OpenFileSource()
+  local tK = table.GetKeys(ENABLE_FOLDER)
+  table.sort(tK, function(u, v)
+    local ru = ENABLE_FOLDER[u]
+    local rv = ENABLE_FOLDER[v]
+    return (ru.ID < rv.ID)
+  end)
   local pMenu = DermaMenu()
-  pMenu:AddOption("Name", function()
-    SetClipboardText(self:GetStreamInfo().Name)
-  end):SetImage(luapad.ToIcon("page_green"))
+  local uI = "computer"
+  if(not IsValid(pMenu)) then return end
+  for iD = 1, #tK do
+    local sD = tK[iD]
+    local sU = sD:gsub("^%l", string.upper)
+    local sI = (ENABLE_FOLDER[sD].Icon or uI)
+    pMenu:AddOption(sU, function()
+      luapad.OpenTree()
+      luapad.BrowserTree:PopulateTree(sD)
+    end):SetImage(luapad.ToIcon(sI))
+  end
 end
 
 function luapad.SaveScript()
@@ -1114,7 +1170,7 @@ function luapad.SaveScript()
   if(string.find(sD, "^data/") == 1) then
     local sB = sD:rep(1) -- Copy of the path
           sB = string.gsub(sB, "^data/", "", 1)
-          sB = string.gsub(sB, "^../", "", 1)
+          sB = string.gsub(sB, "../", "")
     local sF, sT = (sB .. sN), (pTab:GetContents() or "")
 
     if (not file.Exists(sF, "DATA")) then
@@ -1160,7 +1216,7 @@ function luapad.SaveAsScript()
       if(string.find(sD, "^data/") == 1) then
         local sB = sD:rep(1) -- Copy of the path
         local sB = string.gsub(sB, "^data/", "", 1)
-              sB = string.gsub(sB, "^../", "", 1)
+              sB = string.gsub(sB, "../", "")
         local sF, sT = (sB .. sN), (pTab:GetContents() or "")
 
         file.CreateDir(sB)
