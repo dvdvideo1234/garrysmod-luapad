@@ -469,8 +469,8 @@ function luapad.Toggle()
   luapad.AddToolbarItem("Save (CTRL + S)"         , "disk"       , luapad.SaveScript)
   luapad.AddToolbarItem("Save As (CTRL + ALT + S)", "page_save"  , luapad.SaveAsScript)
   luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Reload Tab", "page_refresh", luapad.RefreshActiveTab)
-  luapad.AddToolbarItem("Close Tab" , "page_delete" , luapad.CloseActiveTab)
+  luapad.AddToolbarItem("Reload Tab", "page_refresh", luapad.RefreshTabActive)
+  luapad.AddToolbarItem("Close Tab" , "page_delete" , luapad.CloseTabActive)
   luapad.AddToolbarSpacer()
   luapad.AddToolbarItem("Save Tabs", "page_white_put", luapad.SaveTabs)
   luapad.AddToolbarItem("Load Tabs", "page_white_get", luapad.LoadTabs)
@@ -668,7 +668,7 @@ end
 --[[
  * Closes the active tab
 ]]
-function luapad.CloseActiveTab()
+function luapad.CloseTabActive()
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -696,7 +696,10 @@ function luapad.CloseActiveTab()
   end
 end
 
-function luapad.RefreshActiveTab()
+--[[
+ * Refreshes the active tab
+]]
+function luapad.RefreshTabActive()
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -739,7 +742,7 @@ function luapad.CloseTabView(pTre)
   -- Avoid triggering active tab close
   local aT = pS:GetActiveTab()
   if(aT == pTre) then
-    luapad.CloseActiveTab()
+    luapad.CloseTabActive()
     return
   end
 
@@ -764,7 +767,7 @@ function luapad.RefreshTabView(pTre)
   -- Avoid triggering active tab close
   local aT = pS:GetActiveTab()
   if(aT == pTre) then
-    luapad.RefreshActiveTab()
+    luapad.RefreshTabActive()
     return
   end
 
@@ -878,7 +881,7 @@ function luapad.AddTab(name, content, path, logo, icon)
   end
 
   --[[
-   * Clone maybe ?
+   * Open a new tab
   ]]
   function pTab:DoDoubleClick()
     luapad.NewTab()
@@ -891,7 +894,7 @@ function luapad.AddTab(name, content, path, logo, icon)
     local pMenu = DermaMenu()
     -- Copy tab internals
     local pIn, pOp = pMenu:AddSubMenu("Copy")
-    pOp:SetIcon(luapad.ToIcon("page_copy"))
+    pOp:SetIcon(luapad.ToIcon("table_multiple"))
     pIn:AddOption("Name", function()
       SetClipboardText(self:GetStreamInfo().Name)
     end):SetImage(luapad.ToIcon("page_green"))
@@ -902,14 +905,41 @@ function luapad.AddTab(name, content, path, logo, icon)
       SetClipboardText(self:GetStreamInfo().Path)
     end):SetImage(luapad.ToIcon("folder"))
     pIn:AddOption("Full", function()
-      SetClipboardText(self:GetStreamInfo().Path .. self:GetStreamInfo().Name)
+      local tS = self:GetStreamInfo()
+      SetClipboardText(tS.Path .. tS.Name)
     end):SetImage(luapad.ToIcon("folder_page"))
     pIn:AddOption("Index", function()
-      SetClipboardText(tostring(self:GetPropertySheet():GetTabIndex(self)))
+      local pS = self:GetPropertySheet()
+      local iT = pS:GetTabIndex(self)
+      SetClipboardText(tostring(iT or "X"))
     end):SetImage(luapad.ToIcon("key"))
+    -- File operations
+    local pIn, pOp = pMenu:AddSubMenu("File")
+    pOp:SetIcon(luapad.ToIcon("table_lightning"))
+    pIn:AddOption("New" , function()
+      luapad.NewTab()
+    end):SetImage(luapad.ToIcon("page_add"))
+    pIn:AddOption("Open", function()
+      luapad.OpenTab()
+    end):SetImage(luapad.ToIcon("folder_page"))
+    pIn:AddOption("Save", function()
+      luapad.SaveScript()
+    end):SetImage(luapad.ToIcon("disk"))
+    pIn:AddOption("Save As", function()
+      luapad.SaveAsScript()
+    end):SetImage(luapad.ToIcon("page_save"))
+    -- Refresh a tab
+    local pIn, pOp = pMenu:AddSubMenu("Refresh")
+    pOp:SetIcon(luapad.ToIcon("table_refresh"))
+    pIn:AddOption("This", function()
+      luapad.RefreshTabView(self)
+    end):SetImage(luapad.ToIcon("arrow_down"))
+    pIn:AddOption("Active", function()
+      luapad.RefreshTabActive()
+    end):SetImage(luapad.ToIcon("arrow_refresh"))
     -- Run a script
     local pIn, pOp = pMenu:AddSubMenu("Run")
-    pOp:SetIcon(luapad.ToIcon("tab_go"))
+    pOp:SetIcon(luapad.ToIcon("table_go"))
     pIn:AddOption("Client",
       luapad.RunScriptClient):SetImage(luapad.ToIcon("user_go"))
     pIn:AddOption("Server",
@@ -922,16 +952,12 @@ function luapad.AddTab(name, content, path, logo, icon)
       luapad.RunScriptServerClient):SetImage(luapad.ToIcon("feed_go"))
     -- Close tabs
     local pIn, pOp = pMenu:AddSubMenu("Close")
-    pOp:SetIcon(luapad.ToIcon("tab_delete"))
+    pOp:SetIcon(luapad.ToIcon("table_delete"))
     pIn:AddOption("This", function()
-      self:GetPropertySheet():CloseTab(self, true)
+      luapad.CloseTabView(self)
     end):SetImage(luapad.ToIcon("arrow_down"))
     pIn:AddOption("Active", function()
-      local pS = self:GetPropertySheet()
-      local tI = pS:GetItems()
-      if(#tI == 1) then pS:Clear() else
-        pS:CloseTab(pS:GetActiveTab(), true)
-      end -- Close the single active tab
+      luapad.CloseTabActive()
     end):SetImage(luapad.ToIcon("arrow_refresh"))
     pIn:AddOption("Right", function()
       luapad.CloseTabRight(self)
@@ -1147,8 +1173,8 @@ function luapad.OpenFile()
     return (ru.ID < rv.ID)
   end)
   local pMenu = DermaMenu()
-  local uI = "computer"
   if(not IsValid(pMenu)) then return end
+  local uI = "computer"
   for iD = 1, #tK do
     local sD = tK[iD]
     local sU = sD:gsub("^%l", string.upper)
