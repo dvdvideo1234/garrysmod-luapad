@@ -390,8 +390,11 @@ function luapad.OnPlayerQuit()
 end
 
 function luapad.SaveTabs()
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
   local tO, tW = {"", "", "", ""}, {}
-  local tI = luapad.PropertySheet:GetItems()
+  local tI = pS:GetItems()
   for iD = 1, #tI do
     local tP = tI[iD]
     local tS = tP.Tab:GetStreamInfo()
@@ -403,7 +406,11 @@ function luapad.SaveTabs()
 end
 
 function luapad.LoadTabs()
-  luapad.PropertySheet:Clear()
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  pS:Clear()
+
   local sF = file.Read(BASE_FOLDER.."saved_tabs.txt", "DATA" )
   if(not sF) then return end -- File not found then bail out
   local tW = ("[\r\n]+"):Explode(sF, true) -- Explode on new line
@@ -742,6 +749,20 @@ function luapad.CloseTabAll()
 end
 
 --[[
+ * Closes Other tabs
+]]
+function luapad.CloseTabOther(pTre)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT = pS:GetTabIndex(pTre)
+  if(not iT) then return end
+
+  luapad.CloseTabLeft(pTre)
+  luapad.CloseTabRight(pTre)
+end
+
+--[[
  * Refreshes the active tab
 ]]
 function luapad.RefreshTabActive()
@@ -1016,10 +1037,10 @@ function luapad.AddTab(name, cont, path, term, icon)
       luapad.OpenTab(tS.Path)
     end):SetImage(luapad.ToIcon("folder_page"))
     pIn:AddOption("Save", function()
-      luapad.SaveScript()
+      luapad.SaveScript(self)
     end):SetImage(luapad.ToIcon("disk"))
     pIn:AddOption("Save As", function()
-      luapad.SaveAsScript()
+      luapad.SaveAsScript(self)
     end):SetImage(luapad.ToIcon("page_save"))
     -- Refresh a tab
     local pIn, pOp = pMenu:AddSubMenu("Refresh")
@@ -1064,9 +1085,12 @@ function luapad.AddTab(name, cont, path, term, icon)
     pIn:AddOption("Left plus", function()
       luapad.CloseTabLeft(self, true)
     end):SetImage(luapad.ToIcon("arrow_turn_left"))
+    pIn:AddOption("Others", function()
+      luapad.CloseTabOther(self)
+    end):SetImage(luapad.ToIcon("arrow_out"))
     pIn:AddOption("All", function()
       luapad.CloseTabAll()
-    end):SetImage(luapad.ToIcon("arrow_out"))
+    end):SetImage(luapad.ToIcon("arrow_in"))
 
     -- Open menu
     pMenu:Open()
@@ -1077,6 +1101,13 @@ function luapad.AddTab(name, cont, path, term, icon)
 end
 
 function luapad.IsOpen(name, path)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return false end
+
+  local tI = pS:GetItems()
+  local nI = #tI
+  if(nI <= 0) then return false end
+
   local sPth = tostring(path or "")
   local sNam = tostring(name or "")
 
@@ -1084,10 +1115,9 @@ function luapad.IsOpen(name, path)
     sNam = sPth .. sNam
   end
 
-  local tI = luapad.PropertySheet:GetItems()
   local sF = tS.Path .. tS.Name
   local sN, sL = tS.Name, tS.Mark
-  for iD = 1, #tI do
+  for iD = 1, nI do
     local tP = tI[iD]
     local tS = tP.Tab:GetStreamInfo()
     if(sPth ~= "") then
@@ -1326,12 +1356,15 @@ function luapad.OpenBrowse()
   end
 end
 
-function luapad.SaveScript()
+function luapad.SaveScript(pTre)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local pT = pS:GetActiveTab()
+  local pT = (pTre or pS:GetActiveTab())
   if(not IsValid(pT)) then return end
+
+  local iT = pS:GetTabIndex(pT)
+  if(not iT) then return end
 
   local tS = pT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
@@ -1361,12 +1394,15 @@ function luapad.SaveScript()
   end
 end
 
-function luapad.SaveAsScript()
+function luapad.SaveAsScript(pTre)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local pT = luapad.PropertySheet:GetActiveTab()
+  local pT = (pTre or pS:GetActiveTab())
   if(not IsValid(pT)) then return end
+
+  local iT = pS:GetTabIndex(pT)
+  if(not iT) then return end
 
   local tS = pT:GetStreamInfo()
 
@@ -1394,7 +1430,7 @@ function luapad.SaveAsScript()
           luapad.SetStatus("File successfully saved!", "STAT_OK")
           tS.Path, tS.Name = oB, sN -- Update path and name
           pT:SetText(tS.Name)
-          luapad.PropertySheet:SetActiveTab(pT)
+          pS:SetActiveTab(pT)
         else
           luapad.SetStatus("Save failed! (check your filename for illegal characters)", "STAT_ER")
         end
