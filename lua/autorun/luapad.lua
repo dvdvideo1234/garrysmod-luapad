@@ -525,16 +525,23 @@ function luapad.Toggle()
   luapad.Toolbar:InvalidateLayout(true)
 end
 
-function luapad.AddToolbarItem(vTip, sMat, actL, actR, actM, actD)
+--[[
+ * This can add a custom item to the toolbar that adds custom behavior
+ * vTip      > Tooltip used for help text
+ * sIco      > Image icon to be displayed with
+ * act(LRMD) > Action functions done by the user mouse
+]]
+function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
   local pB = luapad.Toolbar
   if(not IsValid(pB)) then return end
 
   local pBut, nS = pB:Add("DImageButton"), 22
   if(not IsValid(pBut)) then return end
-
-  pBut:SetImage(luapad.ToIcon(sMat))
+  -- Configure image and help text
+  pBut:SetImage(luapad.ToIcon(sIco))
   if(vTip ~= nil) then pBut:SetTooltip(tostring(vTip)) end
-  pBut:SetSize(nS, nS)
+  pBut:SetSize(nS, nS) -- Make the button a square image that runs functions
+  -- Do not pass the button reference here unless the button must be changed
   if(actL) then
     function pBut:DoClick()
       local bS, sE = pcall(actL); if(not bS) then
@@ -548,15 +555,15 @@ function luapad.AddToolbarItem(vTip, sMat, actL, actR, actM, actD)
     end
   end
   if(actM) then
-    function pBut:DoRightClick()
+    function pBut:DoMiddleClick()
       local bS, sE = pcall(actM); if(not bS) then
         luapad.SetStatus("MiddleClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
     end
   end
   if(actD) then
-    function pBut:DoRightClick()
+    function pBut:DoDoubleClick()
       local bS, sE = pcall(actD); if(not bS) then
-        luapad.SetStatus("RightClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
+        luapad.SetStatus("DoubleClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
     end
   end
 end
