@@ -545,25 +545,25 @@ function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
   if(actL) then
     function pBut:DoClick()
       local bS, sE = pcall(actL); if(not bS) then
-        luapad.SetStatus("LeftClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
+        luapad.SetStatus("LeftClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
     end
   end
   if(actR) then
     function pBut:DoRightClick()
       local bS, sE = pcall(actR); if(not bS) then
-        luapad.SetStatus("RightClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
+        luapad.SetStatus("RightClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
     end
   end
   if(actM) then
     function pBut:DoMiddleClick()
       local bS, sE = pcall(actM); if(not bS) then
-        luapad.SetStatus("MiddleClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
+        luapad.SetStatus("MiddleClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
     end
   end
   if(actD) then
     function pBut:DoDoubleClick()
       local bS, sE = pcall(actD); if(not bS) then
-        luapad.SetStatus("DoubleClick ["..pBut:GetTooltip().."] error: "..sE, "STAT_ER") end
+        luapad.SetStatus("DoubleClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
     end
   end
 end
@@ -576,21 +576,25 @@ function luapad.AddToolbarSpacer()
   pLab:SizeToContents()
 end
 
-function luapad.SetStatus(str, idx)
-  if(not idx) then return end
-  local cDrw = COLOR_STATUS[idx]
+function luapad.SetStatus(sFmt, sKey, ...)
+  if(not sKey) then return end
+  local cDrw = COLOR_STATUS[sKey]
   if(not cDrw) then return end
-  local cSau = COLOR_STATUS["#TEMCO#"]
+  local cTmc = COLOR_STATUS["#TEMCO#"]
+
+  local nC, tC = select("#", ...), {...}
+  for iD = 1, nC do tC[iC] = tostring(tC[iC]) end
+
   -- Moce color data to status color
-  cSau.r, cSau.g = cDrw.r, cDrw.g
-  cSau.b, cSau.a = cDrw.b, cDrw.a
+  cTmc.r, cTmc.g = cDrw.r, cDrw.g
+  cTmc.b, cTmc.a = cDrw.b, cDrw.a
 
   timer.Remove("luapad.Statusbar.Fade")
   luapad.Statusbar:Clear()
 
   local pLab = vgui.Create("DLabel", luapad.Statusbar)
-  pLab:SetText(str)
-  pLab:SetTextColor(cSau)
+  pLab:SetText(sFmt:format(unpack(tC)))
+  pLab:SetTextColor(cTmc) -- Reference assignment
   pLab:SizeToContents()
 
   timer.Create(
@@ -792,10 +796,10 @@ function luapad.RefreshTabActive()
     if(sCon) then aT:SetContents(sCon)
       luapad.SetStatus("File successfully refreshed!", "STAT_OK")
     else
-      luapad.SetStatus("File ["..oB.."] not found!", "STAT_ER")
+      luapad.SetStatus("File [%s] not found!", "STAT_ER", oB)
     end
   else
-    luapad.SetStatus("File ["..oB.."] refresh not supported!", "STAT_WR")
+    luapad.SetStatus("File [%s] refresh not supported!", "STAT_WR", oB)
   end
 end
 
@@ -852,10 +856,10 @@ function luapad.RefreshTabView(pTre)
     if(sCon) then pTre:SetContents(sCon)
       luapad.SetStatus("File successfully refreshed!", "STAT_OK")
     else
-      luapad.SetStatus("File ["..oB.."] not found!", "STAT_ER")
+      luapad.SetStatus("File [%s] not found!", "STAT_ER", oB)
     end
   else
-    luapad.SetStatus("File ["..oB.."] refresh not supported!", "STAT_WR")
+    luapad.SetStatus("File [%s] refresh not supported!", "STAT_WR", oB)
   end
 end
 
@@ -864,7 +868,7 @@ function luapad.RefreshTabAll()
   if(not IsValid(pS)) then return end
 
   local tI = pS:GetItems()
-  local nI, nR, sR = #tI, 0, nil
+  local nI, nU, sU, oU = #tI, 0
   if(nI <= 0) then return end
 
   for iT = 1, nT do
@@ -877,25 +881,26 @@ function luapad.RefreshTabAll()
         local sF = (sB .. sN)
         local sCon = file.Read(sF, "DATA")
         if(sCon) then
-          nR = nR + 1
+          nU = nU + 1
+          oU = oB .. sN
           pTre:SetContents(sCon)
         else
-          sR = oB .. sN
+          sU = oB .. sN
           break
         end
       end
     end
   end
 
-  if(sR) then
-    luapad.SetStatus("The file ["..sR.."] could not be refreshed!", "STAT_ER")
-  else
-    if(nR <= 0) then
-      luapad.SetStatus("No files have been refreshed!", "STAT_WR")
-    elseif(nR == 1) then
-      luapad.SetStatus("Refreshed successfully one file!", "STAT_OK")
-    else
-      luapad.SetStatus("Refreshed successfully ["..nR.."] files!", "STAT_OK")
+  if(sU) then -- In case a file has failed
+    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
+  else -- In case the loop is executed
+    if(nU <= 0) then -- All tabs are not from the data folder
+      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    elseif(nU == 1) then -- Refreshed only one tab from the data folder
+      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
+    else -- Not every tab may be from the data folder
+      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
     end
   end
 end
@@ -1171,10 +1176,10 @@ function luapad.NewTab(cont, path)
       luapad.AddTab(BASE_FMNAME:format(iF), sCon, sG)
       luapad.SetStatus("Open the next name available!", "STAT_OK")
     else -- Rise a status bar message
-      luapad.SetStatus("There are more than ["..nF.."] files in ["..oB.."]", "STAT_ER")
+      luapad.SetStatus("There are more than [%s] files in [%s]", "STAT_ER", nF, oB)
     end
   else
-    luapad.SetStatus("You are not allowed to create a file here ["..oB.."]", "STAT_WR")
+    luapad.SetStatus("You are not allowed to create a file here [%s]", "STAT_WR", oB)
   end
 end
 
@@ -1327,7 +1332,7 @@ function luapad.OpenTab(path)
     local bB, sB, oB = luapad.GetPath(path)
     -- Open path relative to the game folder
     luapad.BrowserTree:PopulateTree(oB)
-    luapad.SetStatus("Origin is provided. Using ["..oB.."] as base folder.", "STAT_OK")
+    luapad.SetStatus("Origin is provided. Using [%s] as base folder.", "STAT_OK", oB)
   elseif(#tI == 0) then -- No active tab is present and path is empty
     luapad.OpenTree()
     luapad.BrowserTree:PopulateTree("data")
@@ -1338,7 +1343,7 @@ function luapad.OpenTab(path)
     local tS = aT:GetStreamInfo()
     luapad.OpenTree()
     luapad.BrowserTree:PopulateTree(tS.Path)
-    luapad.SetStatus("Origin from active tab. Using ["..tS.Path.."] as base folder.", "STAT_OK")
+    luapad.SetStatus("Origin from active tab. Using [%s] as base folder.", "STAT_OK", tS.Path)
   end
 end
 
@@ -1397,7 +1402,7 @@ function luapad.SaveScript(pTre)
       end
     end
   else
-    luapad.SetStatus("File [" ..oB..sN.. "] cannot be overwritten!", "STAT_WR")
+    luapad.SetStatus("File [%s] cannot be overwritten!", "STAT_WR", oB..sN)
   end
 end
 
@@ -1442,7 +1447,7 @@ function luapad.SaveAsScript(pTre)
           luapad.SetStatus("Save failed! (check your filename for illegal characters)", "STAT_ER")
         end
       else
-        luapad.SetStatus("File [" ..oB..sN.. "] cannot be overwritten!", "STAT_WR")
+        luapad.SetStatus("File [%s] cannot be overwritten!", "STAT_WR", oB..sN)
       end
     end, nil, "Save", "Cancel"
   )
@@ -1453,7 +1458,7 @@ function luapad.SaveAll()
   if(not IsValid(pS)) then return end
 
   local tI = pS:GetItems()
-  local nI, nS, sS = #tI, 0, nil
+  local nI, nU, sU, oU = #tI, 0, nil
   if(nI <= 0) then return end
 
   for iT = 1, nI do
@@ -1465,22 +1470,25 @@ function luapad.SaveAll()
         local sF, sC = (sB .. sN), (pT:GetContents() or "")
         file.CreateDir(sB)
         file.Write(sF, sC)
-        if(file.Exists(sF, "DATA")) then nS = nS + 1 else
-          sS = oB .. sN; break -- First unsuccessful file
+        if(file.Exists(sF, "DATA")) then
+          nU = nU + 1
+          oU = oB .. sN
+        else
+          sU = oB .. sN; break -- First unsuccessful file
         end
       end
     end
   end
 
-  if(sS) then
-    luapad.SetStatus("The file ["..sS.."] could not be saved!", "STAT_ER")
-  else
-    if(nS <= 0) then
-      luapad.SetStatus("No files have been saved!", "STAT_WR")
-    elseif(nS == 1) then
-      luapad.SetStatus("Saved successfully one file!", "STAT_OK")
-    else
-      luapad.SetStatus("Saved successfully ["..nS.."] files!", "STAT_OK")
+  if(sU) then -- In case a file has failed
+    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
+  else -- In case the loop is executed
+    if(nU <= 0) then -- All tabs are not from the data folder
+      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    elseif(nU == 1) then -- Refreshed only one tab from the data folder
+      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
+    else -- Not every tab may be from the data folder
+      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
     end
   end
 end
@@ -1496,7 +1504,7 @@ function luapad.RunScriptClient()
   if bS then
     luapad.SetStatus("Code ran successfully!", "STAT_OK")
   else
-    luapad.SetStatus("Runtime error: "..sE, "STAT_ER")
+    luapad.SetStatus("Runtime error: %s", "STAT_ER", sE)
   end
 end
 
@@ -1505,7 +1513,7 @@ function luapad.RunScriptClientFromServer(script)
   if bS then
     luapad.SetStatus("Code ran successfully!", "COMS_OK")
   else
-    luapad.SetStatus("Runtime error: "..sE, "COMS_ER")
+    luapad.SetStatus("Runtime error: %s", "COMS_ER", sE)
   end
 end
 
