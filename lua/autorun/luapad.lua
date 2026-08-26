@@ -941,6 +941,7 @@ function luapad.AddTab(name, cont, path, term, icon)
   local pTab  = tInfo.Tab; pTab[PANL_STORKY] = {}
   local tSor  = pTab[PANL_STORKY]
 
+  pSheet:SetActiveTab(pTab) -- Trigger on tab changed
   tSor.Name = sNam -- The actual file name associated with the tab
   tSor.Path = sPth -- File path always relative to the game folder
   tSor.Mark = sTag -- Tab mark in case provided is displayed instead of name
@@ -1063,6 +1064,9 @@ function luapad.AddTab(name, cont, path, term, icon)
     pIn:AddOption("Active", function()
       luapad.RefreshTabActive()
     end):SetImage(luapad.ToIcon("arrow_refresh"))
+    pIn:AddOption("All", function()
+      luapad.RefreshTabAll()
+    end):SetImage(luapad.ToIcon("arrow_in"))
     -- Run a script
     local pIn, pOp = pMenu:AddSubMenu("Run")
     pOp:SetIcon(luapad.ToIcon("table_go"))
