@@ -120,22 +120,17 @@ function luapad.EditorPanel:CursorToCaret()
   local x, y = self:CursorPos()
 
   x = x - (self.FontWidth * 3 + 6)
-  if (x < 0) then
-    x = 0
-  end
-  if (y < 0) then
-    y = 0
-  end
+  x = ((x < 0) and 0 or x)
+  y = ((y < 0) and 0 or y)
 
   local line = math.floor(y / self.FontHeight)
   local char = math.floor(x / self.FontWidth + 0.5)
 
+  last = #self.Rows
   line = line + self.Scroll[1]
   char = char + self.Scroll[2]
+  line = ((line > last) and last or line)
 
-  if (line > #self.Rows) then
-    line = #self.Rows
-  end
   local length = string.len(self.Rows[line])
   if (char > length + 1) then
     char = length + 1
@@ -255,8 +250,11 @@ end
 
 function luapad.EditorPanel:SetText(text)
   self.Rows = string.Explode("\n", text)
-  if (self.Rows[#self.Rows] ~= "") then
-    self.Rows[#self.Rows + 1] = ""
+  local last = #self.Rows
+
+  if (self.Rows[last] ~= "") then
+    last = last + 1
+    self.Rows[last] = ""
   end
 
   self.Caret = {1, 1}
@@ -266,7 +264,7 @@ function luapad.EditorPanel:SetText(text)
   self.Redo = {}
   self.PaintRows = {}
 
-  self.ScrollBar:SetUp(self.Size[1], #self.Rows - 1)
+  self.ScrollBar:SetUp(self.Size[1], last - 1)
 end
 
 function luapad.EditorPanel:GetText()
@@ -807,11 +805,11 @@ function luapad.EditorPanel:CanUndo()
 end
 
 function luapad.EditorPanel:DoUndo()
-  if (#self.Undo > 0) then
-    local undo = self.Undo[#self.Undo]
-    self.Undo[#self.Undo] = nil
-
-    self:SetCaret(self:SetArea(undo[1], undo[2], true, false, undo[3], undo[4]))
+  local tU = self.Undo
+  local nU = #tU
+  if (nU > 0) then
+    local tC = tU[nU]; tU[nU] = nil
+    self:SetCaret(self:SetArea(tC[1], tC[2], true, false, tC[3], tC[4]))
   end
 end
 
@@ -820,16 +818,17 @@ function luapad.EditorPanel:CanRedo()
 end
 
 function luapad.EditorPanel:DoRedo()
-  if (#self.Redo > 0) then
-    local redo = self.Redo[#self.Redo]
-    self.Redo[#self.Redo] = nil
-
-    self:SetCaret(self:SetArea(redo[1], redo[2], false, true, redo[3], redo[4]))
+  local tR = self.Redo
+  local nR = #tR
+  if (nR > 0) then
+    local tC = tR[nR]; tR[nR] = nil
+    self:SetCaret(self:SetArea(tC[1], tC[2], false, true, tC[3], tC[4]))
   end
 end
 
 function luapad.EditorPanel:SelectAll()
-  self.Caret = {#self.Rows, string.len(self.Rows[#self.Rows]) + 1}
+  local nR = #self.Rows
+  self.Caret = {nR, string.len(self.Rows[nR]) + 1}
   self.Start = {1, 1}
   self:ScrollCaret()
 end
