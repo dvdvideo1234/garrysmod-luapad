@@ -628,29 +628,29 @@ function luapad.CloseTabName(name, mark)
   if(nI == 0) then
     return -- Nothing to close
   else -- At least one tab
-    local sName  = tostring(mark or name)
+    local sS  = tostring(mark or name)
     -- The context menu option is available
-    local sF = tS.Path .. tS.Name
-    local sN, sL = tS.Name, tS.Mark
+    local sO = tS.Path .. tS.Name
+    local sN, sM = tS.Name, tS.Mark
     for iD = 1, #tI do
       local tP = tI[iD]
       local cT = tP.Tab
       local tS = cT:GetStreamInfo()
-      if(sF:find(sName, 1, true)) then
-         if(nI > 1) then -- More tabs
-          pS:CloseTab(cT, true)
-        else -- Only one tab is open
-          pS:Clear()
-        end; break
-      end
-      if(sL and sL:find(sName, 1, true)) then
+      if(sM and sM:find(sS, 1, true)) then
         if(nI > 1) then -- More tabs
           pS:CloseTab(cT, true)
         else -- Only one tab is open
           pS:Clear()
         end; break
       end
-      if(sN:find(sName, 1, true)) then
+      if(sO and sO:find(sS, 1, true)) then
+         if(nI > 1) then -- More tabs
+          pS:CloseTab(cT, true)
+        else -- Only one tab is open
+          pS:Clear()
+        end; break
+      end
+      if(sN and sN:find(sS, 1, true)) then
          if(nI > 1) then -- More tabs
           pS:CloseTab(cT, true)
         else -- Only one tab is open
@@ -659,6 +659,35 @@ function luapad.CloseTabName(name, mark)
       end
     end; pS:InvalidateLayout()
   end
+end
+
+--[[
+ * Closes the tab by view panel reference
+ * pTre > The tab reference that must be closed
+]]
+function luapad.CloseTabView(pTre)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT = pS:GetTabIndex(pTre)
+  if(not iT) then return end
+
+  -- Avoid triggering active tab close
+  local aT = pS:GetActiveTab()
+  if(aT == pTre) then
+    luapad.CloseTabActive()
+    return
+  end
+
+  local tI = pS:GetItems()
+
+  if(#tI == 1) then
+    pS:Clear()
+  else
+    pS:CloseTab(pTre, true)
+  end
+
+  pS:InvalidateLayout()
 end
 
 --[[
@@ -750,16 +779,6 @@ function luapad.CloseTabActive()
 end
 
 --[[
- * Closes all the tabs
-]]
-function luapad.CloseTabAll()
-  local pS = luapad.PropertySheet
-  if(not IsValid(pS)) then return end
-
-  pS:Clear()
-end
-
---[[
  * Closes Other tabs
 ]]
 function luapad.CloseTabOther(pTre)
@@ -774,62 +793,72 @@ function luapad.CloseTabOther(pTre)
 end
 
 --[[
- * Refreshes the active tab
+ * Closes all the tabs
 ]]
-function luapad.RefreshTabActive()
+function luapad.CloseTabAll()
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local aT = pS:GetActiveTab()
-  if(not IsValid(aT)) then return end
-
-  local tS = aT:GetStreamInfo()
-  if(not tS) then return end
-
-  local sD, sN = tS.Path, tS.Name
-  local bB, sB, oB = luapad.GetPath(sD)
-
-  if(bB) then
-    local sF, sT = (sB .. sN), (aT:GetContents() or "")
-
-    local sCon = file.Read(sF, "DATA")
-    if(sCon) then aT:SetContents(sCon)
-      luapad.SetStatus("File successfully refreshed!", "STAT_OK")
-    else
-      luapad.SetStatus("File [%s] not found!", "STAT_ER", oB)
-    end
-  else
-    luapad.SetStatus("File [%s] refresh not supported!", "STAT_WR", oB)
-  end
+  pS:Clear()
 end
 
 --[[
- * Closes the tab by view panel reference
- * pTre > The tab reference that must be closed
+ * Refreshes all the tabs on name/marker
 ]]
-function luapad.CloseTabView(pTre)
+function luapad.RefreshTabName(name, mark)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local iT = pS:GetTabIndex(pTre)
-  if(not iT) then return end
-
-  -- Avoid triggering active tab close
-  local aT = pS:GetActiveTab()
-  if(aT == pTre) then
-    luapad.CloseTabActive()
-    return
-  end
-
   local tI = pS:GetItems()
+  local nI, nU, sU, oU = #tI, 0
+  if(nI <= 0) then return end
 
-  if(#tI == 1) then
-    pS:Clear()
-  else
-    pS:CloseTab(pTre, true)
+  local sS  = tostring(mark or name)
+
+  for iT = 1, nT do
+    local cT = tI[iT].Tab
+    if(IsValid(cT)) then
+      local tS, bS = cT:GetStreamInfo(), false
+      local sD, sN, sM = tS.Path, tS.Name, tS.Mark
+      local bB, sB, oB = luapad.GetPath(sD)
+      if(bB) then
+        local sO = (sD .. sN)
+        local sF = (sB .. sN)
+        if(sM and sM:find(sS, 1, true) then
+          bS = true  -- Match by marker
+        elseif(sO and sO:find(sS, 1, true) then
+          bS = true -- Match by origin
+        elseif(sN and sN:find(sS, 1, true) then
+          bS = true -- Match by name
+        else -- Assign false in other cases
+          bS = false -- Do not match anything
+        end
+        if(bS) then
+          local sCon = file.Read(sF, "DATA")
+          if(sCon) then
+            nU = nU + 1
+            oU = oB .. sN
+            cT:SetContents(sCon)
+          else
+            sU = oB .. sN
+            break
+          end
+        end
+      end
+    end
   end
 
-  pS:InvalidateLayout()
+  if(sU) then -- In case a file has failed
+    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
+  else -- In case the loop is executed
+    if(nU <= 0) then -- All tabs are not from the data folder
+      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    elseif(nU == 1) then -- Refreshed only one tab from the data folder
+      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
+    else -- Not every tab may be from the data folder
+      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
+    end
+  end
 end
 
 function luapad.RefreshTabView(pTre)
@@ -856,10 +885,203 @@ function luapad.RefreshTabView(pTre)
     if(sCon) then pTre:SetContents(sCon)
       luapad.SetStatus("File successfully refreshed!", "STAT_OK")
     else
-      luapad.SetStatus("File [%s] not found!", "STAT_ER", oB)
+      luapad.SetStatus("File [%s%s] not found!", "STAT_ER", oB, sN)
     end
   else
-    luapad.SetStatus("File [%s] refresh not supported!", "STAT_WR", oB)
+    luapad.SetStatus("File [%s%s] refresh not supported!", "STAT_WR", oB, sN)
+  end
+end
+
+--[[
+ * Refreshes all tabs to the left
+ * No tabs are found the index is empty
+ * pTre > The tab to use as reference
+ * bInc > Close also the reference tab
+]]
+function luapad.RefreshTabLeft(pTre, bInc)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT = pS:GetTabIndex(pTre)
+  if(not iT) then return end
+
+  local tI = pS:GetItems()
+  local nI, nU, sU, oU = #tI, 0
+  if(nI <= 0) then return end
+
+  local iE = (bInc and iT or (iT - 1))
+
+  for iR = 1, iE do
+    local cT = tI[iR].Tab
+    if(IsValid(cT)) then
+      local tS, bS = cT:GetStreamInfo(), false
+      local sD, sN = tS.Path , tS.Name
+      local bB, sB, oB = luapad.GetPath(sD)
+      if(bB) then
+        local sF = (sB .. sN)
+        if(bS) then
+          local sCon = file.Read(sF, "DATA")
+          if(sCon) then
+            nU = nU + 1
+            oU = oB .. sN
+            cT:SetContents(sCon)
+          else
+            sU = oB .. sN
+            break
+          end
+        end
+      end
+    end
+  end
+
+  if(sU) then -- In case a file has failed
+    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
+  else -- In case the loop is executed
+    if(nU <= 0) then -- All tabs are not from the data folder
+      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    elseif(nU == 1) then -- Refreshed only one tab from the data folder
+      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
+    else -- Not every tab may be from the data folder
+      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
+    end
+  end
+end
+
+--[[
+ * Refreshes all tabs to the right
+ * No tabs are found the index is empty
+ * pTre > The tab to use as reference
+ * bInc > Close also the reference tab
+]]
+function luapad.RefreshTabRight(pTre, bInc)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT = pS:GetTabIndex(pTre)
+  if(not iT) then return end
+
+  local tI = pS:GetItems()
+  local nI, nU, sU, oU = #tI, 0
+  if(nI <= 0) then return end
+
+  local iS = (bInc and iT or (iT + 1))
+
+  for iR = iS, nI do
+    local cT = tI[iR].Tab
+    if(IsValid(cT)) then
+      local tS, bS = cT:GetStreamInfo(), false
+      local sD, sN = tS.Path , tS.Name
+      local bB, sB, oB = luapad.GetPath(sD)
+      if(bB) then
+        local sF = (sB .. sN)
+        if(bS) then
+          local sCon = file.Read(sF, "DATA")
+          if(sCon) then
+            nU = nU + 1
+            oU = oB .. sN
+            cT:SetContents(sCon)
+          else
+            sU = oB .. sN
+            break
+          end
+        end
+      end
+    end
+  end
+
+  if(sU) then -- In case a file has failed
+    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
+  else -- In case the loop is executed
+    if(nU <= 0) then -- All tabs are not from the data folder
+      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    elseif(nU == 1) then -- Refreshed only one tab from the data folder
+      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
+    else -- Not every tab may be from the data folder
+      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
+    end
+  end
+end
+
+--[[
+ * Refreshes the active tab
+]]
+function luapad.RefreshTabActive()
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local aT = pS:GetActiveTab()
+  if(not IsValid(aT)) then return end
+
+  local tS = aT:GetStreamInfo()
+  if(not tS) then return end
+
+  local sD, sN = tS.Path, tS.Name
+  local bB, sB, oB = luapad.GetPath(sD)
+
+  if(bB) then
+    local sF, sT = (sB .. sN), (aT:GetContents() or "")
+
+    local sCon = file.Read(sF, "DATA")
+    if(sCon) then aT:SetContents(sCon)
+      luapad.SetStatus("File successfully refreshed!", "STAT_OK")
+    else
+      luapad.SetStatus("File [%s%s] not found!", "STAT_ER", oB, sN)
+    end
+  else
+    luapad.SetStatus("File [%s%s] refresh not supported!", "STAT_WR", oB, sN)
+  end
+end
+
+--[[
+ * Refreshes all tabs to the right
+ * No tabs are found the index is empty
+ * pTre > The tab to use as reference
+ * bInc > Close also the reference tab
+]]
+function luapad.RefreshTabOther(pTre)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT = pS:GetTabIndex(pTre)
+  if(not iT) then return end
+
+  local tI = pS:GetItems()
+  local nI, nU, sU, oU = #tI, 0
+  if(nI <= 0) then return end
+
+  for iR = 1, nI do
+    local cT = tI[iR].Tab
+    if(iR ~= iT and IsValid(cT)) then
+      local tS, bS = cT:GetStreamInfo(), false
+      local sD, sN = tS.Path , tS.Name
+      local bB, sB, oB = luapad.GetPath(sD)
+      if(bB) then
+        local sF = (sB .. sN)
+        if(bS) then
+          local sCon = file.Read(sF, "DATA")
+          if(sCon) then
+            nU = nU + 1
+            oU = oB .. sN
+            cT:SetContents(sCon)
+          else
+            sU = oB .. sN
+            break
+          end
+        end
+      end
+    end
+  end
+
+  if(sU) then -- In case a file has failed
+    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
+  else -- In case the loop is executed
+    if(nU <= 0) then -- All tabs are not from the data folder
+      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    elseif(nU == 1) then -- Refreshed only one tab from the data folder
+      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
+    else -- Not every tab may be from the data folder
+      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
+    end
   end
 end
 
@@ -874,7 +1096,7 @@ function luapad.RefreshTabAll()
   for iT = 1, nT do
     local cT = tI[iT].Tab
     if(IsValid(cT)) then
-      local tS = pTre:GetStreamInfo()
+      local tS = cT:GetStreamInfo()
       local sD, sN = tS.Path, tS.Name
       local bB, sB, oB = luapad.GetPath(sD)
       if(bB) then
@@ -883,7 +1105,7 @@ function luapad.RefreshTabAll()
         if(sCon) then
           nU = nU + 1
           oU = oB .. sN
-          pTre:SetContents(sCon)
+          cT:SetContents(sCon)
         else
           sU = oB .. sN
           break
@@ -1007,9 +1229,8 @@ function luapad.AddTab(name, cont, path, term, icon)
   ]]
   function pTab:DoDoubleClick()
     local tS = self:GetStreamInfo()
-    local bB, sB = luapad.GetPath(tS.Path)
-    if(bB) then local sB = "data/"..sB
-      luapad.NewTab(sB)
+    local bB, sB, oB = luapad.GetPath(tS.Path)
+      luapad.NewTab(nil, oB)
     end
   end
 
@@ -1037,7 +1258,7 @@ function luapad.AddTab(name, cont, path, term, icon)
     pIn:AddOption("Index", function()
       local pS = self:GetPropertySheet()
       local iT = pS:GetTabIndex(self)
-      SetClipboardText(tostring(iT or "X"))
+      SetClipboardText(tostring(iT or "N/A"))
     end):SetImage(luapad.ToIcon("key"))
     -- File operations
     local pIn, pOp = pMenu:AddSubMenu("File")
@@ -1064,22 +1285,40 @@ function luapad.AddTab(name, cont, path, term, icon)
     pIn:AddOption("Active", function()
       luapad.RefreshTabActive()
     end):SetImage(luapad.ToIcon("arrow_refresh"))
+    pIn:AddOption("Right", function()
+      luapad.RefreshTabRight(self)
+    end):SetImage(luapad.ToIcon("arrow_right"))
+    pIn:AddOption("Left", function()
+      luapad.RefreshTabLeft(self)
+    end):SetImage(luapad.ToIcon("arrow_left"))
+    pIn:AddOption("Right (+)", function()
+      luapad.RefreshTabRight(self, true)
+    end):SetImage(luapad.ToIcon("arrow_turn_right"))
+    pIn:AddOption("Left (+)", function()
+      luapad.RefreshTabLeft(self, true)
+    end):SetImage(luapad.ToIcon("arrow_turn_left"))
+    pIn:AddOption("Others", function()
+      luapad.RefreshTabOther(self)
+    end):SetImage(luapad.ToIcon("arrow_out"))
     pIn:AddOption("All", function()
       luapad.RefreshTabAll()
     end):SetImage(luapad.ToIcon("arrow_in"))
     -- Run a script
     local pIn, pOp = pMenu:AddSubMenu("Run")
     pOp:SetIcon(luapad.ToIcon("table_go"))
-    pIn:AddOption("Client",
-      luapad.RunScriptClient):SetImage(luapad.ToIcon("user_go"))
-    pIn:AddOption("Server",
-      luapad.RunScriptServer):SetImage(luapad.ToIcon("computer_go"))
+    pIn:AddOption("Client", function()
+      luapad.RunScriptClient()
+    end):SetImage(luapad.ToIcon("user_go"))
+    pIn:AddOption("Server", function()
+      luapad.RunScriptServer()
+    end):SetImage(luapad.ToIcon("computer_go"))
     pIn:AddOption("Shared", function()
       luapad.RunScriptClient()
       luapad.RunScriptServer()
     end):SetImage(luapad.ToIcon("building_go"))
-    pIn:AddOption("Transfer",
-      luapad.RunScriptServerClient):SetImage(luapad.ToIcon("feed_go"))
+    pIn:AddOption("Transfer", function()
+      luapad.RunScriptServerClient()
+    end):SetImage(luapad.ToIcon("feed_go"))
     -- Close tabs
     local pIn, pOp = pMenu:AddSubMenu("Close")
     pOp:SetIcon(luapad.ToIcon("table_delete"))
@@ -1095,10 +1334,10 @@ function luapad.AddTab(name, cont, path, term, icon)
     pIn:AddOption("Left", function()
       luapad.CloseTabLeft(self)
     end):SetImage(luapad.ToIcon("arrow_left"))
-    pIn:AddOption("Right plus", function()
+    pIn:AddOption("Right (+)", function()
       luapad.CloseTabRight(self, true)
     end):SetImage(luapad.ToIcon("arrow_turn_right"))
-    pIn:AddOption("Left plus", function()
+    pIn:AddOption("Left (+)", function()
       luapad.CloseTabLeft(self, true)
     end):SetImage(luapad.ToIcon("arrow_turn_left"))
     pIn:AddOption("Others", function()
@@ -1132,7 +1371,7 @@ function luapad.IsOpen(name, path)
   end
 
   local sF = tS.Path .. tS.Name
-  local sN, sL = tS.Name, tS.Mark
+  local sN, sM = tS.Name, tS.Mark
   for iD = 1, nI do
     local tP = tI[iD]
     local tS = tP.Tab:GetStreamInfo()
@@ -1140,7 +1379,7 @@ function luapad.IsOpen(name, path)
       if(sF == sNam) then return true end
     else
       if(sN == sNam) then return true end
-      if(sL == sNam) then return true end
+      if(sM == sNam) then return true end
     end
   end; return false
 end
@@ -1406,7 +1645,7 @@ function luapad.SaveScript(pTre)
       end
     end
   else
-    luapad.SetStatus("File [%s] cannot be overwritten!", "STAT_WR", oB..sN)
+    luapad.SetStatus("File [%s%s] cannot be overwritten!", "STAT_WR", oB, sN)
   end
 end
 
@@ -1451,7 +1690,7 @@ function luapad.SaveAsScript(pTre)
           luapad.SetStatus("Save failed! (check your filename for illegal characters)", "STAT_ER")
         end
       else
-        luapad.SetStatus("File [%s] cannot be overwritten!", "STAT_WR", oB..sN)
+        luapad.SetStatus("File [%s%s] cannot be overwritten!", "STAT_WR", oB, sN)
       end
     end, nil, "Save", "Cancel"
   )
@@ -1472,8 +1711,7 @@ function luapad.SaveAll()
       local bB, sB, oB = luapad.GetPath(sD)
       if(bB) then
         local sF, sC = (sB .. sN), (pT:GetContents() or "")
-        file.CreateDir(sB)
-        file.Write(sF, sC)
+        file.CreateDir(sB); file.Write(sF, sC)
         if(file.Exists(sF, "DATA")) then
           nU = nU + 1
           oU = oB .. sN
