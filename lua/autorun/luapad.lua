@@ -17,7 +17,6 @@ luapad.debugmode = true
 luapad.forcedownload = true
 luapad.IgnoreConsoleOpen = true
 
-local DEPT_FOLDER = 20
 local BASE_DELIMS = "|"
 local BASE_FOLDER = "luapad/"
 local ICON_FORMAT = "icon16/%s.png"
@@ -25,6 +24,12 @@ local BASE_FMNAME = "untitled%d.txt"
 local PANL_STORKY = "gmod_luapad"
 local DATM_FORMAT = "%Y-%m-%d %H:%M:%S"
 local DEBG_FORMAT = "Found routine [%s] in %s"
+local CONV_CFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY)
+
+-- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
+local VAR_ADM = CreateConVar("luapad_adminonly",  1, CONV_CFLAGS, "Makes the luapad addon admin only", 0, 1)
+local VAR_MXF = CreateConVar("luapad_maxunamed", 10, CONV_CFLAGS, "Makes the luapad addon admin only", 0, 100)
+local VAR_MXR = CreateConVar("luapad_maxrecurs", 20, CONV_CFLAGS, "Recurse depth when opening a file system", 0, 100)
 
 local COLOR_STATUS = {
   ["#TEMCO#"] = Color(0 ,  0 ,  0,  0 ),
@@ -151,15 +156,15 @@ local FMSYNTAX_METATYP = {
   "Color"              = {ID = TYPE_COLOR           }
 }
 
-local function CanUseLuapad(ply)
-  if not IsValid(ply) then
+function luapad.CanUseLuapad(pUser)
+  if not IsValid(pUser) then
     return false
-  elseif GetConVarNumber("luapad_adminonly") == 1 then
-    local isAdmin = (ply:IsAdmin() or ply:IsSuperAdmin())
-    if not isAdmin then
-      ply:ChatPrint("Sorry, only admins can use Luapad.")
+  elseif VAR_ADM:GetBool() then
+    local bA = (pUser:IsAdmin() or pUser:IsSuperAdmin())
+    if not bA then
+      pUser:ChatPrint("Sorry "..pUser:Nick()..", only admins can use Luapad.")
     end
-    return isAdmin
+    return bA
   else
     return true
   end
@@ -171,9 +176,6 @@ if (SERVER) then
   util.AddNetworkString("luapad.UploadClient")
   util.AddNetworkString("luapad.UploadClientCallback")
   util.AddNetworkString("luapad.DownloadRunClient")
-
-  -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
-  CreateConVar("luapad_adminonly", 1, bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE))
 
   if (luapad.forcedownload) then
     AddCSLuaFile("autorun/luapad.lua")
@@ -266,7 +268,7 @@ if (SERVER) then
   end
 
   function luapad.Upload(len, ply)
-    if not CanUseLuapad(ply) then
+    if not luapad.CanUseLuapad(ply) then
       return
     end
 
@@ -282,7 +284,7 @@ if (SERVER) then
   net.Receive("luapad.Upload", luapad.Upload)
 
   function luapad.UploadClient(len, ply)
-    if not CanUseLuapad(ply) then
+    if not luapad.CanUseLuapad(ply) then
       return
     end
 
@@ -421,7 +423,7 @@ function luapad.LoadTabs()
 end
 
 function luapad.Toggle()
-  if (SERVER or not CanUseLuapad(LocalPlayer())) then
+  if (SERVER or not luapad.CanUseLuapad(LocalPlayer())) then
     return
   end
 
@@ -1398,7 +1400,7 @@ function luapad.NewTab(cont, path)
   local bB, sB, oB = luapad.GetPath(sD)
 
   if(bB) then
-    local nF = 100 -- File count for a tab
+    local nF = VAR_MXF:GetInt()
     local sO = sB .. BASE_FMNAME
     local tI = pS:GetItems()
     local sG, iF =  sB, nil
@@ -1474,10 +1476,9 @@ function luapad.OpenTree()
     luapad.BrowserTree:Remove()
   end
 
-  function luapad.BrowserTree:PopulateNode(pNode, sPath, tConf, iStage)
-    local iStage = math.floor(tonumber(iStage) or DEPT_FOLDER)
-    local iStage = math.Clamp(iStage, 0, DEPT_FOLDER)
-    if(iStage <= 0) then return end
+  function luapad.BrowserTree:PopulateNode(pNode, sPath, tConf, iStag)
+    local iStag = math.floor(tonumber(iStag) or 0)
+    if(iStag <= 0) then return end
     -- Recursion guard has passed. Generate stage
     local tF, tD = file.Find(sPath .. "*", "GAME", "nameasc")
     if(not (tF or tD)) then return end
@@ -1509,7 +1510,7 @@ function luapad.OpenTree()
         pC.Expander.DoMiddleClick = pC.DoMiddleClick
         pC.Expander.DoRightClick  = pC.DoRightClick
         -- Use this as base and attach the rest
-        self:PopulateNode(pC, pC.DirPath, tConf, iStage + 1)
+        self:PopulateNode(pC, pC.DirPath, tConf, iStag - 1)
       end
     end
     -- Files
@@ -1560,7 +1561,7 @@ function luapad.OpenTree()
 
     pRoot.Icon:SetImage(luapad.ToIcon((sIco or tConf.Icon) or "computer"))
 
-    self:PopulateNode(pRoot, sName .. "/", tConf)
+    self:PopulateNode(pRoot, sName .. "/", tConf, VAR_MXR:GetInt())
   end
 end
 
@@ -1760,7 +1761,7 @@ function luapad.RunScriptClientFromServer(script)
 end
 
 function luapad.RunScriptServer()
-  if SERVER or not CanUseLuapad(LocalPlayer()) then
+  if SERVER or not luapad.CanUseLuapad(LocalPlayer()) then
     return
   end
 
@@ -1788,7 +1789,7 @@ function luapad.RunScriptServer()
 end
 
 function luapad.RunScriptServerClient()
-  if SERVER or not CanUseLuapad(LocalPlayer()) then
+  if SERVER or not luapad.CanUseLuapad(LocalPlayer()) then
     return
   end
 
