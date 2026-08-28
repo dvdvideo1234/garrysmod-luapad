@@ -792,7 +792,7 @@ function luapad.EditorPanel:ScrollCaret()
   self.ScrollBar:SetScroll(self.Scroll[1] - 1)
 end
 
-function unindent(line)
+function unIndent(line)
   local i = line:find("%S")
   if (i == nil or i > 5) then
     i = 5
@@ -807,10 +807,9 @@ end
 function luapad.EditorPanel:DoUndo()
   local tU = self.Undo
   local nU = #tU
-  if (nU > 0) then
-    local tC = tU[nU]; tU[nU] = nil
-    self:SetCaret(self:SetArea(tC[1], tC[2], true, false, tC[3], tC[4]))
-  end
+  if (nU <= 0) then return end
+  local tC = tU[nU]; tU[nU] = nil
+  self:SetCaret(self:SetArea(tC[1], tC[2], true, false, tC[3], tC[4]))
 end
 
 function luapad.EditorPanel:CanRedo()
@@ -820,10 +819,9 @@ end
 function luapad.EditorPanel:DoRedo()
   local tR = self.Redo
   local nR = #tR
-  if (nR > 0) then
-    local tC = tR[nR]; tR[nR] = nil
-    self:SetCaret(self:SetArea(tC[1], tC[2], false, true, tC[3], tC[4]))
-  end
+  if (nR <= 0) then return end
+  local tC = tR[nR]; tR[nR] = nil
+  self:SetCaret(self:SetArea(tC[1], tC[2], false, true, tC[3], tC[4]))
 end
 
 function luapad.EditorPanel:SelectAll()
@@ -1178,7 +1176,7 @@ function luapad.EditorPanel:Indent(shift)
 
   if (shift) then
     local tmp = self:GetSelection():gsub("\n ? ? ? ?", "\n")
-    self:SetSelection(unindent(tmp))
+    self:SetSelection(unIndent(tmp))
   else
     self:SetSelection("    " .. self:GetSelection():gsub("\n", "\n    "))
   end

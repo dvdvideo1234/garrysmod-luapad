@@ -30,6 +30,7 @@ local CONV_CFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR
 local VAR_ADM = CreateConVar("luapad_adminonly",  1, CONV_CFLAGS, "Makes the luapad addon admin only", 0, 1)
 local VAR_MXF = CreateConVar("luapad_maxunamed", 10, CONV_CFLAGS, "Makes the luapad addon admin only", 0, 100)
 local VAR_MXR = CreateConVar("luapad_maxrecurs", 20, CONV_CFLAGS, "Recurse depth when opening a file system", 0, 100)
+local VAR_EDT = CreateConVar("luapad_endataorg",  1, CONV_CFLAGS, "Enable file operation only in the dedicated folder", 0, 1)
 
 local COLOR_STATUS = {
   ["#TEMCO#"] = Color(0 ,  0 ,  0,  0 ),
@@ -107,7 +108,8 @@ local FMSYNTAX_HILIGHT = {
 local PATPATH_CONVERT = {
   {"[\\/]+", "/"}, {"%.%./", ""},
   {"^[/]+" , "" }, {"[/]+$", ""},
-  ["#"] = {"^data/", "", 1}
+  Sors = {"^data/", "", 1},
+  Base = {"^"..BASE_FOLDER, "", 1},
 }
 
 local FMSYNTAX_METATYP = {
@@ -156,7 +158,21 @@ local FMSYNTAX_METATYP = {
   "Color"              = {ID = TYPE_COLOR           }
 }
 
-function luapad.CanUseLuapad(pUser)
+--[[
+ * The path provided is always relative to the game folder
+]]
+function canOperateIn(sPath)
+  local sP, tP = tostring(sPath), PATPATH_CONVERT
+  local nS, nE = sP:find(tP.Sors[1])
+  if(nS and nE and nS == 1) then -- In the data folder
+    local sP = string.gsub(unpack(tP.Sors))
+    local nS, nE = sP:find(tP.Base[1])
+    if(nS and nE and nS == 1) then return true end
+    if(VAR_EDT:GetBool()) then return false end
+  end; return false
+end
+
+function canUserAccess(pUser)
   if not IsValid(pUser) then
     return false
   elseif VAR_ADM:GetBool() then
@@ -268,7 +284,7 @@ if (SERVER) then
   end
 
   function luapad.Upload(len, ply)
-    if not luapad.CanUseLuapad(ply) then
+    if not canUserAccess(ply) then
       return
     end
 
@@ -284,7 +300,7 @@ if (SERVER) then
   net.Receive("luapad.Upload", luapad.Upload)
 
   function luapad.UploadClient(len, ply)
-    if not luapad.CanUseLuapad(ply) then
+    if not canUserAccess(ply) then
       return
     end
 
@@ -347,20 +363,21 @@ end
  * oP   > Original converted path relative to the game folder
 ]]
 function luapad.GetPath(sOrg)
+  local fP, sP, oP
+  local tP = PATPATH_CONVERT
   local sD = tostring(sOrg or "data/" .. BASE_FOLDER)
-  local sB, fP, sP, oP = string.rep(sD, 1)
-  local tP, cP = PATPATH_CONVERT, "#"
+  local sB = string.rep(sD, 1)
    -- Copy of the path origin and convert it
   for iP = 1, #tP do
     sB = string.gsub(sB, unpack(tP[iP]))
   end
-
+  -- Check if we are in the data/ folder and remove
   fP, sP = false, sB
-  if(string.find(sB, tP[cP][1]) == 1) then
+  if(string.find(sB, tP.Sors[1]) == 1) then
     fP, oP = true, string.rep(sB, 1)
-    sP = string.gsub(sB, unpack(tP[cP]))
+    sP = string.gsub(sB, unpack(tP.Sors))
   end
-
+  -- Return the normalized path and flag
   return fP, sP.."/", oP.."/"
 end
 
@@ -423,7 +440,7 @@ function luapad.LoadTabs()
 end
 
 function luapad.Toggle()
-  if (SERVER or not luapad.CanUseLuapad(LocalPlayer())) then
+  if (SERVER or not canUserAccess(LocalPlayer())) then
     return
   end
 
@@ -440,16 +457,20 @@ function luapad.Toggle()
   luapad.Frame:SetTitle("Luapad")
   luapad.Frame:SetVisible(true)
   luapad.Frame:ShowCloseButton(true)
-  luapad.Frame:SetDeleteOnClose(false)
-  luapad.Frame:MakePopup()
 
-  if(not luapad.debugmode) then
+  if(luapad.debugmode) then
+    luapad.Frame:SetDeleteOnClose(true)
+  else
+    luapad.Frame:SetDeleteOnClose(false)
+
     function luapad.Frame:OnClose()
       self:SetVisible(true)
       luapad.Toggle()
       luapad.SaveTabs()
     end -- Thanks Microosoft -SparkZ
   end
+
+  luapad.Frame:MakePopup()
 
   luapad.Toolbar = vgui.Create("DIconLayout", luapad.Frame)
   luapad.Toolbar:SetPos(5, 30)
@@ -812,7 +833,7 @@ function luapad.RefreshTabName(name, mark)
   if(not IsValid(pS)) then return end
 
   local tI = pS:GetItems()
-  local nI, nU, sU, oU = #tI, 0
+  local nI, nU = #tI, 0
   if(nI <= 0) then return end
 
   local sS  = tostring(mark or name)
@@ -838,28 +859,21 @@ function luapad.RefreshTabName(name, mark)
         if(bS) then
           local sCon = file.Read(sF, "DATA")
           if(sCon) then
-            nU = nU + 1
-            oU = oB .. sN
-            cT:SetContents(sCon)
+            nU = nU + 1; cT:SetContents(sCon)
           else
-            sU = oB .. sN
-            break
+            luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+            return
           end
         end
       end
     end
   end
 
-  if(sU) then -- In case a file has failed
-    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
-  else -- In case the loop is executed
-    if(nU <= 0) then -- All tabs are not from the data folder
-      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
-    elseif(nU == 1) then -- Refreshed only one tab from the data folder
-      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
-    else -- Not every tab may be from the data folder
-      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
-    end
+  -- In case the loop is executed
+  if(nU <= 0) then -- All tabs are not from the data folder
+    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+  else -- Not every tab may be from the data folder
+    luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
 end
 
@@ -908,7 +922,7 @@ function luapad.RefreshTabLeft(pTre, bInc)
   if(not iT) then return end
 
   local tI = pS:GetItems()
-  local nI, nU, sU, oU = #tI, 0
+  local nI, nU = #tI, 0
   if(nI <= 0) then return end
 
   local iE = (bInc and iT or (iT - 1))
@@ -924,28 +938,21 @@ function luapad.RefreshTabLeft(pTre, bInc)
         if(bS) then
           local sCon = file.Read(sF, "DATA")
           if(sCon) then
-            nU = nU + 1
-            oU = oB .. sN
-            cT:SetContents(sCon)
+            nU = nU + 1; cT:SetContents(sCon)
           else
-            sU = oB .. sN
-            break
+            luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+            return
           end
         end
       end
     end
   end
 
-  if(sU) then -- In case a file has failed
-    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
-  else -- In case the loop is executed
-    if(nU <= 0) then -- All tabs are not from the data folder
-      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
-    elseif(nU == 1) then -- Refreshed only one tab from the data folder
-      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
-    else -- Not every tab may be from the data folder
-      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
-    end
+  -- In case the loop is executed
+  if(nU <= 0) then -- All tabs are not from the data folder
+    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+  else -- Not every tab may be from the data folder
+    luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
 end
 
@@ -963,7 +970,7 @@ function luapad.RefreshTabRight(pTre, bInc)
   if(not iT) then return end
 
   local tI = pS:GetItems()
-  local nI, nU, sU, oU = #tI, 0
+  local nI, nU = #tI, 0
   if(nI <= 0) then return end
 
   local iS = (bInc and iT or (iT + 1))
@@ -979,28 +986,21 @@ function luapad.RefreshTabRight(pTre, bInc)
         if(bS) then
           local sCon = file.Read(sF, "DATA")
           if(sCon) then
-            nU = nU + 1
-            oU = oB .. sN
-            cT:SetContents(sCon)
+            nU = nU + 1; cT:SetContents(sCon)
           else
-            sU = oB .. sN
-            break
+            luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+            return
           end
         end
       end
     end
   end
 
-  if(sU) then -- In case a file has failed
-    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
-  else -- In case the loop is executed
-    if(nU <= 0) then -- All tabs are not from the data folder
-      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
-    elseif(nU == 1) then -- Refreshed only one tab from the data folder
-      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
-    else -- Not every tab may be from the data folder
-      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
-    end
+  -- In case the loop is executed
+  if(nU <= 0) then -- All tabs are not from the data folder
+    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+  else -- Not every tab may be from the data folder
+    luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
 end
 
@@ -1048,7 +1048,7 @@ function luapad.RefreshTabOther(pTre)
   if(not iT) then return end
 
   local tI = pS:GetItems()
-  local nI, nU, sU, oU = #tI, 0
+  local nI, nU = #tI, 0
   if(nI <= 0) then return end
 
   for iR = 1, nI do
@@ -1062,28 +1062,21 @@ function luapad.RefreshTabOther(pTre)
         if(bS) then
           local sCon = file.Read(sF, "DATA")
           if(sCon) then
-            nU = nU + 1
-            oU = oB .. sN
-            cT:SetContents(sCon)
+            nU = nU + 1; cT:SetContents(sCon)
           else
-            sU = oB .. sN
-            break
+            luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+            return
           end
         end
       end
     end
   end
 
-  if(sU) then -- In case a file has failed
-    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
-  else -- In case the loop is executed
-    if(nU <= 0) then -- All tabs are not from the data folder
-      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
-    elseif(nU == 1) then -- Refreshed only one tab from the data folder
-      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
-    else -- Not every tab may be from the data folder
-      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
-    end
+  -- In case the loop is executed
+  if(nU <= 0) then -- All tabs are not from the data folder
+    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+  else -- Not every tab may be from the data folder
+    luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
 end
 
@@ -1092,7 +1085,7 @@ function luapad.RefreshTabAll()
   if(not IsValid(pS)) then return end
 
   local tI = pS:GetItems()
-  local nI, nU, sU, oU = #tI, 0
+  local nI, nU = #tI, 0
   if(nI <= 0) then return end
 
   for iT = 1, nT do
@@ -1105,27 +1098,20 @@ function luapad.RefreshTabAll()
         local sF = (sB .. sN)
         local sCon = file.Read(sF, "DATA")
         if(sCon) then
-          nU = nU + 1
-          oU = oB .. sN
-          cT:SetContents(sCon)
+          nU = nU + 1; cT:SetContents(sCon)
         else
-          sU = oB .. sN
-          break
+          luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+          return
         end
       end
     end
   end
 
-  if(sU) then -- In case a file has failed
-    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
-  else -- In case the loop is executed
-    if(nU <= 0) then -- All tabs are not from the data folder
-      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
-    elseif(nU == 1) then -- Refreshed only one tab from the data folder
-      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
-    else -- Not every tab may be from the data folder
-      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
-    end
+  -- In case the loop is executed
+  if(nU <= 0) then -- All tabs are not from the data folder
+    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+  else -- Not every tab may be from the data folder
+    luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
 end
 
@@ -1278,6 +1264,9 @@ function luapad.AddTab(name, cont, path, term, icon)
     pIn:AddOption("Save As", function()
       luapad.SaveAsScript(self)
     end):SetImage(luapad.ToIcon("page_save"))
+    pIn:AddOption("Delete", function()
+      luapad.DeleteScript(self)
+    end):SetImage(luapad.ToIcon("page_delete"))
     -- Refresh a tab
     local pIn, pOp = pMenu:AddSubMenu("Refresh")
     pOp:SetIcon(luapad.ToIcon("table_refresh"))
@@ -1421,10 +1410,10 @@ function luapad.NewTab(cont, path)
       luapad.AddTab(BASE_FMNAME:format(iF), sCon, sG)
       luapad.SetStatus("Open the next name available!", "STAT_OK")
     else -- Rise a status bar message
-      luapad.SetStatus("There are more than [%s] files in [%s]", "STAT_ER", nF, oB)
+      luapad.SetStatus("There are more than [%s] files in [%s] origin! (clean the folder)", "STAT_ER", nF, oB)
     end
   else
-    luapad.SetStatus("You are not allowed to create a file here [%s]", "STAT_WR", oB)
+    luapad.SetStatus("Creating a file here [%s] is not allowed!", "STAT_WR", oB)
   end
 end
 
@@ -1453,7 +1442,9 @@ end
 ]]
 function luapad.OpenTree()
   if (luapad.BrowserTree) then
-    luapad.BrowserTree:Remove()
+    local pB = luapad.BrowserTree
+    if(IsValid(pB)) then pB:Remove() end
+    luapad.BrowserTree = nil
   end
 
   local w = luapad.PropertySheet:GetWide()
@@ -1563,31 +1554,32 @@ function luapad.OpenTree()
 
     self:PopulateNode(pRoot, sName .. "/", tConf, VAR_MXR:GetInt())
   end
+
+  return luapad.BrowserTree
 end
 
 function luapad.OpenTab(path)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
+  local pB = luapad.OpenTree()
+  if(not IsValid(pB)) then return end
+
   local tI = pS:GetItems()
 
   if(path ~= nil) then
-    luapad.OpenTree()
     local bB, sB, oB = luapad.GetPath(path)
-    -- Open path relative to the game folder
-    luapad.BrowserTree:PopulateTree(oB)
-    luapad.SetStatus("Origin is provided. Using [%s] as base folder.", "STAT_OK", oB)
+    pB:PopulateTree(oB)
+    luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "provided", oB)
   elseif(#tI == 0) then -- No active tab is present and path is empty
-    luapad.OpenTree()
-    luapad.BrowserTree:PopulateTree("data")
-    luapad.SetStatus("Editor is empty. Opening [data/] instead.", "STAT_OK")
+    pB:PopulateTree("data")
+    luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "/data", "default")
   else -- If editor is not empty there will always be an active tab
     local aT = pS:GetActiveTab()
     if(not IsValid(aT)) then return end
     local tS = aT:GetStreamInfo()
-    luapad.OpenTree()
-    luapad.BrowserTree:PopulateTree(tS.Path)
-    luapad.SetStatus("Origin from active tab. Using [%s] as base folder.", "STAT_OK", tS.Path)
+    pB:PopulateTree(tS.Path)
+    luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", tS.Path, "active tab")
   end
 end
 
@@ -1606,8 +1598,9 @@ function luapad.OpenBrowse()
     local sU = sD:gsub("^%l", string.upper)
     local sI = (ENABLE_FOLDER[sD].Icon or uI)
     pMenu:AddOption(sU, function()
-      luapad.OpenTree()
-      luapad.BrowserTree:PopulateTree(sD)
+      local pB = luapad.OpenTree()
+      if(not IsValid(pB)) then return end
+      pB:PopulateTree(sD)
     end):SetImage(luapad.ToIcon(sI))
   end
 end
@@ -1627,22 +1620,27 @@ function luapad.SaveScript(pTre)
   local bB, sB, oB = luapad.GetPath(sD)
 
   if(bB) then
+    if(not canOperateIn(oB)) then
+      luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
+      return
+    end
+
     local sF, sC = (sB .. sN), (pT:GetContents() or "")
 
     if (not file.Exists(sF, "DATA")) then
       luapad.SaveAsScript()
     else
       if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
-        luapad.SetStatus("Save failed! (this file is marked as restricted)", "STAT_ER")
+        luapad.SetStatus("File [%s%s] save failed! (file is restricted)", "STAT_ER", oB, sN)
         return
       end
 
       file.Write(sF, sC)
 
       if file.Exists(sF, "DATA") then
-        luapad.SetStatus("File successfully saved!", "STAT_OK")
+        luapad.SetStatus("File [%s%s] successfully saved!", "STAT_OK", oB, sN)
       else
-        luapad.SetStatus("Save failed! (check your filename for illegal characters)", "STAT_ER")
+        luapad.SetStatus("File [%s%s] save failed! (check your filename)", "STAT_ER", oB, sN)
       end
     end
   else
@@ -1668,7 +1666,7 @@ function luapad.SaveAsScript(pTre)
 
     function(sName)
       if (table.HasValue(RESTRICTED_FILES, sName)) then
-        luapad.SetStatus("Save failed! (this file is marked as restricted)", "STAT_ER")
+        luapad.SetStatus("File [%s] save failed! (file is restricted)", "STAT_ER", sName)
         return
       end
 
@@ -1677,18 +1675,23 @@ function luapad.SaveAsScript(pTre)
       local bB, sB, oB = luapad.GetPath(sD)
 
       if(bB) then
+        if(not canOperateIn(oB)) then
+          luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
+          return
+        end
+
         local sF, sC = (sB .. sN), (pT:GetContents() or "")
 
         file.CreateDir(sB)
         file.Write(sF, sC)
 
         if file.Exists(sF, "DATA") then
-          luapad.SetStatus("File successfully saved!", "STAT_OK")
+          luapad.SetStatus("File [%s%s] successfully saved!", "STAT_OK", oB, sN)
           tS.Path, tS.Name = oB, sN -- Update path and name
           pT:SetText(tS.Name)
           pS:SetActiveTab(pT)
         else
-          luapad.SetStatus("Save failed! (check your filename for illegal characters)", "STAT_ER")
+          luapad.SetStatus("File [%s%s] save failed! (check your filename)", "STAT_ER", oB, sN)
         end
       else
         luapad.SetStatus("File [%s%s] cannot be overwritten!", "STAT_WR", oB, sN)
@@ -1702,7 +1705,7 @@ function luapad.SaveAll()
   if(not IsValid(pS)) then return end
 
   local tI = pS:GetItems()
-  local nI, nU, sU, oU = #tI, 0, nil
+  local nI, nU = #tI, 0
   if(nI <= 0) then return end
 
   for iT = 1, nI do
@@ -1711,31 +1714,75 @@ function luapad.SaveAll()
       local sD, sN = tS.Path, tS.Name
       local bB, sB, oB = luapad.GetPath(sD)
       if(bB) then
+        if(not canOperateIn(oB)) then
+          luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
+          return
+        end
         local sF, sC = (sB .. sN), (pT:GetContents() or "")
         file.CreateDir(sB); file.Write(sF, sC)
         if(file.Exists(sF, "DATA")) then
           nU = nU + 1
-          oU = oB .. sN
         else
-          sU = oB .. sN; break -- First unsuccessful file
+          luapad.SetStatus("File [%s%s] save failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+          return -- First unsuccessful file
         end
       end
     end
   end
 
-  if(sU) then -- In case a file has failed
-    luapad.SetStatus("Refreshed [%s] of [%s] tabs. Stopped on [%s] request", "STAT_ER", nU, nI, sU)
-  else -- In case the loop is executed
-    if(nU <= 0) then -- All tabs are not from the data folder
-      luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
-    elseif(nU == 1) then -- Refreshed only one tab from the data folder
-      luapad.SetStatus("Refreshed [%s] one of [%s] tabs successfully. ", "STAT_OK", oU, nI)
-    else -- Not every tab may be from the data folder
-      luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
-    end
+  -- In case the loop is executed
+  if(nU <= 0) then -- All tabs are not from the data folder
+    luapad.SetStatus("No tabs have been saved!", "STAT_WR")
+  else -- Not every tab may be from the data folder
+    luapad.SetStatus("Saved successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
 end
 
+--[[
+ * Delete the associated file with a given tab
+ * Tab reference to be deleted. Defaults to active
+]]
+function luapad.DeleteScript(pTre)
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local pT = (pTre or pS:GetActiveTab())
+  if(not IsValid(pT)) then return end
+
+  local iT = pS:GetTabIndex(pT)
+  if(not iT) then return end
+
+  local tS = pT:GetStreamInfo()
+  local sD, sN = tS.Path, tS.Name
+  local bB, sB, oB = luapad.GetPath(sD)
+
+  if(bB) then
+    if(not canOperateIn(oB)) then
+      luapad.SetStatus("File [%s%s] delete failed! (origin is restricted)", "STAT_ER", oB, sN)
+      return
+    end
+
+    local sF = (sB .. sN)
+
+    if (not file.Exists(sF, "DATA")) then
+      luapad.SetStatus("File [%s%s] already missing!", "STAT_WR", oB, sN)
+      return
+    else
+      if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
+        luapad.SetStatus("File [%s%s] delete failed! (file is restricted)", "STAT_ER", oB, sN)
+        return
+      end
+
+      if file.Delete(sF) then
+        luapad.SetStatus("File [%s%s] successfully deleted!", "STAT_OK", oB, sN)
+      else
+        luapad.SetStatus("File [%s%s] delete failed (check your filename)! ", "STAT_ER", oB, sN)
+      end
+    end
+  else
+    luapad.SetStatus("File [%s%s] cannot be deleted!", "STAT_WR", oB, sN)
+  end
+end
 
 function luapad.RunScriptClient()
   local objectDefintions = "local me = player.GetByID(" .. LocalPlayer():EntIndex() ..
@@ -1761,7 +1808,7 @@ function luapad.RunScriptClientFromServer(script)
 end
 
 function luapad.RunScriptServer()
-  if SERVER or not luapad.CanUseLuapad(LocalPlayer()) then
+  if SERVER or not canUserAccess(LocalPlayer()) then
     return
   end
 
@@ -1789,7 +1836,7 @@ function luapad.RunScriptServer()
 end
 
 function luapad.RunScriptServerClient()
-  if SERVER or not luapad.CanUseLuapad(LocalPlayer()) then
+  if SERVER or not canUserAccess(LocalPlayer()) then
     return
   end
 
