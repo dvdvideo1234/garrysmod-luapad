@@ -22,6 +22,7 @@ local BASE_FOLDER = "luapad/"
 local ICON_FORMAT = "icon16/%s.png"
 local BASE_FMNAME = "untitled%d.txt"
 local PANL_STORKY = "gmod_luapad"
+local FORM_ASOUND = "ambient/water/drip%d.wav"
 local DATM_FORMAT = "%Y-%m-%d %H:%M:%S"
 local DEBG_FORMAT = "Found routine [%s] in %s"
 local CONV_CFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY)
@@ -549,56 +550,13 @@ function luapad.Toggle()
 end
 
 --[[
- * This can add a custom item to the toolbar that adds custom behavior
- * vTip      > Tooltip used for help text
- * sIco      > Image icon to be displayed with
- * act(LRMD) > Action functions done by the user mouse
+ * Populates the status bar with the popper message
+ * The message alpha is fading until it disappears
+ * sFmt > Message format. All substitutions are strings
+ * sKey > Color key from the status table
+ * ...  > The values that match the format string
+ * Returns: The Created label panel
 ]]
-function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
-  local pB = luapad.Toolbar
-  if(not IsValid(pB)) then return end
-
-  local pBut, nS = pB:Add("DImageButton"), 22
-  if(not IsValid(pBut)) then return end
-  -- Configure image and help text
-  pBut:SetImage(luapad.ToIcon(sIco))
-  if(vTip ~= nil) then pBut:SetTooltip(tostring(vTip)) end
-  pBut:SetSize(nS, nS) -- Make the button a square image that runs functions
-  -- Do not pass the button reference here unless the button must be changed
-  if(actL) then
-    function pBut:DoClick()
-      local bS, sE = pcall(actL); if(not bS) then
-        luapad.SetStatus("LeftClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
-    end
-  end
-  if(actR) then
-    function pBut:DoRightClick()
-      local bS, sE = pcall(actR); if(not bS) then
-        luapad.SetStatus("RightClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
-    end
-  end
-  if(actM) then
-    function pBut:DoMiddleClick()
-      local bS, sE = pcall(actM); if(not bS) then
-        luapad.SetStatus("MiddleClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
-    end
-  end
-  if(actD) then
-    function pBut:DoDoubleClick()
-      local bS, sE = pcall(actD); if(not bS) then
-        luapad.SetStatus("DoubleClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
-    end
-  end
-end
-
-function luapad.AddToolbarSpacer()
-  local pLab = luapad.Toolbar:Add("DLabel")
-  if(not IsValid(pLab)) then return end
-
-  pLab:SetText(BASE_DELIMS)
-  pLab:SizeToContents()
-end
-
 function luapad.SetStatus(sFmt, sKey, ...)
   if(not sKey) then return end
   local cDrw = COLOR_STATUS[sKey]
@@ -635,7 +593,65 @@ function luapad.SetStatus(sFmt, sKey, ...)
   )
 
   luapad.Statusbar:Add(pLab)
-  surface.PlaySound("common/wpn_select.wav")
+  -- https://wiki.facepunch.com/gmod/HL2_Sound_List
+  surface.PlaySound(FORM_ASOUND:format(math.random(1, 4)))
+
+  return pLab
+end
+
+--[[
+ * This can add a custom item to the toolbar that adds custom behavior
+ * vTip      > Tooltip used for help text
+ * sIco      > Image icon to be displayed with
+ * act(LRMD) > Action functions done by the user mouse
+]]
+function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
+  local pB = luapad.Toolbar
+  if(not IsValid(pB)) then return end
+
+  local pBut, nS = pB:Add("DImageButton"), 22
+  if(not IsValid(pBut)) then return end
+  -- Configure image and help text
+  pBut:SetImage(luapad.ToIcon(sIco or "lightning"))
+  if(vTip ~= nil) then pBut:SetTooltip(tostring(vTip)) end
+  pBut:SetSize(nS, nS) -- Make the button a square image that runs functions
+  -- Do not pass the button reference here unless the button must be changed
+  if(actL) then
+    function pBut:DoClick()
+      local bS, sE = pcall(actL); if(not bS) then
+        luapad.SetStatus("LeftClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
+    end
+  end
+  if(actR) then
+    function pBut:DoRightClick()
+      local bS, sE = pcall(actR); if(not bS) then
+        luapad.SetStatus("RightClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
+    end
+  end
+  if(actM) then
+    function pBut:DoMiddleClick()
+      local bS, sE = pcall(actM); if(not bS) then
+        luapad.SetStatus("MiddleClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
+    end
+  end
+  if(actD) then
+    function pBut:DoDoubleClick()
+      local bS, sE = pcall(actD); if(not bS) then
+        luapad.SetStatus("DoubleClick [%s] error: %s", "STAT_ER", pBut:GetTooltip(), sE) end
+    end
+  end
+
+  return pBut
+end
+
+function luapad.AddToolbarSpacer()
+  local pLab = luapad.Toolbar:Add("DLabel")
+  if(not IsValid(pLab)) then return end
+
+  pLab:SetText(BASE_DELIMS)
+  pLab:SizeToContents()
+
+  return pLab
 end
 
 --[[
