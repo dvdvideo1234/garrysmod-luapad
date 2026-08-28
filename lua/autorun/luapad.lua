@@ -18,6 +18,7 @@ luapad.forcedownload = true
 luapad.IgnoreConsoleOpen = true
 
 local BASE_DELIMS = "|"
+local BASE_PANLSZ = 2 / 3
 local BASE_FOLDER = "luapad/"
 local ICON_FORMAT = "icon16/%s.png"
 local BASE_FMNAME = "untitled%d.txt"
@@ -453,8 +454,12 @@ function luapad.Toggle()
   -- Build it, if it doesn't exist
   local nW, nH = ScrW(), ScrH()
   luapad.Frame = vgui.Create("DFrame")
-  luapad.Frame:SetSize(nW * 2 / 3, nH * 2 / 3)
-  luapad.Frame:SetPos(nW * 1 / 6, nH * 1 / 6)
+  local mB = BASE_PANLSZ
+  local mR = (1 - BASE_PANLSZ)
+  local sW, sH = mB * nW, mB * nH
+  local pW, pH = mR * nW, mR * nH
+  luapad.Frame:SetSize(sW, sH)
+  luapad.Frame:SetPos(pW, pH)
   luapad.Frame:SetTitle("Luapad")
   luapad.Frame:SetVisible(true)
   luapad.Frame:ShowCloseButton(true)
