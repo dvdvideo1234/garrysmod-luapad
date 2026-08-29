@@ -3,26 +3,18 @@
 -- by DarKSunrise aka Assassini
 -- Ported to GMod 13 by SparkZ
 
---[[
-  I have no idea what _E is supposed to be, but it was causing problems
-  as of Update 39 so I added checks to make sure _E was valid before using
-  it. I'm pretty sure it's not even being used at all now, but AFAIK it
-  hasn't affected anything negatively. It's just for syntax highlighting
-  anyway... I think.
-]]
-
 luapad = {}
 
 luapad.debugmode = true
 luapad.forcedownload = true
 luapad.IgnoreConsoleOpen = true
 
-local BASE_DELIMS = "|"
-local BASE_PANLSZ = 2 / 3
-local BASE_FOLDER = "luapad/"
-local ICON_FORMAT = "icon16/%s.png"
-local BASE_FMNAME = "untitled%d.txt"
-local PANL_STORKY = "gmod_luapad"
+local BASE_DELIMS = "|" -- Gernal symbol used for separator
+local BASE_PANLSZ = 2 / 3 -- The ration panel will use according to the screen size
+local BASE_FOLDER = "luapad/" -- Default application filder in the data file system
+local ICON_FORMAT = "icon16/%s.png" -- Icon path format string
+local BASE_FMNAME = "untitled%d.txt" -- Untitled new file format string
+local PANL_STORKY = "gmod_luapad"    -- Dedicated tab panel key to store stream info
 local FORM_ASOUND = "ambient/water/drip%d.wav"
 local DATM_FORMAT = "%Y-%m-%d %H:%M:%S"
 local DEBG_FORMAT = "Found routine [%s] in %s"
@@ -32,7 +24,7 @@ local CONV_CFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR
 local VAR_ADM = CreateConVar("luapad_adminonly",  1, CONV_CFLAGS, "Makes the luapad addon admin only", 0, 1)
 local VAR_MXF = CreateConVar("luapad_maxunamed", 10, CONV_CFLAGS, "Makes the luapad addon admin only", 0, 100)
 local VAR_MXR = CreateConVar("luapad_maxrecurs", 20, CONV_CFLAGS, "Recurse depth when opening a file system", 0, 100)
-local VAR_EDT = CreateConVar("luapad_endataorg",  1, CONV_CFLAGS, "Enable file operation only in the dedicated folder", 0, 1)
+local VAR_EDT = CreateConVar("luapad_endataorg",  1, CONV_CFLAGS, "File operation in the whole data folder", 0, 1)
 
 local COLOR_STATUS = {
   ["#TEMCO#"] = Color(0 ,  0 ,  0,  0 ),
@@ -115,62 +107,61 @@ local PATPATH_CONVERT = {
 }
 
 local FMSYNTAX_METATYP = {
-  "string"             = {ID = TYPE_STRING          },
-  "table"              = {ID = TYPE_TABLE           },
-  "thread"             = {ID = TYPE_THREAD          },
-  "Entity"             = {ID = TYPE_ENTITY          },
-  "Player"             = {ID = TYPE_ENTITY          },
-  "Weapon"             = {ID = TYPE_ENTITY          },
-  "NPC"                = {ID = TYPE_ENTITY          },
-  "Vehicle"            = {ID = TYPE_ENTITY          },
-  "CSEnt"              = {ID = TYPE_ENTITY          },
-  "NextBot"            = {ID = TYPE_ENTITY          },
-  "Vector"             = {ID = TYPE_VECTOR          },
-  "Angle"              = {ID = TYPE_ANGLE           },
-  "PhysObj"            = {ID = TYPE_PHYSOBJ         },
-  "ISave"              = {ID = TYPE_SAVE            },
-  "IRestore"           = {ID = TYPE_RESTORE         },
-  "CTakeDamageInfo"    = {ID = TYPE_DAMAGEINFO      },
-  "CEffectData"        = {ID = TYPE_EFFECTDATA      },
-  "CMoveData"          = {ID = TYPE_MOVEDATA        },
-  "CRecipientFilter"   = {ID = TYPE_RECIPIENTFILTER },
-  "CUserCmd"           = {ID = TYPE_USERCMD         },
-  "IMaterial"          = {ID = TYPE_MATERIAL        },
-  "Panel"              = {ID = TYPE_PANEL           },
-  "CLuaParticle"       = {ID = TYPE_PARTICLE        },
-  "CLuaEmitter"        = {ID = TYPE_PARTICLEEMITTER },
-  "ITexture"           = {ID = TYPE_TEXTURE         },
-  "ConVar"             = {ID = TYPE_CONVAR          },
-  "IMesh"              = {ID = TYPE_IMESH           },
-  "VMatrix"            = {ID = TYPE_MATRIX          },
-  "CSoundPatch"        = {ID = TYPE_SOUND           },
-  "pixelvis_handle_t"  = {ID = TYPE_PIXELVISHANDLE  },
-  "DynamicLight"       = {ID = TYPE_DLIGHT          },
-  "IVideoWriter"       = {ID = TYPE_VIDEO           },
-  "File"               = {ID = TYPE_FILE            },
-  "CLuaLocomotion"     = {ID = TYPE_LOCOMOTION      },
-  "PathFollower"       = {ID = TYPE_PATH            },
-  "CNavArea"           = {ID = TYPE_NAVAREA         },
-  "IGModAudioChannel"  = {ID = TYPE_SOUNDHANDLE     },
-  "CNavLadder"         = {ID = TYPE_NAVLADDER       },
-  "CNewParticleEffect" = {ID = TYPE_PARTICLESYSTEM  },
-  "ProjectedTexture"   = {ID = TYPE_PROJECTEDTEXTURE},
-  "PhysCollide"        = {ID = TYPE_PHYSCOLLIDE     },
-  "SurfaceInfo"        = {ID = TYPE_SURFACEINFO     },
-  "Color"              = {ID = TYPE_COLOR           }
+  ["string"            ] = {ID = TYPE_STRING          },
+  ["table"             ] = {ID = TYPE_TABLE           },
+  ["thread"            ] = {ID = TYPE_THREAD          },
+  ["Entity"            ] = {ID = TYPE_ENTITY          },
+  ["Player"            ] = {ID = TYPE_ENTITY          },
+  ["Weapon"            ] = {ID = TYPE_ENTITY          },
+  ["NPC"               ] = {ID = TYPE_ENTITY          },
+  ["Vehicle"           ] = {ID = TYPE_ENTITY          },
+  ["CSEnt"             ] = {ID = TYPE_ENTITY          },
+  ["NextBot"           ] = {ID = TYPE_ENTITY          },
+  ["Vector"            ] = {ID = TYPE_VECTOR          },
+  ["Angle"             ] = {ID = TYPE_ANGLE           },
+  ["PhysObj"           ] = {ID = TYPE_PHYSOBJ         },
+  ["ISave"             ] = {ID = TYPE_SAVE            },
+  ["IRestore"          ] = {ID = TYPE_RESTORE         },
+  ["CTakeDamageInfo"   ] = {ID = TYPE_DAMAGEINFO      },
+  ["CEffectData"       ] = {ID = TYPE_EFFECTDATA      },
+  ["CMoveData"         ] = {ID = TYPE_MOVEDATA        },
+  ["CRecipientFilter"  ] = {ID = TYPE_RECIPIENTFILTER },
+  ["CUserCmd"          ] = {ID = TYPE_USERCMD         },
+  ["IMaterial"         ] = {ID = TYPE_MATERIAL        },
+  ["Panel"             ] = {ID = TYPE_PANEL           },
+  ["CLuaParticle"      ] = {ID = TYPE_PARTICLE        },
+  ["CLuaEmitter"       ] = {ID = TYPE_PARTICLEEMITTER },
+  ["ITexture"          ] = {ID = TYPE_TEXTURE         },
+  ["ConVar"            ] = {ID = TYPE_CONVAR          },
+  ["IMesh"             ] = {ID = TYPE_IMESH           },
+  ["VMatrix"           ] = {ID = TYPE_MATRIX          },
+  ["CSoundPatch"       ] = {ID = TYPE_SOUND           },
+  ["pixelvis_handle_t" ] = {ID = TYPE_PIXELVISHANDLE  },
+  ["DynamicLight"      ] = {ID = TYPE_DLIGHT          },
+  ["IVideoWriter"      ] = {ID = TYPE_VIDEO           },
+  ["File"              ] = {ID = TYPE_FILE            },
+  ["CLuaLocomotion"    ] = {ID = TYPE_LOCOMOTION      },
+  ["PathFollower"      ] = {ID = TYPE_PATH            },
+  ["CNavArea"          ] = {ID = TYPE_NAVAREA         },
+  ["IGModAudioChannel" ] = {ID = TYPE_SOUNDHANDLE     },
+  ["CNavLadder"        ] = {ID = TYPE_NAVLADDER       },
+  ["CNewParticleEffect"] = {ID = TYPE_PARTICLESYSTEM  },
+  ["ProjectedTexture"  ] = {ID = TYPE_PROJECTEDTEXTURE},
+  ["PhysCollide"       ] = {ID = TYPE_PHYSCOLLIDE     },
+  ["SurfaceInfo"       ] = {ID = TYPE_SURFACEINFO     },
+  ["Color"             ] = {ID = TYPE_COLOR           }
 }
 
 --[[
  * The path provided is always relative to the game folder
 ]]
 function canOperateIn(sPath)
-  local sP, tP = tostring(sPath), PATPATH_CONVERT
-  local nS, nE = sP:find(tP.Sors[1])
-  if(nS and nE and nS == 1) then -- In the data folder
-    local sP = string.gsub(unpack(tP.Sors))
-    local nS, nE = sP:find(tP.Base[1])
+  local tP = PATPATH_CONVERT
+  local bB, sB, oB = luapad.GetPath(sPath)
+  if(bB) then -- In the data folder
+    if(VAR_EDT:GetBool()) then return true end
+    local nS, nE = sB:find(tP.Base[1])
     if(nS and nE and nS == 1) then return true end
-    if(VAR_EDT:GetBool()) then return false end
   end; return false
 end
 
@@ -206,7 +197,7 @@ if (SERVER) then
 
     if(fSin) then
 
-      local tMeta = {}
+      local tMeta, tEnum = {}, {}
 
       local sN, sV = FMSYNTAX_HILIGHT.N, FMSYNTAX_HILIGHT.V
       local sI, sH = FMSYNTAX_HILIGHT.I, FMSYNTAX_HILIGHT.H
@@ -215,9 +206,9 @@ if (SERVER) then
       fSin:Write("-- The content includes global functions, meta-tables, and enumerations\n")
       fSin:Write("-- Don't touch it, or you'll probably mess up your syntax highlighting\n")
       fSin:Write("-- The timestamp of this generated file is ["..os.date(DATM_FORMAT).."]\n")
-      fSin:Write("\n"); fSin:Write(sN); fSin:Write(sH); fSin:Write("\n\n")
+      fSin:Write("\n"); fSin:Write(sN); fSin:Write(sH); fSin:Write("\n")
 
-      fSin:Write("\n\n-- Globals and libraries\n\n")
+      fSin:Write("\n\n-- Global functions and libraries\n\n")
       for k, v in pairs(_G) do
         if (isfunction(v)) then
           fSin:Write(sN)
@@ -230,6 +221,7 @@ if (SERVER) then
               if(bH) then -- Print the library header
                 fSin:Write(sN)
                 fSin:Write(sI:format(k))
+                fSin:Write(sH)
                 fSin:Write("\n"); bH = false
               end -- Print the library members
               fSin:Write(sN)
@@ -238,19 +230,24 @@ if (SERVER) then
               fSin:Write(sV:format("f"))
               fSin:Write("\n")
             end
-          end
-        end
+          end -- Enumerators are neither functions nor tables
+        elseif(string.upper(k) == k) then
+          table.insert(tEnum, k)
+        end -- Enumerators have uppercase names
       end
 
-      fSin:Write("\n\n-- Enumerations\n\n")
-      if (_E) then -- Enumerators are neither functions nor tables
-        for k, v in pairs(_E) do -- Enumerators have uppercase names
-          if (not (isfunction(v) or istable(v)) and string.upper(k) == k) then
-            fSin:Write(sN)
-            fSin:Write(sI:format(k))
-            fSin:Write(sV:format("e"))
-            fSin:Write("\n")
-          end
+      local nE = #tEnum
+      if(nE > 0) then
+
+        fSin:Write("\n\n-- Enumerations\n\n")
+        table.sort(tEnum, function(u, v) return u < v end)
+
+        for iE = 1, #tEnum do
+          local sK = tEnum[iE]
+          fSin:Write(sN)
+          fSin:Write(sI:format(sK))
+          fSin:Write(sV:format("e"))
+          fSin:Write("\n")
         end
       end
 
@@ -263,7 +260,7 @@ if (SERVER) then
             for n, e in pairs(m) do
               if (isfunction(e) and not tMeta[n]) then
                 fSin:Write(sN)
-                fSin:Write(sI:format(k))
+                fSin:Write(sI:format(n))
                 fSin:Write(sV:format("m"))
                 fSin:Write("\n"); tMeta[n] = true
               end
@@ -358,6 +355,124 @@ function luapad.ToIcon(sIco)
 end
 
 --[[
+ * Shows a standard confirmation dialog window
+ * sMsg  > The massage being send to the user
+ * sTxt  > Enable text entry and fill it with this value
+ * fnSuc > Function to run then the feft button is clicked
+ * fnDsc > Function to run then the right button is clicked
+ * sSuc  > Label to use for the feft button
+ * sDsc  > Label to use for the right button
+]]
+function luapad.ShowConfirmDialog(sMsg, sTxt, fnSuc, fnDsc, sSuc, sDsc)
+  local pFrame = vgui.Create("DFrame")
+  if(not IsValid(pFrame)) then return end
+
+  pFrame:SetTitle("Luapad")
+  pFrame:SetDraggable(false)
+  pFrame:ShowCloseButton(false)
+  pFrame:SetBackgroundBlur(true)
+  pFrame:SetDrawOnTop(true)
+
+  local pSors = vgui.Create("DPanel", pFrame)
+  if(not IsValid(pSors)) then return end
+
+  pSors:SetPaintBackground(false)
+
+  local pText
+  local pMesg = vgui.Create("DLabel", pSors)
+  if(not IsValid(pMesg)) then return end
+
+  pMesg:SetText(sMsg or "<Message text here>")
+  pMesg:SizeToContents()
+  pMesg:SetContentAlignment(5)
+  pMesg:SetTextColor(color_white)
+
+  if(sTxt ~= nil) then
+    pText = vgui.Create("DTextEntry", pSors)
+    if(not IsValid(pText)) then return end
+
+    pText:SetText(tostring(sTxt or ""))
+    pText.OnEnter = function()
+      pFrame:Close()
+      local bS, sE = pcall(fnSuc, pText:GetValue()); if(not bS) then
+        luapad.SetStatus("Enter [%s] error: %s", "STAT_ER", pText:GetValue(), sE) end
+    end
+  end
+
+  local pBase = vgui.Create("DPanel", pFrame)
+  if(not IsValid(pBase)) then return end
+
+  pBase:SetTall(30)
+  pBase:SetPaintBackground(false)
+
+  local pA = vgui.Create("DButton", pBase)
+  if(not IsValid(pA)) then return end
+  pA:SetText( sSuc or "#dialog.ok" )
+  pA:SizeToContents()
+  pA:SetTall(20)
+  pA:SetWide(pA:GetWide() + 20)
+  pA:SetPos(5, 5)
+  pA.DoClick = function()
+    pFrame:Close()
+    if(pText) then
+      local bS, sE = pcall(fnSuc, pText:GetValue()); if(not bS) then
+        luapad.SetStatus("Accept [%s] error: %s", "STAT_ER", pText:GetValue(), sE) end
+    else
+      local bS, sE = pcall(fnSuc); if(not bS) then
+        luapad.SetStatus("Accept error: %s", "STAT_ER", sE) end
+    end
+  end
+
+  local pC = vgui.Create("DButton", pBase)
+  if(not IsValid(pC)) then return end
+
+  pC:SetText(sDsc or "#dialog.cancel")
+  pC:SizeToContents()
+  pC:SetTall(20)
+  pC:SetWide(pA:GetWide() + 20)
+  pC:SetPos(5, 5)
+  pC.DoClick = function()
+    pFrame:Close()
+    if (fnDsc) then
+      if(pText) then
+        local bS, sE = pcall(fnDsc, pText:GetValue()); if(not bS) then
+          luapad.SetStatus("Cancel [%s] error: %s", "STAT_ER", pText:GetValue(), sE) end
+      else
+        local bS, sE = pcall(fnDsc); if(not bS) then
+          luapad.SetStatus("Cancel error: %s", "STAT_ER", sE) end
+      end
+    end
+  end
+  pC:MoveRightOf(pA, 5)
+
+  pBase:SetWide(pA:GetWide() + 5 + pC:GetWide() + 10)
+
+  local nW, nH = pMesg:GetSize()
+  nW = math.max( nW, 400 )
+
+  pFrame:SetSize(nW + 50, nH + 25 + 75 + 10)
+  pFrame:Center()
+
+  pSors:StretchToParent(5, 25, 5, 45)
+  pMesg:StretchToParent(5, 5, 5, 35)
+
+  if(pText) then
+    pText:StretchToParent(5, nil, 5, nil)
+    pText:AlignBottom(5)
+    pText:RequestFocus()
+    pText:SelectAllText(true)
+  end
+
+  pBase:CenterHorizontal()
+  pBase:AlignBottom(8)
+
+  pFrame:MakePopup()
+  pFrame:DoModal()
+
+  return pFrame
+end
+
+--[[
  * Normalizes a path to the gmod file system
  * sOrg > The path to be checked and converted
  * fP   > Flag if the `sP` is relative to the data folder
@@ -367,17 +482,18 @@ end
 function luapad.GetPath(sOrg)
   local fP, sP, oP
   local tP = PATPATH_CONVERT
-  local sD = tostring(sOrg or "data/" .. BASE_FOLDER)
-  local sB = string.rep(sD, 1)
-   -- Copy of the path origin and convert it
+  local sD = ("data/" .. BASE_FOLDER)
+  local sB = tostring(sOrg or sD)
+        sB = ((sB == "") and sD or sB)
+  -- Copy of the path origin and convert it
   for iP = 1, #tP do
     sB = string.gsub(sB, unpack(tP[iP]))
   end
   -- Check if we are in the data/ folder and remove
-  fP, sP = false, sB
+  fP, sP, oP = false, sB, sB
+  -- The path is relative to the data folder
   if(string.find(sB, tP.Sors[1]) == 1) then
-    fP, oP = true, string.rep(sB, 1)
-    sP = string.gsub(sB, unpack(tP.Sors))
+    fP, sP = true, string.gsub(sB, unpack(tP.Sors))
   end
   -- Return the normalized path and flag
   return fP, sP.."/", oP.."/"
@@ -385,17 +501,11 @@ end
 
 function luapad.CheckGlobal(func)
   if (luapad._sG[func] ~= nil) then
-    local N = sN
+    local sN = FMSYNTAX_HILIGHT.N
     if (luapad.debugmode) then
-      print(DEBG_FORMAT:format(func, N))
+      print(DEBG_FORMAT:format(func, sN))
     end
     return luapad._sG[func]
-  end
-  if (_E and _E[func] ~= nil) then
-    if (luapad.debugmode) then
-      print(DEBG_FORMAT:format(func, "_E"))
-    end
-    return _E[func]
   end
   if (_G[func] ~= nil) then
     if (luapad.debugmode) then
@@ -455,7 +565,7 @@ function luapad.Toggle()
   local nW, nH = ScrW(), ScrH()
   luapad.Frame = vgui.Create("DFrame")
   local mB = BASE_PANLSZ
-  local mR = (1 - BASE_PANLSZ)
+  local mR = (1 - BASE_PANLSZ) / 2
   local sW, sH = mB * nW, mB * nH
   local pW, pH = mR * nW, mR * nH
   luapad.Frame:SetSize(sW, sH)
@@ -504,6 +614,9 @@ function luapad.Toggle()
     if(IsValid(pN)) then
       local tS = pN:GetStreamInfo()
       luapad.Frame:SetTitle("Luapad - " .. tS.Path .. tS.Name)
+    elseif(IsValid(pO)) then
+      local tS = pO:GetStreamInfo()
+      luapad.Frame:SetTitle("Luapad - " .. tS.Path .. tS.Name)
     else
       luapad.Frame:SetTitle("Luapad")
     end
@@ -519,7 +632,7 @@ function luapad.Toggle()
 
   local oW, oH = luapad.Frame:GetSize()
   luapad.Statusbar = vgui.Create("DIconLayout", luapad.Frame)
-  luapad.Statusbar:SetPos(3, oH - 25)
+  luapad.Statusbar:SetPos(3, oH - 22)
   luapad.Statusbar:SetSize(oW - 6, 22)
   luapad.Statusbar:GetSpaceX(1)
   luapad.Statusbar:SetSpaceY(1)
@@ -527,20 +640,21 @@ function luapad.Toggle()
   luapad.Statusbar:SetStretchWidth(true)
   luapad.Statusbar:SetStretchHeight(false)
   luapad.Statusbar.PerformLayout = luapad.Toolbar.PerformLayout
+  luapad.Statusbar:DockMargin(5,5,5,5)
   luapad.Statusbar:DockPadding(2,2,2,2)
   luapad.Statusbar:Dock(TOP)
   luapad.Statusbar:InvalidateLayout(true)
 
-  luapad.AddToolbarItem("New (CTRL + N)"          , "page_add"   , luapad.NewTab, luapad.NewTabActive)
-  luapad.AddToolbarItem("Open (CTRL + O)"         , "folder_page", luapad.OpenTab, luapad.OpenBrowse)
-  luapad.AddToolbarItem("Save (CTRL + S)"         , "disk"       , luapad.SaveScript, luapad.SaveAll)
-  luapad.AddToolbarItem("Save As (CTRL + ALT + S)", "page_save"  , luapad.SaveAsScript)
+  luapad.AddToolbarItem("New (CTRL + N) / Active tab origin"   , "page_add"   , luapad.NewTab, luapad.NewTabActive)
+  luapad.AddToolbarItem("Open (CTRL + O) / Open file browser"  , "folder_page", luapad.OpenTab, luapad.OpenBrowse)
+  luapad.AddToolbarItem("Save (CTRL + S) / Save all tabs"      , "disk"       , luapad.SaveScript, luapad.SaveAll)
+  luapad.AddToolbarItem("Save As (CTRL + ALT + S)", "page_save", luapad.SaveAsScript)
   luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Reload Tab", "page_refresh", luapad.RefreshTabActive, luapad.RefreshTabAll)
-  luapad.AddToolbarItem("Close Tab" , "page_delete" , luapad.CloseTabActive, luapad.CloseTabAll)
+  luapad.AddToolbarItem("Refresh / Refresh all", "page_refresh", luapad.RefreshTabActive, luapad.RefreshTabAll)
+  luapad.AddToolbarItem("Close / Close all"  , "page_delete" , luapad.CloseTabActive, luapad.CloseTabAll)
   luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Save Tabs", "page_white_put", luapad.SaveTabs)
-  luapad.AddToolbarItem("Load Tabs", "page_white_get", luapad.LoadTabs)
+  luapad.AddToolbarItem("Save Tabs", "page_white_get", luapad.SaveTabs)
+  luapad.AddToolbarItem("Load Tabs", "page_white_put", luapad.LoadTabs)
 
   if (file.Exists(BASE_FOLDER.."saved_tabs.txt", "DATA")) then
     luapad.LoadTabs()
@@ -569,7 +683,7 @@ function luapad.SetStatus(sFmt, sKey, ...)
   local cTmc = COLOR_STATUS["#TEMCO#"]
 
   local nC, tC = select("#", ...), {...}
-  for iD = 1, nC do tC[iC] = tostring(tC[iC]) end
+  for iC = 1, nC do tC[iC] = tostring(tC[iC]) end
 
   -- Moce color data to status color
   cTmc.r, cTmc.g = cDrw.r, cDrw.g
@@ -653,7 +767,7 @@ function luapad.AddToolbarSpacer()
   local pLab = luapad.Toolbar:Add("DLabel")
   if(not IsValid(pLab)) then return end
 
-  pLab:SetText(BASE_DELIMS)
+  pLab:SetText(" "..BASE_DELIMS.." ")
   pLab:SizeToContents()
 
   return pLab
@@ -868,11 +982,11 @@ function luapad.RefreshTabName(name, mark)
       if(bB) then
         local sO = (sD .. sN)
         local sF = (sB .. sN)
-        if(sM and sM:find(sS, 1, true) then
+        if(sM and sM:find(sS, 1, true)) then
           bS = true  -- Match by marker
-        elseif(sO and sO:find(sS, 1, true) then
+        elseif(sO and sO:find(sS, 1, true)) then
           bS = true -- Match by origin
-        elseif(sN and sN:find(sS, 1, true) then
+        elseif(sN and sN:find(sS, 1, true)) then
           bS = true -- Match by name
         else -- Assign false in other cases
           bS = false -- Do not match anything
@@ -892,7 +1006,7 @@ function luapad.RefreshTabName(name, mark)
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -951,19 +1065,17 @@ function luapad.RefreshTabLeft(pTre, bInc)
   for iR = 1, iE do
     local cT = tI[iR].Tab
     if(IsValid(cT)) then
-      local tS, bS = cT:GetStreamInfo(), false
+      local tS = cT:GetStreamInfo()
       local sD, sN = tS.Path , tS.Name
       local bB, sB, oB = luapad.GetPath(sD)
       if(bB) then
         local sF = (sB .. sN)
-        if(bS) then
-          local sCon = file.Read(sF, "DATA")
-          if(sCon) then
-            nU = nU + 1; cT:SetContents(sCon)
-          else
-            luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
-            return
-          end
+        local sCon = file.Read(sF, "DATA")
+        if(sCon) then
+          nU = nU + 1; cT:SetContents(sCon)
+        else
+          luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+          return
         end
       end
     end
@@ -971,7 +1083,7 @@ function luapad.RefreshTabLeft(pTre, bInc)
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -999,19 +1111,17 @@ function luapad.RefreshTabRight(pTre, bInc)
   for iR = iS, nI do
     local cT = tI[iR].Tab
     if(IsValid(cT)) then
-      local tS, bS = cT:GetStreamInfo(), false
+      local tS = cT:GetStreamInfo()
       local sD, sN = tS.Path , tS.Name
       local bB, sB, oB = luapad.GetPath(sD)
       if(bB) then
         local sF = (sB .. sN)
-        if(bS) then
-          local sCon = file.Read(sF, "DATA")
-          if(sCon) then
-            nU = nU + 1; cT:SetContents(sCon)
-          else
-            luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
-            return
-          end
+        local sCon = file.Read(sF, "DATA")
+        if(sCon) then
+          nU = nU + 1; cT:SetContents(sCon)
+        else
+          luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+          return
         end
       end
     end
@@ -1019,7 +1129,7 @@ function luapad.RefreshTabRight(pTre, bInc)
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1075,19 +1185,17 @@ function luapad.RefreshTabOther(pTre)
   for iR = 1, nI do
     local cT = tI[iR].Tab
     if(iR ~= iT and IsValid(cT)) then
-      local tS, bS = cT:GetStreamInfo(), false
+      local tS = cT:GetStreamInfo()
       local sD, sN = tS.Path , tS.Name
       local bB, sB, oB = luapad.GetPath(sD)
       if(bB) then
         local sF = (sB .. sN)
-        if(bS) then
-          local sCon = file.Read(sF, "DATA")
-          if(sCon) then
-            nU = nU + 1; cT:SetContents(sCon)
-          else
-            luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
-            return
-          end
+        local sCon = file.Read(sF, "DATA")
+        if(sCon) then
+          nU = nU + 1; cT:SetContents(sCon)
+        else
+          luapad.SetStatus("File [%s%s] refresh failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+          return
         end
       end
     end
@@ -1095,7 +1203,7 @@ function luapad.RefreshTabOther(pTre)
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1109,8 +1217,8 @@ function luapad.RefreshTabAll()
   local nI, nU = #tI, 0
   if(nI <= 0) then return end
 
-  for iT = 1, nT do
-    local cT = tI[iT].Tab
+  for iR = 1, nI do
+    local cT = tI[iR].Tab
     if(IsValid(cT)) then
       local tS = cT:GetStreamInfo()
       local sD, sN = tS.Path, tS.Name
@@ -1130,7 +1238,7 @@ function luapad.RefreshTabAll()
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1162,6 +1270,8 @@ function luapad.AddTab(name, cont, path, term, icon)
 
   local nW, nH = pPan:GetSize()
   local pText = vgui.Create("LuapadEditor", pPan)
+  if(not IsValid(pText)) then return end
+
   pText:SetSize(nW, nH)
   pText:SetText(sCon)
   pText:Dock(FILL)
@@ -1172,7 +1282,6 @@ function luapad.AddTab(name, cont, path, term, icon)
   local pTab  = tInfo.Tab; pTab[PANL_STORKY] = {}
   local tSor  = pTab[PANL_STORKY]
 
-  pSheet:SetActiveTab(pTab) -- Trigger on tab changed
   tSor.Name = sNam -- The actual file name associated with the tab
   tSor.Path = sPth -- File path always relative to the game folder
   tSor.Mark = sTag -- Tab mark in case provided is displayed instead of name
@@ -1239,7 +1348,10 @@ function luapad.AddTab(name, cont, path, term, icon)
   function pTab:DoDoubleClick()
     local tS = self:GetStreamInfo()
     local bB, sB, oB = luapad.GetPath(tS.Path)
+    if(bB) then
       luapad.NewTab(nil, oB)
+    else
+      luapad.NewTab()
     end
   end
 
@@ -1248,6 +1360,8 @@ function luapad.AddTab(name, cont, path, term, icon)
   ]]
   function pTab:DoRightClick()
     local pMenu = DermaMenu()
+    if(not IsValid(pMenu)) then return end
+    pMenu:SetPos(gui.MousePos())
     -- Copy tab internals
     local pIn, pOp = pMenu:AddSubMenu("Copy")
     pOp:SetIcon(luapad.ToIcon("table_multiple"))
@@ -1277,6 +1391,7 @@ function luapad.AddTab(name, cont, path, term, icon)
       luapad.NewTab(nil, tS.Path)
     end):SetImage(luapad.ToIcon("page_add"))
     pIn:AddOption("Open", function()
+      local tS = self:GetStreamInfo()
       luapad.OpenTab(tS.Path)
     end):SetImage(luapad.ToIcon("folder_page"))
     pIn:AddOption("Save", function()
@@ -1363,7 +1478,7 @@ function luapad.AddTab(name, cont, path, term, icon)
     pMenu:Open()
   end
 
-  pSheet:SetActiveTab(tInfo.Tab)
+  pSheet:SetActiveTab(pTab)
   pSheet:InvalidateLayout()
 end
 
@@ -1382,11 +1497,11 @@ function luapad.IsOpen(name, path)
     sNam = sPth .. sNam
   end
 
-  local sF = tS.Path .. tS.Name
-  local sN, sM = tS.Name, tS.Mark
   for iD = 1, nI do
     local tP = tI[iD]
     local tS = tP.Tab:GetStreamInfo()
+    local sF = tS.Path .. tS.Name
+    local sN, sM = tS.Name, tS.Mark
     if(sPth ~= "") then
       if(sF == sNam) then return true end
     else
@@ -1406,14 +1521,12 @@ function luapad.NewTab(cont, path)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local sD = tostring(path or "data/" .. BASE_FOLDER)
-  local bB, sB, oB = luapad.GetPath(sD)
+  local bB, sB, oB = luapad.GetPath(path)
 
   if(bB) then
     local nF = VAR_MXF:GetInt()
     local sO = sB .. BASE_FMNAME
-    local tI = pS:GetItems()
-    local sG, iF =  sB, nil
+    local tI, iF = pS:GetItems(), nil
     local sCon = tostring(cont or "")
 
     file.CreateDir(sB)
@@ -1428,7 +1541,7 @@ function luapad.NewTab(cont, path)
     end
 
     if(iF) then -- Index is present open the file
-      luapad.AddTab(BASE_FMNAME:format(iF), sCon, sG)
+      luapad.AddTab(BASE_FMNAME:format(iF), sCon, oB)
       luapad.SetStatus("Open the next name available!", "STAT_OK")
     else -- Rise a status bar message
       luapad.SetStatus("There are more than [%s] files in [%s] origin! (clean the folder)", "STAT_ER", nF, oB)
@@ -1613,6 +1726,7 @@ function luapad.OpenBrowse()
   end)
   local pMenu = DermaMenu()
   if(not IsValid(pMenu)) then return end
+  pMenu:SetPos(gui.MousePos())
   local uI = "computer"
   for iD = 1, #tK do
     local sD = tK[iD]
@@ -1638,6 +1752,7 @@ function luapad.SaveScript(pTre)
 
   local tS = pT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
+
   local bB, sB, oB = luapad.GetPath(sD)
 
   if(bB) then
@@ -1681,8 +1796,8 @@ function luapad.SaveAsScript(pTre)
 
   local tS = pT:GetStreamInfo()
 
-  Derma_StringRequest(
-    "Luapad", "You are about to save a file, please enter the desired filename.",
+  luapad.ShowConfirmDialog(
+    "You are about to save a file, please enter the desired filename.",
     tS.Path .. tS.Name,
 
     function(sName)
@@ -1753,7 +1868,7 @@ function luapad.SaveAll()
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been saved!", "STAT_WR")
+    luapad.SetStatus("No tabs have been saved (check the origin access rights)!", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Saved successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1774,35 +1889,42 @@ function luapad.DeleteScript(pTre)
   if(not iT) then return end
 
   local tS = pT:GetStreamInfo()
-  local sD, sN = tS.Path, tS.Name
-  local bB, sB, oB = luapad.GetPath(sD)
 
-  if(bB) then
-    if(not canOperateIn(oB)) then
-      luapad.SetStatus("File [%s%s] delete failed! (origin is restricted)", "STAT_ER", oB, sN)
-      return
-    end
+  luapad.ShowConfirmDialog(
+    "Confirm deletion of the file: ".. tS.Path .. tS.Name, nil,
+    function()
+      local sD, sN = tS.Path, tS.Name
+      local bB, sB, oB = luapad.GetPath(sD)
 
-    local sF = (sB .. sN)
+      if(bB) then
 
-    if (not file.Exists(sF, "DATA")) then
-      luapad.SetStatus("File [%s%s] already missing!", "STAT_WR", oB, sN)
-      return
-    else
-      if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
-        luapad.SetStatus("File [%s%s] delete failed! (file is restricted)", "STAT_ER", oB, sN)
-        return
-      end
+        if(not canOperateIn(oB)) then
+          luapad.SetStatus("File [%s%s] delete failed! (origin is restricted)", "STAT_ER", oB, sN)
+          return
+        end
 
-      if file.Delete(sF) then
-        luapad.SetStatus("File [%s%s] successfully deleted!", "STAT_OK", oB, sN)
+        local sF = (sB .. sN)
+
+        if (not file.Exists(sF, "DATA")) then
+          luapad.SetStatus("File [%s%s] already missing!", "STAT_WR", oB, sN)
+          return
+        else
+          if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
+            luapad.SetStatus("File [%s%s] delete failed! (file is restricted)", "STAT_ER", oB, sN)
+            return
+          end
+
+          if file.Delete(sF) then
+            luapad.SetStatus("File [%s%s] successfully deleted!", "STAT_OK", oB, sN)
+          else
+            luapad.SetStatus("File [%s%s] delete failed (check your filename)! ", "STAT_ER", oB, sN)
+          end
+        end
       else
-        luapad.SetStatus("File [%s%s] delete failed (check your filename)! ", "STAT_ER", oB, sN)
+        luapad.SetStatus("File [%s%s] cannot be deleted!", "STAT_WR", oB, sN)
       end
-    end
-  else
-    luapad.SetStatus("File [%s%s] cannot be deleted!", "STAT_WR", oB, sN)
-  end
+    end, nil, "Delete", "Cancel"
+  )
 end
 
 function luapad.RunScriptClient()
