@@ -1988,7 +1988,7 @@ function luapad.RunScriptServer()
   net.WriteString(sC)
   net.SendToServer()
 
-  luapad.SetStatus("Upload to server completed! Check server console for possible errors.", "COMS_OK")
+  luapad.SetStatus("Upload to server completed! (check server console for errors)", "COMS_OK")
 
   if (bA) then
     luapad.SetStatus("Upload accepted, now uploading...", "COMS_OK")
@@ -2016,14 +2016,13 @@ function luapad.RunScriptServerClient()
   net.WriteString(sC)
   net.SendToServer()
 
-  luapad.SetStatus("Upload to client completed!", "COMS_OK")
+  luapad.SetStatus("Upload to client completed! (check server console for errors)", "COMS_OK")
 
   if (bA) then
     luapad.SetStatus("Upload accepted, now uploading...", "COMS_OK")
   else
     luapad.SetStatus("Upload denied by server! (maybe you are not an admin)", "COMS_ER")
   end
-
 end
 
 function luapad.RunScriptMenu()
