@@ -531,9 +531,9 @@ function luapad.SaveTabs()
     local tP = tI[iD]
     local pT = tP.Tab
     if(IsValid(pT)) then
-      local tS = :GetStreamInfo()
+      local tS = pT:GetStreamInfo()
       tO[1], tO[2] = tS.Name , tS.Path
-      tO[3], tO[4] = (tS.Mark or ""), tS.Icon
+      tO[3], tO[4] = (tS.Term or ""), tS.Icon
       if(pT == aT) then tO[1] = "*" .. tO[1] end
       table.insert(tW, table.concat(tO, BASE_DELIMS))
     end
@@ -554,12 +554,14 @@ function luapad.LoadTabs()
     local bA = (string.sub(tO[1], 1, 1) == "*") -- File name starts with * when active
     if(bA) then tO[1] = string.sub(tO[1], 2, -1) end
     local bB, sB, oB, pT = luapad.GetPath(tO[2])
-    if(bB) then -- Load a tab relative to the data folder
-      pT = luapad.AddTab(tO[1], file.Read(sB..tO[1], "DATA"), oB, tO[3], tO[4])
-    else -- Load a tab relative to the game folder
-      pT = luapad.AddTab(tO[1], file.Read(oB..tO[1], "GAME"), oB, tO[3], tO[4])
-    end -- Store the last tab found as active tab reference
-    aT = ((bA and IsValid(pT)) and pT or aT)
+    if(tO[1] ~= "" and tO[2] ~= "") then -- No name to identify the file
+      if(bB) then -- Load a tab relative to the data folder
+        pT = luapad.AddTab(tO[1], file.Read(sB..tO[1], "DATA"), oB, tO[3], tO[4])
+      else -- Load a tab relative to the game folder
+        pT = luapad.AddTab(tO[1], file.Read(oB..tO[1], "GAME"), oB, tO[3], tO[4])
+      end -- Store the last tab found as active tab reference
+      aT = ((bA and IsValid(pT)) and pT or aT)
+    end
   end
   -- If a tab is marked as active set the last one marked
   if(aT and IsValid(aT)) then pS:SetActiveTab(aT) end
@@ -664,10 +666,11 @@ function luapad.Toggle()
   luapad.AddToolbarItem("Save (CTRL + S) / Save all tabs"      , "disk"       , luapad.SaveScript, luapad.SaveAll)
   luapad.AddToolbarItem("Save As (CTRL + ALT + S)"             , "page_save"  , luapad.SaveAsScript)
   luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Execute / Execute realm", "table_lightning", luapad.RunScriptClient, luapad.RunScriptMenu)
-  luapad.AddToolbarItem("Refresh / Refresh all"  , "table_refresh"  , luapad.RefreshTabActive, luapad.RefreshTabAll)
-  luapad.AddToolbarItem("Load tabs / Save tabs"  , "table_multiple" , luapad.LoadTabs, luapad.SaveTabs)
-  luapad.AddToolbarItem("Close / Close all"      , "table_delete"   , luapad.CloseTabActive, luapad.CloseTabAll)
+  luapad.AddToolbarItem("Execute / Execute realm", "script_lightning", luapad.RunScriptClient, luapad.RunScriptMenu)
+  luapad.AddToolbarItem("Refresh / Refresh all"  , "page_refresh"  , luapad.RefreshTabActive, luapad.RefreshTabAll)
+  luapad.AddToolbarItem("Close / Close all"      , "page_delete"   , luapad.CloseTabActive, luapad.CloseTabAll)
+  luapad.AddToolbarSpacer()
+  luapad.AddToolbarItem("Load tabs / Save tabs"  , "briefcase" , luapad.LoadTabs, luapad.SaveTabs)
 
   if (file.Exists(BASE_FOLDER.."saved_tabs.txt", "DATA")) then
     luapad.LoadTabs()
@@ -787,10 +790,10 @@ function luapad.AddToolbarSpacer()
 end
 
 --[[
- * Closes a tab via name, full path or mark
+ * Closes a tab via name, full path or term
  * Closes only one tab if matched
 ]]
-function luapad.CloseTabName(name, mark)
+function luapad.CloseTabName(name, term)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
   -- Check the property sheet tab
@@ -799,10 +802,10 @@ function luapad.CloseTabName(name, mark)
   if(nI == 0) then
     return -- Nothing to close
   else -- At least one tab
-    local sS  = tostring(mark or name)
+    local sS  = tostring(term or name)
     -- The context menu option is available
     local sO = tS.Path .. tS.Name
-    local sN, sM = tS.Name, tS.Mark
+    local sN, sM = tS.Name, tS.Term
     for iD = 1, #tI do
       local tP = tI[iD]
       local cT = tP.Tab
@@ -974,9 +977,9 @@ function luapad.CloseTabAll()
 end
 
 --[[
- * Refreshes all the tabs on name/marker
+ * Refreshes all the tabs on name/term
 ]]
-function luapad.RefreshTabName(name, mark)
+function luapad.RefreshTabName(name, term)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -984,19 +987,19 @@ function luapad.RefreshTabName(name, mark)
   local nI, nU = #tI, 0
   if(nI <= 0) then return end
 
-  local sS  = tostring(mark or name)
+  local sS  = tostring(term or name)
 
   for iT = 1, nT do
     local cT = tI[iT].Tab
     if(IsValid(cT)) then
       local tS, bS = cT:GetStreamInfo(), false
-      local sD, sN, sM = tS.Path, tS.Name, tS.Mark
+      local sD, sN, sT = tS.Path, tS.Name, tS.Term
       local bB, sB, oB = luapad.GetPath(sD)
       if(bB) then
         local sO = (sD .. sN)
         local sF = (sB .. sN)
-        if(sM and sM:find(sS, 1, true)) then
-          bS = true  -- Match by marker
+        if(sT and sT:find(sS, 1, true)) then
+          bS = true  -- Match by term
         elseif(sO and sO:find(sS, 1, true)) then
           bS = true -- Match by origin
         elseif(sN and sN:find(sS, 1, true)) then
@@ -1269,7 +1272,7 @@ function luapad.AddTab(name, cont, path, term, icon)
   local sNam = tostring(name or "")
   local sCon = tostring(cont or "")
   local sIco = tostring(icon or "page_white")
-  local sTag = ((mark ~= nil and mark ~= "") and tostring(mark) or nil)
+  local sTag = ((term ~= nil and term ~= "") and tostring(term) or nil)
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -1297,7 +1300,7 @@ function luapad.AddTab(name, cont, path, term, icon)
 
   tSor.Name = sNam -- The actual file name associated with the tab
   tSor.Path = sPth -- File path always relative to the game folder
-  tSor.Mark = sTag -- Tab mark in case provided is displayed instead of name
+  tSor.Term = sTag -- Tab term in case provided is displayed instead of name
   tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
 
   pTab:SetTooltip(sPth .. sNam)
@@ -1382,7 +1385,7 @@ function luapad.AddTab(name, cont, path, term, icon)
       SetClipboardText(self:GetStreamInfo().Name)
     end):SetImage(luapad.ToIcon("page_green"))
     pIn:AddOption("Label", function()
-      SetClipboardText(self:GetStreamInfo().Mark)
+      SetClipboardText(self:GetStreamInfo().Term)
     end):SetImage(luapad.ToIcon("tag_green"))
     pIn:AddOption("Path", function()
       SetClipboardText(self:GetStreamInfo().Path)
@@ -1516,7 +1519,7 @@ function luapad.IsOpen(name, path)
     local tP = tI[iD]
     local tS = tP.Tab:GetStreamInfo()
     local sF = tS.Path .. tS.Name
-    local sN, sM = tS.Name, tS.Mark
+    local sN, sM = tS.Name, tS.Term
     if(sPth ~= "") then
       if(sF == sNam) then return true end
     else
@@ -1724,13 +1727,13 @@ function luapad.OpenTab(path)
     luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "provided", oB)
   elseif(#tI == 0) then -- No active tab is present and path is empty
     pB:PopulateTree("data")
-    luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "/data", "default")
+    luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "default", "/data")
   else -- If editor is not empty there will always be an active tab
     local aT = pS:GetActiveTab()
     if(not IsValid(aT)) then return end
     local tS = aT:GetStreamInfo()
     pB:PopulateTree(tS.Path)
-    luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", tS.Path, "active tab")
+    luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "active tab", tS.Path)
   end
 end
 
@@ -1754,7 +1757,7 @@ function luapad.OpenBrowse()
       if(not IsValid(pB)) then return end
       pB:PopulateTree(sD)
     end):SetImage(luapad.ToIcon(sI))
-  end
+  end; pMenu:Open()
 end
 
 function luapad.SaveScript(pTre)
@@ -2043,6 +2046,8 @@ function luapad.RunScriptMenu()
   pMenu:AddOption("Broadcast", function()
     luapad.RunScriptServerClient()
   end):SetImage(luapad.ToIcon("feed_go"))
+
+  pMenu:Open()
 end
 
 concommand.Add("Luapad", luapad.Toggle)

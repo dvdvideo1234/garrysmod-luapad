@@ -336,7 +336,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
           lasttable = gstr
         end
 
-        if ((gstr == "e" or (_E and _E[sstr])) and sstr == string.upper(sstr)) then
+        if ((gstr == "e") and sstr == string.upper(sstr)) then
           token = "enumeration"
         elseif (gstr == "m") then
           token = "metatable"
