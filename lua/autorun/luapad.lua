@@ -10,7 +10,7 @@ luapad.forcedownload = true
 luapad.IgnoreConsoleOpen = true
 
 local BASE_DELIMS = "|" -- General symbol used for separator
-local BASE_PANLSZ = 2 / 3 -- The ration panel will use according to the screen size
+local BASE_PANLSZ = 2 / 3 -- The ratio panel will use according to the screen size
 local BASE_FOLDER = "luapad/" -- Default application folder in the data file system
 local ICON_FORMAT = "icon16/%s.png" -- Icon path format string
 local BASE_FMNAME = "untitled%d.txt" -- Untitled new file format string
@@ -1955,7 +1955,12 @@ function luapad.RunScriptClient()
   if(not IsValid(aT)) then return end
 
   local sC = aT:GetContents()
-  local bS, sE = pcall(RunString, sC)
+  local tS = aT:GetStreamInfo()
+  local sF = "[".. tS.Path .. tS.Name .."]"
+  local fR = CompileString(sC, sF, false)
+
+  local bS, sE = pcall(fR)
+
   if bS then
     luapad.SetStatus("Code ran successfully!", "STAT_OK")
   else
