@@ -1957,14 +1957,16 @@ function luapad.RunScriptClient()
   local sC = aT:GetContents()
   local tS = aT:GetStreamInfo()
   local sF = "[".. tS.Path .. tS.Name .."]"
-  local fR = CompileString(sC, sF, false)
-
-  local bS, sE = pcall(fR)
-
-  if bS then
-    luapad.SetStatus("Code ran successfully!", "STAT_OK")
-  else
-    luapad.SetStatus("Runtime error: %s", "STAT_ER", sE)
+  local oR = CompileString(sC, sF, false)
+  if(isstring(oR)) then -- Error during compilation
+    luapad.SetStatus("Compilation error: %s", "STAT_ER", oR)
+  elseif(isfunction(oR)) then -- Compiled successfully
+    local bS, sE = pcall(oR)
+    if bS then -- The code executes successfully
+      luapad.SetStatus("Code "..sF.." ran successfully!", "STAT_OK")
+    else -- The code gives an error at runtime
+      luapad.SetStatus("Runtime error: %s", "STAT_ER", sE)
+    end
   end
 end
 
