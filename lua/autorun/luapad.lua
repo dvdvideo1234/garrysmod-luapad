@@ -9,9 +9,9 @@ luapad.debugmode = true
 luapad.forcedownload = true
 luapad.IgnoreConsoleOpen = true
 
-local BASE_DELIMS = "|" -- Gernal symbol used for separator
+local BASE_DELIMS = "|" -- General symbol used for separator
 local BASE_PANLSZ = 2 / 3 -- The ration panel will use according to the screen size
-local BASE_FOLDER = "luapad/" -- Default application filder in the data file system
+local BASE_FOLDER = "luapad/" -- Default application folder in the data file system
 local ICON_FORMAT = "icon16/%s.png" -- Icon path format string
 local BASE_FMNAME = "untitled%d.txt" -- Untitled new file format string
 local PANL_STORKY = "gmod_luapad"    -- Dedicated tab panel key to store stream info
@@ -526,12 +526,17 @@ function luapad.SaveTabs()
 
   local tO, tW = {"", "", "", ""}, {}
   local tI = pS:GetItems()
+  local aT = pS:GetActiveTab()
   for iD = 1, #tI do
     local tP = tI[iD]
-    local tS = tP.Tab:GetStreamInfo()
-    tO[1], tO[2] = tS.Name , tS.Path
-    tO[3], tO[4] = (tS.Mark or ""), tS.Icon
-    table.insert(tW, table.concat(tO, BASE_DELIMS))
+    local pT = tP.Tab
+    if(IsValid(pT)) then
+      local tS = :GetStreamInfo()
+      tO[1], tO[2] = tS.Name , tS.Path
+      tO[3], tO[4] = (tS.Mark or ""), tS.Icon
+      if(pT == aT) then tO[1] = "*" .. tO[1] end
+      table.insert(tW, table.concat(tO, BASE_DELIMS))
+    end
   end
   file.Write(BASE_FOLDER.."saved_tabs.txt", table.concat(tW, "\n"))
 end
@@ -539,16 +544,25 @@ end
 function luapad.LoadTabs()
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-
-  pS:Clear()
-
+   pS:Clear() -- The * symbol is invalid for a file name
+  -- Read the saved tabs file and load the related files
   local sF = file.Read(BASE_FOLDER.."saved_tabs.txt", "DATA" )
   if(not sF) then return end -- File not found then bail out
-  local tW = ("[\r\n]+"):Explode(sF, true) -- Explode on new line
+  local tW, aT = ("[\r\n]+"):Explode(sF, true), nil
   for iD = 1, #tW do -- Basically we have one tab on one line
     local tO = BASE_DELIMS:Explode(tW[iD]) -- Empty lines are excluded
-    luapad.AddTab(tO[1], file.Read(tO[2]..tO[1], "DATA"), "data/"..tO[2], tO[3], tO[4])
+    local bA = (string.sub(tO[1], 1, 1) == "*") -- File name starts with * when active
+    if(bA) then tO[1] = string.sub(tO[1], 2, -1) end
+    local bB, sB, oB, pT = luapad.GetPath(tO[2])
+    if(bB) then -- Load a tab relative to the data folder
+      pT = luapad.AddTab(tO[1], file.Read(sB..tO[1], "DATA"), oB, tO[3], tO[4])
+    else -- Load a tab relative to the game folder
+      pT = luapad.AddTab(tO[1], file.Read(oB..tO[1], "GAME"), oB, tO[3], tO[4])
+    end -- Store the last tab found as active tab reference
+    aT = ((bA and IsValid(pT)) and pT or aT)
   end
+  -- If a tab is marked as active set the last one marked
+  if(aT and IsValid(aT)) then pS:SetActiveTab(aT) end
 end
 
 function luapad.Toggle()
@@ -624,7 +638,7 @@ function luapad.Toggle()
 
   function luapad.PropertySheet:GetTabIndex(pTre)
     if(not IsValid(pTre)) then return nil end
-    local tT = luapad.PropertySheet:GetItems()
+    local tT = self:GetItems()
     for iT = 1, #tT do local tP = tT[iT]
       if(pTre == tP.Tab) then return iT end
     end; return nil
@@ -648,13 +662,12 @@ function luapad.Toggle()
   luapad.AddToolbarItem("New (CTRL + N) / Active tab origin"   , "page_add"   , luapad.NewTab, luapad.NewTabActive)
   luapad.AddToolbarItem("Open (CTRL + O) / Open file browser"  , "folder_page", luapad.OpenTab, luapad.OpenBrowse)
   luapad.AddToolbarItem("Save (CTRL + S) / Save all tabs"      , "disk"       , luapad.SaveScript, luapad.SaveAll)
-  luapad.AddToolbarItem("Save As (CTRL + ALT + S)", "page_save", luapad.SaveAsScript)
+  luapad.AddToolbarItem("Save As (CTRL + ALT + S)"             , "page_save"  , luapad.SaveAsScript)
   luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Refresh / Refresh all", "page_refresh", luapad.RefreshTabActive, luapad.RefreshTabAll)
-  luapad.AddToolbarItem("Close / Close all"  , "page_delete" , luapad.CloseTabActive, luapad.CloseTabAll)
-  luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Save Tabs", "page_white_get", luapad.SaveTabs)
-  luapad.AddToolbarItem("Load Tabs", "page_white_put", luapad.LoadTabs)
+  luapad.AddToolbarItem("Execute / Execute realm", "table_lightning", luapad.RunScriptClient, luapad.RunScriptMenu)
+  luapad.AddToolbarItem("Refresh / Refresh all"  , "table_refresh"  , luapad.RefreshTabActive, luapad.RefreshTabAll)
+  luapad.AddToolbarItem("Load tabs / Save tabs"  , "table_multiple" , luapad.LoadTabs, luapad.SaveTabs)
+  luapad.AddToolbarItem("Close / Close all"      , "table_delete"   , luapad.CloseTabActive, luapad.CloseTabAll)
 
   if (file.Exists(BASE_FOLDER.."saved_tabs.txt", "DATA")) then
     luapad.LoadTabs()
@@ -1443,7 +1456,7 @@ function luapad.AddTab(name, cont, path, term, icon)
       luapad.RunScriptClient()
       luapad.RunScriptServer()
     end):SetImage(luapad.ToIcon("building_go"))
-    pIn:AddOption("Transfer", function()
+    pIn:AddOption("Broadcast", function()
       luapad.RunScriptServerClient()
     end):SetImage(luapad.ToIcon("feed_go"))
     -- Close tabs
@@ -1480,6 +1493,8 @@ function luapad.AddTab(name, cont, path, term, icon)
 
   pSheet:SetActiveTab(pTab)
   pSheet:InvalidateLayout()
+
+  return pTab
 end
 
 function luapad.IsOpen(name, path)
@@ -1575,20 +1590,22 @@ end
  * the content is refreshed during the game startup
 ]]
 function luapad.OpenTree()
+  local pSheet = luapad.PropertySheet
+  if(not IsValid(pSheet)) then return end
+
   if (luapad.BrowserTree) then
     local pB = luapad.BrowserTree
     if(IsValid(pB)) then pB:Remove() end
     luapad.BrowserTree = nil
   end
 
-  local w = luapad.PropertySheet:GetWide()
-  local h = luapad.PropertySheet:GetTall()
-  local x, y = luapad.PropertySheet:GetPos()
+  local nX, nY = pSheet:GetPos()
+  local nW, nH = pSheet:GetSize()
 
   luapad.BrowserTree = vgui.Create("DTree", luapad.Frame)
   luapad.BrowserTree:SetPadding(5)
-  luapad.BrowserTree:SetPos(x + (w - w / 4), y + 22)
-  luapad.BrowserTree:SetSize(w / 4, h - 23)
+  luapad.BrowserTree:SetPos(nX + (nW - nW / 4), nY + 22)
+  luapad.BrowserTree:SetSize(nW / 4, nH - 23)
 
   local nW, nH = luapad.BrowserTree:GetSize()
   local pClose = vgui.Create("DButton", luapad.BrowserTree)
@@ -1928,12 +1945,14 @@ function luapad.DeleteScript(pTre)
 end
 
 function luapad.RunScriptClient()
-  local objectDefintions = "local me = player.GetByID(" .. LocalPlayer():EntIndex() ..
-                             ")\nlocal this = me:GetEyeTrace().Entity\n"
-  local bS, sE = pcall(
-                     RunString,
-                     objectDefintions .. luapad.PropertySheet:GetActiveTab():GetContents()
-                   )
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local aT = pS:GetActiveTab()
+  if(not IsValid(aT)) then return end
+
+  local sC = aT:GetContents()
+  local bS, sE = pcall(RunString, sC)
   if bS then
     luapad.SetStatus("Code ran successfully!", "STAT_OK")
   else
@@ -1955,27 +1974,27 @@ function luapad.RunScriptServer()
     return
   end
 
-  local objectDefintions = "local me = player.GetByID(" .. LocalPlayer():EntIndex() ..
-                             ")\nlocal this = me:GetEyeTrace().Entity\n"
-  local accepted
-  net.Receive(
-    "luapad.UploadCallback", function()
-      accepted = true
-    end
-  )
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local aT = pS:GetActiveTab()
+  if(not IsValid(aT)) then return end
+
+  local sC, bA = aT:GetContents()
+
+  net.Receive("luapad.UploadCallback", function() bA = true end)
 
   net.Start("luapad.Upload")
-  net.WriteString(objectDefintions .. luapad.PropertySheet:GetActiveTab():GetContents())
+  net.WriteString(sC)
   net.SendToServer()
 
   luapad.SetStatus("Upload to server completed! Check server console for possible errors.", "COMS_OK")
 
-  if (accepted) then
+  if (bA) then
     luapad.SetStatus("Upload accepted, now uploading...", "COMS_OK")
   else
-    luapad.SetStatus("Upload denied by server! Maybe you are not an admin.", "COMS_ER")
+    luapad.SetStatus("Upload denied by server! (maybe you are not an admin)", "COMS_ER")
   end
-
 end
 
 function luapad.RunScriptServerClient()
@@ -1983,27 +2002,48 @@ function luapad.RunScriptServerClient()
     return
   end
 
-  local objectDefintions = "local me = player.GetByID(" .. LocalPlayer():EntIndex() ..
-                             ")\nlocal this = me:GetEyeTrace().Entity\n"
-  local accepted
-  net.Receive("luapad.UploadClientCallback",
-    function()
-      accepted = true
-    end
-  )
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local aT = pS:GetActiveTab()
+  if(not IsValid(aT)) then return end
+
+  local sC, bA = aT:GetContents()
+
+  net.Receive("luapad.UploadClientCallback", function() bA = true end)
 
   net.Start("luapad.UploadClient")
-  net.WriteString(objectDefintions .. luapad.PropertySheet:GetActiveTab():GetContents())
+  net.WriteString(sC)
   net.SendToServer()
 
   luapad.SetStatus("Upload to client completed!", "COMS_OK")
 
-  if (accepted) then
+  if (bA) then
     luapad.SetStatus("Upload accepted, now uploading...", "COMS_OK")
   else
-    luapad.SetStatus("Upload denied by server! Maybe you are not an admin.", "COMS_ER")
+    luapad.SetStatus("Upload denied by server! (maybe you are not an admin)", "COMS_ER")
   end
 
+end
+
+function luapad.RunScriptMenu()
+  local pMenu = DermaMenu()
+  if(not IsValid(pMenu)) then return end
+  pMenu:SetPos(gui.MousePos())
+  -- Run a script
+  pMenu:AddOption("Client", function()
+    luapad.RunScriptClient()
+  end):SetImage(luapad.ToIcon("user_go"))
+  pMenu:AddOption("Server", function()
+    luapad.RunScriptServer()
+  end):SetImage(luapad.ToIcon("server_go"))
+  pMenu:AddOption("Shared", function()
+    luapad.RunScriptClient()
+    luapad.RunScriptServer()
+  end):SetImage(luapad.ToIcon("building_go"))
+  pMenu:AddOption("Broadcast", function()
+    luapad.RunScriptServerClient()
+  end):SetImage(luapad.ToIcon("feed_go"))
 end
 
 concommand.Add("Luapad", luapad.Toggle)
