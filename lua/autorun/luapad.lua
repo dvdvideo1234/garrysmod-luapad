@@ -220,9 +220,8 @@ end
 
 if (SERVER) then
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".Upload")
-  util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadCallback")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".StatusCallback")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadClient")
-  util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadClientCallback")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".DownloadRunClient")
 
   if (luapad.forcedownload) then
@@ -344,7 +343,7 @@ if (SERVER) then
       if(bC) then
         luapad.SetConsole(sM, cM)
       else
-        net.Start(GLOB_CONFIG.LOWADN..".UploadCallback")
+        net.Start(GLOB_CONFIG.LOWADN..".StatusCallback")
         net.WriteString(sM)
         net.WriteString(cM)
         net.Send(ply)
@@ -357,14 +356,16 @@ if (SERVER) then
 
       local sP = GLOB_CONFIG.LOWADN
       local sS, sI = net.ReadString(), net.ReadString()
-      if (sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
+      if(sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
         net.Start(sP..".DownloadRunClient")
         net.WriteString(sS)
         net.WriteString(sI)
         net.Broadcast()
       end
 
-      net.Start(sP..".UploadClientCallback")
+      net.Start(sP..".StatusCallback")
+      net.WriteString(string.format("Broadcast %s successful! (check client console for errors)", sI))
+      net.WriteString("COMS_OK")
       net.Send(ply)
     end)
 
@@ -375,6 +376,13 @@ if (CLIENT) then
   net.Receive(GLOB_CONFIG.LOWADN..".DownloadRunClient",
     function(len)
       luapad.RunScriptHandler(net.ReadString(), net.ReadString(), true)
+    end)
+
+  net.Receive(GLOB_CONFIG.LOWADN..".StatusCallback",
+    function() -- Output in the client panel
+      local sM = net.ReadString()
+      local cM = net.ReadString()
+      luapad.SetStatus(sM, cM)
     end)
 end
 
@@ -1391,7 +1399,7 @@ function luapad.AddTab(name, cont, path, term, icon)
   ]]
   function pTab:SetContents(sCon)
     local pText = self:GetTextArea()
-    if(not IsValid(pText)) then end
+    if(not IsValid(pText)) then return end
     local sCon = tostring(sCon or "")
     pText:SetText(sCon)
     pText:RequestFocus()
@@ -2089,15 +2097,6 @@ function luapad.RunScriptServer(pTre, bCon)
   local sD, sN = tS.Path, tS.Name
   local sI = "RunScriptServer:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
 
-  if(not bCon) then -- output in the server console
-    net.Receive(GLOB_CONFIG.LOWADN..".UploadCallback",
-      function() -- Output in the client panel
-        local sM = net.ReadString()
-        local cM = net.ReadString()
-        luapad.SetStatus(sM, cM)
-      end)
-  end
-
   net.Start(sA)
   net.WriteString(sC)
   net.WriteString(sI)
@@ -2131,11 +2130,6 @@ function luapad.RunScriptBroadcast(pTre)
   local tS = cT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
   local sI = "RunScriptBroadcast:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
-
-  net.Receive(GLOB_CONFIG.LOWADN..".UploadClientCallback",
-    function()
-      luapad.SetStatus("Round trip %s successful! (check client console for errors)", "COMS_OK", sI)
-    end)
 
   net.Start(sA)
   net.WriteString(sC)
