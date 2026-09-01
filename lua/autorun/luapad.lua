@@ -186,6 +186,19 @@ function canUserAccess(pUser)
   end
 end
 
+local function canUserAcceptStream(ply, index)
+  if (ply:IsAdmin() or ply:IsSuperAdmin()) and ACCEPTED_STEAMS[index] then
+    return true
+  end
+  if (not ply:IsAdmin()) and ACCEPTED_STEAMS[index] then
+    return false
+  end
+end
+
+local function canWriteString(sCon)
+  return (string.len(tostring(sCon or "")) > 60000)
+end
+
 if (SERVER) then
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".Upload")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadCallback")
@@ -289,71 +302,61 @@ if (SERVER) then
     resource.AddFile("data/"..GLOB_CONFIG.FOLDER.."about.txt")
   end
 
-  function luapad.Upload(len, ply)
-    if(not canUserAccess(ply)) then return end
+  net.Receive(GLOB_CONFIG.LOWADN..".Upload",
+    function(len, ply)
+      if(not canUserAccess(ply)) then return end
 
-    local sM, cM = nil, nil
-    local sS, sI = net.ReadString(), net.ReadString()
+      local sS, sI = net.ReadString(), net.ReadString()
+      local bC, sM, cM = net.ReadBool()  nil, nil
 
-    if(sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
-      local oR = CompileString(sS, sI, false)
-      if(isfunction(oR)) then -- Compiled successfully
-        local bS, sE = pcall(oR)
-        if bS then -- The code executes successfully
-          sM, cM = string.format("Code %s ran successfully!", sI), "COMS_OK"
-        else -- The code gives an error at runtime
-          sM, cM = string.format("Runtime error: %s", sE), "COMS_ER"
+      if(sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
+        local oR = CompileString(sS, sI, false)
+        if(isfunction(oR)) then -- Compiled successfully
+          local bS, sE = pcall(oR)
+          if bS then -- The code executes successfully
+            sM, cM = string.format("Code %s ran successfully!", sI), "COMS_SV"
+          else -- The code gives an error at runtime
+            sM, cM = string.format("Runtime error: %s", sE), "COMS_ER"
+          end
+        else -- Error during compilation
+          sM, cM = string.format("Compilation error: %s", tostring(oR)), "COMS_ER"
         end
-      else -- Error during compilation
-        sM, cM = string.format("Compilation error: %s", tostring(oR)), "COMS_ER"
       end
-    end
+      if(bC) then
+        luapad.SetConsole(sM, cM)
+      else
+        net.Start(GLOB_CONFIG.LOWADN..".UploadCallback")
+        net.WriteString(sM)
+        net.WriteString(cM)
+        net.Send(ply)
+      then
+    end)
 
-    net.Start(GLOB_CONFIG.LOWADN..".UploadCallback")
-    net.WriteString(sM)
-    net.WriteString(cM)
-    net.Send(ply)
-  end
+  net.Receive(GLOB_CONFIG.LOWADN..".UploadClient",
+    function(len, ply)
+      if(not canUserAccess(ply)) then return end
 
-  net.Receive(GLOB_CONFIG.LOWADN..".Upload", luapad.Upload)
+      local sP = GLOB_CONFIG.LOWADN
+      local sS, sI = net.ReadString(), net.ReadString()
+      if (sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
+        net.Start(sP..".DownloadRunClient")
+        net.WriteString(sS)
+        net.WriteString(sI)
+        net.Broadcast()
+      end
 
-  function luapad.UploadClient(len, ply)
-    if(not canUserAccess(ply)) then return end
-
-    local sP = GLOB_CONFIG.LOWADN
-    local sS, sI = net.ReadString(), net.ReadString()
-    if (sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
-      net.Start(sP..".DownloadRunClient")
-      net.WriteString(sS)
-      net.WriteString(sI)
-      net.Send(player.GetAll())
-    end
-    net.Start(sP..".UploadClientCallback")
-    net.Send(ply)
-  end
-
-  net.Receive(GLOB_CONFIG.LOWADN..".UploadClient", luapad.UploadClient)
-
-  local function acceptStream(ply, handler, id)
-    if (ply:IsAdmin() or ply:IsSuperAdmin()) and ACCEPTED_STEAMS[handler] then
-      return true
-    end
-    if (not ply:IsAdmin()) and ACCEPTED_STEAMS[handler] then
-      return false
-    end
-  end
-
-  hook.Add("AcceptStream", GLOB_CONFIG.LOWADN..".AcceptStream", acceptStream)
+      net.Start(sP..".UploadClientCallback")
+      net.Send(ply)
+    end)
 
   return
 end
 
 if (CLIENT) then
-  function luapad.DownloadRunClient(len)
-    luapad.RunScriptClientFromServer(net.ReadString(), net.ReadString())
-  end
-
-  net.Receive(GLOB_CONFIG.LOWADN..".DownloadRunClient", luapad.DownloadRunClient)
+  net.Receive(GLOB_CONFIG.LOWADN..".DownloadRunClient",
+    function(len)
+      luapad.RunScriptHandler(net.ReadString(), net.ReadString(), true)
+    end)
 end
 
 if (file.Exists(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA")) then
@@ -1074,7 +1077,7 @@ function luapad.RefreshTabName(name, term)
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed! (check the origin access rights)", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1151,7 +1154,7 @@ function luapad.RefreshTabLeft(pTre, bInc)
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed! (check the origin access rights)", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1197,7 +1200,7 @@ function luapad.RefreshTabRight(pTre, bInc)
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed! (check the origin access rights)", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1271,7 +1274,7 @@ function luapad.RefreshTabOther(pTre)
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed! (check the origin access rights)", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1306,7 +1309,7 @@ function luapad.RefreshTabAll()
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been refreshed (check the origin access rights)!", "STAT_WR")
+    luapad.SetStatus("No tabs have been refreshed! (check the origin access rights)", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Refreshed successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -1509,7 +1512,7 @@ function luapad.AddTab(name, cont, path, term, icon)
     end):SetImage(luapad.ToIcon("server_go"))
     pIn:AddOption("Shared", function()
       luapad.RunScriptClient(self)
-      luapad.RunScriptServer(self)
+      luapad.RunScriptServer(self, true)
     end):SetImage(luapad.ToIcon("computer_go"))
     pIn:AddOption("Broadcast", function()
       luapad.RunScriptBroadcast(self)
@@ -1565,7 +1568,7 @@ function luapad.RunScriptMenu()
   end):SetImage(luapad.ToIcon("server_go"))
   pMenu:AddOption("Shared", function()
     luapad.RunScriptClient()
-    luapad.RunScriptServer()
+    luapad.RunScriptServer(nil, true)
   end):SetImage(luapad.ToIcon("computer_go"))
   pMenu:AddOption("Broadcast", function()
     luapad.RunScriptBroadcast()
@@ -1962,7 +1965,7 @@ function luapad.SaveAll()
 
   -- In case the loop is executed
   if(nU <= 0) then -- All tabs are not from the data folder
-    luapad.SetStatus("No tabs have been saved (check the origin access rights)!", "STAT_WR")
+    luapad.SetStatus("No tabs have been saved! (check the origin access rights)", "STAT_WR")
   else -- Not every tab may be from the data folder
     luapad.SetStatus("Saved successfully [%s] of [%s] tabs!", "STAT_OK", nU, nI)
   end
@@ -2021,20 +2024,20 @@ function luapad.DeleteScript(pTre)
   )
 end
 
-function luapad.RunScriptHandler(code, index, cons)
+function luapad.RunScriptHandler(sCode, sID, bCon)
   if(SERVER or not canUserAccess(LocalPlayer())) then return end
 
-  local runSt = (cons and luapad.SetConsole or luapad.SetStatus)
-  local oR = CompileString(code, index, false)
+  local runFn = (bCon and luapad.SetConsole or luapad.SetStatus)
+  local oR = CompileString(sCode, sID, false)
   if(isfunction(oR)) then -- Compiled successfully
     local bS, sE = pcall(oR)
     if bS then -- The code executes successfully
-      runSt("Code [%s%s] ran successfully!", "COMS_OK", sD, sN)
+      runFn("Code [%s%s] ran successfully!", "COMS_CL", sD, sN)
     else -- The code gives an error at runtime
-      runSt("Runtime error: %s", "COMS_ER", sE)
+      runFn("Runtime error: %s", "COMS_ER", sE)
     end
   else -- Error during compilation
-    runSt("Compilation error: %s", "COMS_ER", oR)
+    runFn("Compilation error: %s", "COMS_ER", oR)
   end
 end
 
@@ -2055,12 +2058,15 @@ function luapad.RunScriptClient(pTre)
   luapad.RunScriptHandler(sC, sI, false)
 end
 
-function luapad.RunScriptClientFromServer(code, index)
-  luapad.RunScriptHandler(code, index, true)
-end
+function luapad.RunScriptServer(pTre, bCon)
+  local user = LocalPlayer()
+  if(SERVER or not canUserAccess(user)) then return end
 
-function luapad.RunScriptServer(pTre)
-  if(SERVER or not canUserAccess(LocalPlayer())) then return end
+  local sA = GLOB_CONFIG.LOWADN..".Upload"
+  if(not canUserAcceptStream(user, sA)) then
+    luapad.SetStatus("User message could not be accepted! (check permissions)", "COMS_WR")
+    return
+  end
 
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -2069,25 +2075,41 @@ function luapad.RunScriptServer(pTre)
   if(not IsValid(cT)) then return end
 
   local sC = cT:GetContents()
+
+  if(not canWriteString(sC)) then
+    luapad.SetStatus("Script exceeds the size limit! (shorten the code to proceed)", "COMS_WR")
+    return
+  end
+
   local tS = cT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
   local sI = "RunScriptServer:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
 
-  net.Receive(GLOB_CONFIG.LOWADN..".UploadCallback",
-    function()
-      local sM = net.ReadString()
-      local cM = net.ReadString()
-      luapad.SetStatus(sM, cM)
-    end)
+  if(not bCon) then -- output in the server console
+    net.Receive(GLOB_CONFIG.LOWADN..".UploadCallback",
+      function() -- Output in the client panel
+        local sM = net.ReadString()
+        local cM = net.ReadString()
+        luapad.SetStatus(sM, cM)
+      end)
+  end
 
-  net.Start(GLOB_CONFIG.LOWADN..".Upload")
+  net.Start(sA)
   net.WriteString(sC)
   net.WriteString(sI)
+  net.WriteBool(bCon)
   net.SendToServer()
 end
 
 function luapad.RunScriptBroadcast(pTre)
-  if(SERVER or not canUserAccess(LocalPlayer())) then return end
+  local user = LocalPlayer()
+  if(SERVER or not canUserAccess(user)) then return end
+
+  local sA = GLOB_CONFIG.LOWADN..".UploadClient"
+  if(not canUserAcceptStream(user, sA)) then
+    luapad.SetStatus("User message could not be accepted! (check permissions)", "COMS_WR")
+    return
+  end
 
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -2096,16 +2118,22 @@ function luapad.RunScriptBroadcast(pTre)
   if(not IsValid(cT)) then return end
 
   local sC = cT:GetContents()
+
+  if(not canWriteString(sC)) then
+    luapad.SetStatus("Script exceeds the size limit! (shorten the code to proceed)", "COMS_WR")
+    return
+  end
+
   local tS = cT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
   local sI = "RunScriptBroadcast:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
 
   net.Receive(GLOB_CONFIG.LOWADN..".UploadClientCallback",
     function()
-      luapad.SetStatus("Round trip %s successful (check client console for errors)!", "COMS_OK", sI)
+      luapad.SetStatus("Round trip %s successful! (check client console for errors)", "COMS_OK", sI)
     end)
 
-  net.Start(GLOB_CONFIG.LOWADN..".UploadClient")
+  net.Start(sA)
   net.WriteString(sC)
   net.WriteString(sI)
   net.SendToServer()
