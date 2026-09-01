@@ -12,6 +12,7 @@ luapad.IgnoreConsoleOpen = true
 local GLOB_CONFIG = {
   DELIMS = "|", -- General symbol used for separator
   PANLSZ = 2 / 3, -- The ratio panel will use according to the screen size
+  MAXMSL = 60000, -- As the maxumum write string limit is 65532
   ADDONN = "Luapad", -- Generic addon name
   FOLDER = "luapad/", -- Default application folder in the data file system
   LOWADN = "luapad", -- Addon name lower case for hashes, messages and convars
@@ -193,10 +194,12 @@ local function canUserAcceptStream(ply, index)
   if (not ply:IsAdmin()) and ACCEPTED_STEAMS[index] then
     return false
   end
+
+  return false
 end
 
 local function canWriteString(sCon)
-  return (string.len(tostring(sCon or "")) <= 60000)
+  return (string.len(tostring(sCon or "")) <= GLOB_CONFIG.MAXMSL)
 end
 
 function luapad.SetConsole(sFmt, sKey, ...)
