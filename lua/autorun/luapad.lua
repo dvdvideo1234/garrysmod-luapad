@@ -220,9 +220,9 @@ end
 
 if (SERVER) then
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".Upload")
-  util.AddNetworkString(GLOB_CONFIG.LOWADN..".StatusCallback")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadClient")
-  util.AddNetworkString(GLOB_CONFIG.LOWADN..".DownloadRunClient")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".DownloadClient")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".StatusCallback")
 
   if (luapad.forcedownload) then
     AddCSLuaFile("autorun/luapad.lua")
@@ -357,7 +357,7 @@ if (SERVER) then
       local sP = GLOB_CONFIG.LOWADN
       local sS, sI = net.ReadString(), net.ReadString()
       if(sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
-        net.Start(sP..".DownloadRunClient")
+        net.Start(sP..".DownloadClient")
         net.WriteString(sS)
         net.WriteString(sI)
         net.Broadcast()
@@ -373,7 +373,7 @@ if (SERVER) then
 end
 
 if (CLIENT) then
-  net.Receive(GLOB_CONFIG.LOWADN..".DownloadRunClient",
+  net.Receive(GLOB_CONFIG.LOWADN..".DownloadClient",
     function(len)
       luapad.RunScriptHandler(net.ReadString(), net.ReadString(), true)
     end)
