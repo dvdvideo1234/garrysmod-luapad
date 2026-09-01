@@ -196,7 +196,23 @@ local function canUserAcceptStream(ply, index)
 end
 
 local function canWriteString(sCon)
-  return (string.len(tostring(sCon or "")) > 60000)
+  return (string.len(tostring(sCon or "")) <= 60000)
+end
+
+function luapad.SetConsole(sFmt, sKey, ...)
+  if(not sKey) then return end
+  local cDrw = COLOR_STATUS[sKey]
+  if(not cDrw) then return end
+  local cTmc = COLOR_STATUS["#TEMCO#"]
+
+  local nC, tC = select("#", ...), {...}
+  for iC = 1, nC do tC[iC] = tostring(tC[iC]) end
+
+  -- Moce color data to status color
+  cTmc.r, cTmc.g = cDrw.r, cDrw.g
+  cTmc.b, cTmc.a = cDrw.b, cDrw.a
+
+  MsgC(cTmc, sFmt:format(unpack(tC)).."\n")
 end
 
 if (SERVER) then
@@ -307,7 +323,7 @@ if (SERVER) then
       if(not canUserAccess(ply)) then return end
 
       local sS, sI = net.ReadString(), net.ReadString()
-      local bC, sM, cM = net.ReadBool()  nil, nil
+      local bC, sM, cM = net.ReadBool(), nil, nil
 
       if(sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
         local oR = CompileString(sS, sI, false)
@@ -329,7 +345,7 @@ if (SERVER) then
         net.WriteString(sM)
         net.WriteString(cM)
         net.Send(ply)
-      then
+      end
     end)
 
   net.Receive(GLOB_CONFIG.LOWADN..".UploadClient",
@@ -771,22 +787,6 @@ function luapad.SetStatus(sFmt, sKey, ...)
   surface.PlaySound(GLOB_CONFIG.PRESND:format(math.random(1, 4)))
 
   return pLab
-end
-
-function luapad.SetConsole(sFmt, sKey, ...)
-  if(not sKey) then return end
-  local cDrw = COLOR_STATUS[sKey]
-  if(not cDrw) then return end
-  local cTmc = COLOR_STATUS["#TEMCO#"]
-
-  local nC, tC = select("#", ...), {...}
-  for iC = 1, nC do tC[iC] = tostring(tC[iC]) end
-
-  -- Moce color data to status color
-  cTmc.r, cTmc.g = cDrw.r, cDrw.g
-  cTmc.b, cTmc.a = cDrw.b, cDrw.a
-
-  MsgC(cTmc, sFmt:format(unpack(tC)).."\n")
 end
 
 --[[
