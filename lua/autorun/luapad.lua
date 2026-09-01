@@ -9,36 +9,43 @@ luapad.debugmode = true
 luapad.forcedownload = true
 luapad.IgnoreConsoleOpen = true
 
-local BASE_DELIMS = "|" -- General symbol used for separator
-local BASE_PANLSZ = 2 / 3 -- The ratio panel will use according to the screen size
-local BASE_FOLDER = "luapad/" -- Default application folder in the data file system
-local ICON_FORMAT = "icon16/%s.png" -- Icon path format string
-local BASE_FMNAME = "untitled%d.txt" -- Untitled new file format string
-local PANL_STORKY = "gmod_luapad"    -- Dedicated tab panel key to store stream info
-local FORM_ASOUND = "ambient/water/drip%d.wav"
-local DATM_FORMAT = "%Y-%m-%d %H:%M:%S"
-local DEBG_FORMAT = "Found routine [%s] in %s"
-local CONV_CFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY)
+local GLOB_CONFIG = {
+  DELIMS = "|", -- General symbol used for separator
+  PANLSZ = 2 / 3, -- The ratio panel will use according to the screen size
+  ADDONN = "Luapad", -- Generic addon name
+  FOLDER = "luapad/", -- Default application folder in the data file system
+  LOWADN = "luapad", -- Addon name lower case for hashes, messages and convars
+  ICOFMT = "icon16/%s.png", -- Icon path format string
+  FMNAME = "untitled%d.txt", -- Untitled new file format string
+  FFDRPT = "[%s%s]", -- Fire format identifier for user messages
+  STORKY = "gmod_luapad",    -- Dedicated tab panel key to store stream info
+  PRESND = "ambient/water/drip%d.wav", -- Sound format played on button press
+  DATFMT = "%Y-%m-%d %H:%M:%S", -- Date and time general format
+  SRCHFM = "Found routine [%s] in %s", -- Debug search messages
+  CFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY)
+}
 
 -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
-local VAR_ADM = CreateConVar("luapad_adminonly",  1, CONV_CFLAGS, "Makes the luapad addon admin only", 0, 1)
-local VAR_MXF = CreateConVar("luapad_maxunamed", 10, CONV_CFLAGS, "Makes the luapad addon admin only", 0, 100)
-local VAR_MXR = CreateConVar("luapad_maxrecurs", 20, CONV_CFLAGS, "Recurse depth when opening a file system", 0, 100)
-local VAR_EDT = CreateConVar("luapad_endataorg",  1, CONV_CFLAGS, "File operation in the whole data folder", 0, 1)
+local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.CFLAGS, "Makes the luapad addon admin only", 0, 1)
+local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.CFLAGS, "Makes the luapad addon admin only", 0, 100)
+local VAR_MXR = CreateConVar(GLOB_CONFIG.LOWADN.."_maxrecurs", 20, GLOB_CONFIG.CFLAGS, "Recurse depth when opening a file system", 0, 100)
+local VAR_EDT = CreateConVar(GLOB_CONFIG.LOWADN.."_endataorg",  1, GLOB_CONFIG.CFLAGS, "File operation in the whole data folder", 0, 1)
 
 local COLOR_STATUS = {
-  ["#TEMCO#"] = Color(0 ,  0 ,  0,  0 ),
-  ["STAT_OK"] = Color(72, 205, 72, 255),
-  ["STAT_WR"] = Color(205,140, 72, 255),
-  ["STAT_ER"] = Color(205, 72, 72, 255),
-  ["COMS_OK"] = Color(92, 205, 92, 255),
-  ["COMS_WR"] = Color(205,140, 92, 255),
-  ["COMS_ER"] = Color(205, 92, 92, 255),
+  ["#TEMCO#"] = Color(  0,   0,   0,   0),
+  ["STAT_OK"] = Color(72 , 205,  72, 255),
+  ["STAT_WR"] = Color(205, 140,  72, 255),
+  ["STAT_ER"] = Color(205,  72,  72, 255),
+  ["COMS_OK"] = Color(92 , 205,  92, 255),
+  ["COMS_WR"] = Color(205, 140,  92, 255),
+  ["COMS_ER"] = Color(205,  92,  92, 255),
+  ["COMS_SV"] = Color(136, 221, 255, 255),
+  ["COMS_CL"] = Color(255, 221, 102, 255)
 }
 
 local ACCEPTED_STEAMS = {
-  ["luapad.Upload"] = true,
-  ["luapad.UploadClient"] = true
+  [GLOB_CONFIG.LOWADN..".Upload"] = true,
+  [GLOB_CONFIG.LOWADN..".UploadClient"] = true
 }
 
 -- https://heyter.github.io/js-famfamfam-search/
@@ -84,16 +91,16 @@ local ENABLE_FOLDER = {
 }
 
 local RESTRICTED_FILES = {
-  "data/"..BASE_FOLDER.."welcome.txt",
-  "data/"..BASE_FOLDER.."saved_tabs.txt",
-  "data/"..BASE_FOLDER.."server_globals.txt",
-  "addons/luapad/data/"..BASE_FOLDER.."welcome.txt",
-  "addons/luapad/data/"..BASE_FOLDER.."saved_tabs.txt",
-  "addons/luapad/data/"..BASE_FOLDER.."server_globals.txt",
+  "data/"..GLOB_CONFIG.FOLDER.."welcome.txt",
+  "data/"..GLOB_CONFIG.FOLDER.."saved_tabs.txt",
+  "data/"..GLOB_CONFIG.FOLDER.."server_globals.txt",
+  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."welcome.txt",
+  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."saved_tabs.txt",
+  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."server_globals.txt",
 }
 
 local FMSYNTAX_HILIGHT = {
-  N = "luapad._sG", -- Name
+  N = GLOB_CONFIG.LOWADN.. "._sG", -- Name
   I = "[\"%s\"]",   -- Index
   V = " = \"%s\"",  -- Value
   H = " = {}"       -- Header
@@ -103,7 +110,7 @@ local PATPATH_CONVERT = {
   {"[\\/]+", "/"}, {"%.%./", ""},
   {"^[/]+" , "" }, {"[/]+$", ""},
   Sors = {"^data/", "", 1},
-  Base = {"^"..BASE_FOLDER, "", 1},
+  Base = {"^"..GLOB_CONFIG.FOLDER, "", 1},
 }
 
 local FMSYNTAX_METATYP = {
@@ -171,7 +178,7 @@ function canUserAccess(pUser)
   elseif VAR_ADM:GetBool() then
     local bA = (pUser:IsAdmin() or pUser:IsSuperAdmin())
     if not bA then
-      pUser:ChatPrint("Sorry "..pUser:Nick()..", only admins can use Luapad.")
+      pUser:ChatPrint("Sorry "..pUser:Nick()..", only admins can use "..GLOB_CONFIG.ADDONN..".")
     end
     return bA
   else
@@ -180,20 +187,20 @@ function canUserAccess(pUser)
 end
 
 if (SERVER) then
-  util.AddNetworkString("luapad.Upload")
-  util.AddNetworkString("luapad.UploadCallback")
-  util.AddNetworkString("luapad.UploadClient")
-  util.AddNetworkString("luapad.UploadClientCallback")
-  util.AddNetworkString("luapad.DownloadRunClient")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".Upload")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadCallback")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadClient")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadClientCallback")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".DownloadRunClient")
 
   if (luapad.forcedownload) then
     AddCSLuaFile("autorun/luapad.lua")
     AddCSLuaFile("autorun/luapad_editor.lua")
   end
 
-  if(not file.Exists(BASE_FOLDER.."server_globals.txt", "DATA")) then
+  if(not file.Exists(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA")) then
 
-    local fSin = file.Open(BASE_FOLDER.."server_globals.txt", "wb", "DATA")
+    local fSin = file.Open(GLOB_CONFIG.FOLDER.."server_globals.txt", "wb", "DATA")
 
     if(fSin) then
 
@@ -205,7 +212,7 @@ if (SERVER) then
       fSin:Write("-- This is an automatically generated cache file for server-side\n")
       fSin:Write("-- The content includes global functions, meta-tables, and enumerations\n")
       fSin:Write("-- Don't touch it, or you'll probably mess up your syntax highlighting\n")
-      fSin:Write("-- The timestamp of this generated file is ["..os.date(DATM_FORMAT).."]\n")
+      fSin:Write("-- The timestamp of this generated file is ["..os.date(GLOB_CONFIG.DATFMT).."]\n")
       fSin:Write("\n"); fSin:Write(sN); fSin:Write(sH); fSin:Write("\n")
 
       fSin:Write("\n\n-- Global functions and libraries\n\n")
@@ -270,52 +277,64 @@ if (SERVER) then
       end
 
       fSin:Flush(); fSin:Close()
-      resource.AddFile("data/"..BASE_FOLDER.."server_globals.txt")
+      resource.AddFile("data/"..GLOB_CONFIG.FOLDER.."server_globals.txt")
     end
   end
 
-  if(not file.Exists(BASE_FOLDER.."welcome.txt", "DATA")) then
-    resource.AddFile("data/"..BASE_FOLDER.."welcome.txt")
+  if(not file.Exists(GLOB_CONFIG.FOLDER.."welcome.txt", "DATA")) then
+    resource.AddFile("data/"..GLOB_CONFIG.FOLDER.."welcome.txt")
   end
 
-  if(not file.Exists(BASE_FOLDER.."about.txt", "DATA")) then
-    resource.AddFile("data/"..BASE_FOLDER.."about.txt")
+  if(not file.Exists(GLOB_CONFIG.FOLDER.."about.txt", "DATA")) then
+    resource.AddFile("data/"..GLOB_CONFIG.FOLDER.."about.txt")
   end
 
   function luapad.Upload(len, ply)
-    if not canUserAccess(ply) then
-      return
+    if(not canUserAccess(ply)) then return end
+
+    local sM, cM = nil, nil
+    local sS, sI = net.ReadString(), net.ReadString()
+
+    if(sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
+      local oR = CompileString(sS, sI, false)
+      if(isfunction(oR)) then -- Compiled successfully
+        local bS, sE = pcall(oR)
+        if bS then -- The code executes successfully
+          sM, cM = string.format("Code %s ran successfully!", sI), "COMS_OK"
+        else -- The code gives an error at runtime
+          sM, cM = string.format("Runtime error: %s", sE), "COMS_ER"
+        end
+      else -- Error during compilation
+        sM, cM = string.format("Compilation error: %s", tostring(oR)), "COMS_ER"
+      end
     end
 
-    local str = net.ReadString()
-    if (str and (ply:IsAdmin() or ply:IsSuperAdmin())) then
-      RunString(str)
-    end
-
-    net.Start("luapad.UploadCallback")
+    net.Start(GLOB_CONFIG.LOWADN..".UploadCallback")
+    net.WriteString(sM)
+    net.WriteString(cM)
     net.Send(ply)
   end
 
-  net.Receive("luapad.Upload", luapad.Upload)
+  net.Receive(GLOB_CONFIG.LOWADN..".Upload", luapad.Upload)
 
   function luapad.UploadClient(len, ply)
-    if not canUserAccess(ply) then
-      return
-    end
+    if(not canUserAccess(ply)) then return end
 
-    local str = net.ReadString()
-    if (str and (ply:IsAdmin() or ply:IsSuperAdmin())) then
-      net.Start("luapad.DownloadRunClient")
-      net.WriteString(str)
+    local sP = GLOB_CONFIG.LOWADN
+    local sS, sI = net.ReadString(), net.ReadString()
+    if (sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
+      net.Start(sP..".DownloadRunClient")
+      net.WriteString(sS)
+      net.WriteString(sI)
       net.Send(player.GetAll())
     end
-    net.Start("luapad.UploadClientCallback")
+    net.Start(sP..".UploadClientCallback")
     net.Send(ply)
   end
 
-  net.Receive("luapad.UploadClient", luapad.UploadClient)
+  net.Receive(GLOB_CONFIG.LOWADN..".UploadClient", luapad.UploadClient)
 
-  local function AcceptStream(ply, handler, id)
+  local function acceptStream(ply, handler, id)
     if (ply:IsAdmin() or ply:IsSuperAdmin()) and ACCEPTED_STEAMS[handler] then
       return true
     end
@@ -324,34 +343,37 @@ if (SERVER) then
     end
   end
 
-  hook.Add("AcceptStream", "luapad.AcceptStream", AcceptStream)
+  hook.Add("AcceptStream", GLOB_CONFIG.LOWADN..".AcceptStream", acceptStream)
 
   return
 end
 
 if (CLIENT) then
   function luapad.DownloadRunClient(len)
-    luapad.RunScriptClientFromServer(net.ReadString())
+    luapad.RunScriptClientFromServer(net.ReadString(), net.ReadString())
   end
-  net.Receive("luapad.DownloadRunClient", luapad.DownloadRunClient)
+
+  net.Receive(GLOB_CONFIG.LOWADN..".DownloadRunClient", luapad.DownloadRunClient)
 end
 
-if (file.Exists(BASE_FOLDER.."server_globals.txt", "DATA")) then
-  RunString(file.Read(BASE_FOLDER.."server_globals.txt", "DATA"))
+if (file.Exists(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA")) then
+  RunString(file.Read(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA"))
 else
   include("server_globals.lua")
 end
 
 function luapad.About()
-  if (not file.Exists(BASE_FOLDER.."about.txt", "DATA")) then
+  local sD = GLOB_CONFIG.FOLDER
+  if (not file.Exists(sD.."about.txt", "DATA")) then
     return
   end
-  luapad.AddTab("about.txt", file.Read(BASE_FOLDER.."about.txt", "DATA"), "data/"..BASE_FOLDER)
+
+  luapad.AddTab("about.txt", file.Read(sD.."about.txt", "DATA"), "data/"..sD)
 end
 
 -- https://heyter.github.io/js-famfamfam-search/
 function luapad.ToIcon(sIco)
-  return ICON_FORMAT:format(tostring(sIco))
+  return GLOB_CONFIG.ICOFMT:format(tostring(sIco))
 end
 
 --[[
@@ -367,7 +389,7 @@ function luapad.ShowConfirmDialog(sMsg, sTxt, fnSuc, fnDsc, sSuc, sDsc)
   local pFrame = vgui.Create("DFrame")
   if(not IsValid(pFrame)) then return end
 
-  pFrame:SetTitle("Luapad")
+  pFrame:SetTitle(GLOB_CONFIG.ADDONN)
   pFrame:SetDraggable(false)
   pFrame:ShowCloseButton(false)
   pFrame:SetBackgroundBlur(true)
@@ -482,7 +504,7 @@ end
 function luapad.GetPath(sOrg)
   local fP, sP, oP
   local tP = PATPATH_CONVERT
-  local sD = ("data/" .. BASE_FOLDER)
+  local sD = ("data/" .. GLOB_CONFIG.FOLDER)
   local sB = tostring(sOrg or sD)
         sB = ((sB == "") and sD or sB)
   -- Copy of the path origin and convert it
@@ -503,13 +525,13 @@ function luapad.CheckGlobal(func)
   if (luapad._sG[func] ~= nil) then
     local sN = FMSYNTAX_HILIGHT.N
     if (luapad.debugmode) then
-      print(DEBG_FORMAT:format(func, sN))
+      print(GLOB_CONFIG.SRCHFM:format(func, sN))
     end
     return luapad._sG[func]
   end
   if (_G[func] ~= nil) then
     if (luapad.debugmode) then
-      print(DEBG_FORMAT:format(func, "_G"))
+      print(GLOB_CONFIG.SRCHFM:format(func, "_G"))
     end
     return _G[func]
   end
@@ -535,10 +557,10 @@ function luapad.SaveTabs()
       tO[1], tO[2] = tS.Name , tS.Path
       tO[3], tO[4] = (tS.Term or ""), tS.Icon
       if(pT == aT) then tO[1] = "*" .. tO[1] end
-      table.insert(tW, table.concat(tO, BASE_DELIMS))
+      table.insert(tW, table.concat(tO, GLOB_CONFIG.DELIMS))
     end
   end
-  file.Write(BASE_FOLDER.."saved_tabs.txt", table.concat(tW, "\n"))
+  file.Write(GLOB_CONFIG.FOLDER.."saved_tabs.txt", table.concat(tW, "\n"))
 end
 
 function luapad.LoadTabs()
@@ -546,11 +568,11 @@ function luapad.LoadTabs()
   if(not IsValid(pS)) then return end
    pS:Clear() -- The * symbol is invalid for a file name
   -- Read the saved tabs file and load the related files
-  local sF = file.Read(BASE_FOLDER.."saved_tabs.txt", "DATA" )
+  local sF = file.Read(GLOB_CONFIG.FOLDER.."saved_tabs.txt", "DATA" )
   if(not sF) then return end -- File not found then bail out
   local tW, aT = ("[\r\n]+"):Explode(sF, true), nil
   for iD = 1, #tW do -- Basically we have one tab on one line
-    local tO = BASE_DELIMS:Explode(tW[iD]) -- Empty lines are excluded
+    local tO = GLOB_CONFIG.DELIMS:Explode(tW[iD]) -- Empty lines are excluded
     local bA = (string.sub(tO[1], 1, 1) == "*") -- File name starts with * when active
     if(bA) then tO[1] = string.sub(tO[1], 2, -1) end
     local bB, sB, oB, pT = luapad.GetPath(tO[2])
@@ -568,9 +590,7 @@ function luapad.LoadTabs()
 end
 
 function luapad.Toggle()
-  if (SERVER or not canUserAccess(LocalPlayer())) then
-    return
-  end
+  if(SERVER or not canUserAccess(LocalPlayer())) then return end
 
   if (IsValid(luapad.Frame) and not luapad.debugmode) then
     luapad.Frame:SetVisible(not luapad.Frame:IsVisible())
@@ -580,13 +600,13 @@ function luapad.Toggle()
   -- Build it, if it doesn't exist
   local nW, nH = ScrW(), ScrH()
   luapad.Frame = vgui.Create("DFrame")
-  local mB = BASE_PANLSZ
-  local mR = (1 - BASE_PANLSZ) / 2
+  local mB = GLOB_CONFIG.PANLSZ
+  local mR = (1 - mB) / 2
   local sW, sH = mB * nW, mB * nH
   local pW, pH = mR * nW, mR * nH
   luapad.Frame:SetSize(sW, sH)
   luapad.Frame:SetPos(pW, pH)
-  luapad.Frame:SetTitle("Luapad")
+  luapad.Frame:SetTitle(GLOB_CONFIG.ADDONN)
   luapad.Frame:SetVisible(true)
   luapad.Frame:ShowCloseButton(true)
 
@@ -627,14 +647,17 @@ function luapad.Toggle()
   luapad.PropertySheet:Dock(TOP)
 
   function luapad.PropertySheet:OnActiveTabChanged(pO, pN)
+    local sN = GLOB_CONFIG.ADDONN
     if(IsValid(pN)) then
       local tS = pN:GetStreamInfo()
-      luapad.Frame:SetTitle("Luapad - " .. tS.Path .. tS.Name)
+      local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
+      luapad.Frame:SetTitle(sN .. " - " .. sA)
     elseif(IsValid(pO)) then
       local tS = pO:GetStreamInfo()
-      luapad.Frame:SetTitle("Luapad - " .. tS.Path .. tS.Name)
+      local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
+      luapad.Frame:SetTitle(sN .. " - " .. sA)
     else
-      luapad.Frame:SetTitle("Luapad")
+      luapad.Frame:SetTitle(sN)
     end
   end
 
@@ -644,6 +667,19 @@ function luapad.Toggle()
     for iT = 1, #tT do local tP = tT[iT]
       if(pTre == tP.Tab) then return iT end
     end; return nil
+  end
+
+  function luapad.PropertySheet:GetTabStitch(pTre)
+    if(pTre ~= nil) then -- There is an argument
+      if(not IsValid(pTre)) then return end
+      local iT = self:GetTabIndex(pTre)
+      if(not iT) then return nil end
+      return pTre -- The argument is validated
+    else
+      local pAct = self:GetActiveTab()
+      if(not IsValid(pAct)) then return end
+      return pAct -- No argument use active
+    end
   end
 
   local oW, oH = luapad.Frame:GetSize()
@@ -672,10 +708,10 @@ function luapad.Toggle()
   luapad.AddToolbarSpacer()
   luapad.AddToolbarItem("Load tabs / Save tabs"  , "briefcase" , luapad.LoadTabs, luapad.SaveTabs)
 
-  if (file.Exists(BASE_FOLDER.."saved_tabs.txt", "DATA")) then
+  if (file.Exists(GLOB_CONFIG.FOLDER.."saved_tabs.txt", "DATA")) then
     luapad.LoadTabs()
-  elseif (file.Exists(BASE_FOLDER.."welcome.txt", "DATA")) then
-    luapad.AddTab("welcome.txt", file.Read(BASE_FOLDER.."welcome.txt", "DATA"), "data/"..BASE_FOLDER)
+  elseif (file.Exists(GLOB_CONFIG.FOLDER.."welcome.txt", "DATA")) then
+    luapad.AddTab("welcome.txt", file.Read(GLOB_CONFIG.FOLDER.."welcome.txt", "DATA"), "data/"..GLOB_CONFIG.FOLDER)
   else
     luapad.NewTab()
   end
@@ -698,6 +734,7 @@ function luapad.SetStatus(sFmt, sKey, ...)
   if(not cDrw) then return end
   local cTmc = COLOR_STATUS["#TEMCO#"]
 
+  local sI = GLOB_CONFIG.LOWADN..".Statusbar.Fade"
   local nC, tC = select("#", ...), {...}
   for iC = 1, nC do tC[iC] = tostring(tC[iC]) end
 
@@ -705,7 +742,7 @@ function luapad.SetStatus(sFmt, sKey, ...)
   cTmc.r, cTmc.g = cDrw.r, cDrw.g
   cTmc.b, cTmc.a = cDrw.b, cDrw.a
 
-  timer.Remove("luapad.Statusbar.Fade")
+  timer.Remove(sI)
   luapad.Statusbar:Clear()
 
   local pLab = vgui.Create("DLabel", luapad.Statusbar)
@@ -713,25 +750,40 @@ function luapad.SetStatus(sFmt, sKey, ...)
   pLab:SetTextColor(cTmc) -- Reference assignment
   pLab:SizeToContents()
 
-  timer.Create(
-    "luapad.Statusbar.Fade", 0.01, 0, function()
+  timer.Create(sI, 0.01, 0,
+    function()
       if(not IsValid(pLab)) then return end
       local cBar = pLab:GetTextColor()
       cBar.a = math.Clamp(cBar.a - 1, 0, 255)
       pLab:SetTextColor(cBar)
 
       if (cBar.a == 0) then
-        timer.Remove("luapad.Statusbar.Fade")
+        timer.Remove(sI)
         if(IsValid(pLab)) then pLab:Remove() end
       end
-    end
-  )
+    end)
 
   luapad.Statusbar:Add(pLab)
   -- https://wiki.facepunch.com/gmod/HL2_Sound_List
-  surface.PlaySound(FORM_ASOUND:format(math.random(1, 4)))
+  surface.PlaySound(GLOB_CONFIG.PRESND:format(math.random(1, 4)))
 
   return pLab
+end
+
+function luapad.SetConsole(sFmt, sKey, ...)
+  if(not sKey) then return end
+  local cDrw = COLOR_STATUS[sKey]
+  if(not cDrw) then return end
+  local cTmc = COLOR_STATUS["#TEMCO#"]
+
+  local nC, tC = select("#", ...), {...}
+  for iC = 1, nC do tC[iC] = tostring(tC[iC]) end
+
+  -- Moce color data to status color
+  cTmc.r, cTmc.g = cDrw.r, cDrw.g
+  cTmc.b, cTmc.a = cDrw.b, cDrw.a
+
+  MsgC(cTmc, sFmt:format(unpack(tC)).."\n")
 end
 
 --[[
@@ -783,7 +835,7 @@ function luapad.AddToolbarSpacer()
   local pLab = luapad.Toolbar:Add("DLabel")
   if(not IsValid(pLab)) then return end
 
-  pLab:SetText(" "..BASE_DELIMS.." ")
+  pLab:SetText(" "..GLOB_CONFIG.DELIMS.." ")
   pLab:SizeToContents()
 
   return pLab
@@ -1295,8 +1347,8 @@ function luapad.AddTab(name, cont, path, term, icon)
   pText:SizeToContents()
 
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
-  local pTab  = tInfo.Tab; pTab[PANL_STORKY] = {}
-  local tSor  = pTab[PANL_STORKY]
+  local pTab  = tInfo.Tab; pTab[GLOB_CONFIG.STORKY] = {}
+  local tSor  = pTab[GLOB_CONFIG.STORKY]
 
   tSor.Name = sNam -- The actual file name associated with the tab
   tSor.Path = sPth -- File path always relative to the game folder
@@ -1309,7 +1361,7 @@ function luapad.AddTab(name, cont, path, term, icon)
    * Retrieves the storage info from the tab
   ]]
   function pTab:GetStreamInfo()
-    return self[PANL_STORKY]
+    return self[GLOB_CONFIG.STORKY]
   end
 
   --[[
@@ -1450,17 +1502,17 @@ function luapad.AddTab(name, cont, path, term, icon)
     local pIn, pOp = pMenu:AddSubMenu("Run")
     pOp:SetIcon(luapad.ToIcon("table_go"))
     pIn:AddOption("Client", function()
-      luapad.RunScriptClient()
+      luapad.RunScriptClient(self)
     end):SetImage(luapad.ToIcon("user_go"))
     pIn:AddOption("Server", function()
-      luapad.RunScriptServer()
-    end):SetImage(luapad.ToIcon("computer_go"))
+      luapad.RunScriptServer(self)
+    end):SetImage(luapad.ToIcon("server_go"))
     pIn:AddOption("Shared", function()
-      luapad.RunScriptClient()
-      luapad.RunScriptServer()
-    end):SetImage(luapad.ToIcon("building_go"))
+      luapad.RunScriptClient(self)
+      luapad.RunScriptServer(self)
+    end):SetImage(luapad.ToIcon("computer_go"))
     pIn:AddOption("Broadcast", function()
-      luapad.RunScriptServerClient()
+      luapad.RunScriptBroadcast(self)
     end):SetImage(luapad.ToIcon("feed_go"))
     -- Close tabs
     local pIn, pOp = pMenu:AddSubMenu("Close")
@@ -1500,6 +1552,28 @@ function luapad.AddTab(name, cont, path, term, icon)
   return pTab
 end
 
+function luapad.RunScriptMenu()
+  local pMenu = DermaMenu()
+  if(not IsValid(pMenu)) then return end
+  pMenu:SetPos(gui.MousePos())
+  -- Run a script
+  pMenu:AddOption("Client", function()
+    luapad.RunScriptClient()
+  end):SetImage(luapad.ToIcon("user_go"))
+  pMenu:AddOption("Server", function()
+    luapad.RunScriptServer()
+  end):SetImage(luapad.ToIcon("server_go"))
+  pMenu:AddOption("Shared", function()
+    luapad.RunScriptClient()
+    luapad.RunScriptServer()
+  end):SetImage(luapad.ToIcon("computer_go"))
+  pMenu:AddOption("Broadcast", function()
+    luapad.RunScriptBroadcast()
+  end):SetImage(luapad.ToIcon("feed_go"))
+
+  pMenu:Open()
+end
+
 function luapad.IsOpen(name, path)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return false end
@@ -1519,12 +1593,12 @@ function luapad.IsOpen(name, path)
     local tP = tI[iD]
     local tS = tP.Tab:GetStreamInfo()
     local sF = tS.Path .. tS.Name
-    local sN, sM = tS.Name, tS.Term
+    local sN, sT = tS.Name, tS.Term
     if(sPth ~= "") then
       if(sF == sNam) then return true end
     else
       if(sN == sNam) then return true end
-      if(sM == sNam) then return true end
+      if(sT == sNam) then return true end
     end
   end; return false
 end
@@ -1543,23 +1617,23 @@ function luapad.NewTab(cont, path)
 
   if(bB) then
     local nF = VAR_MXF:GetInt()
-    local sO = sB .. BASE_FMNAME
+    local sF = GLOB_CONFIG.FMNAME
+    local sO = sB .. sF
     local tI, iF = pS:GetItems(), nil
     local sCon = tostring(cont or "")
 
     file.CreateDir(sB)
 
     for iD = 1, nF do
-      local sF = sO:format(iD)
-      local sN = BASE_FMNAME:format(iD)
-      if (not file.Exists(sF, "DATA") and not luapad.IsOpen(sN)) then
+      local sT, sN = sO:format(iD), sF:format(iD)
+      if (not file.Exists(sT, "DATA") and not luapad.IsOpen(sN)) then
         iF = iD
         break
       end
     end
 
     if(iF) then -- Index is present open the file
-      luapad.AddTab(BASE_FMNAME:format(iF), sCon, oB)
+      luapad.AddTab(sF:format(iF), sCon, oB)
       luapad.SetStatus("Open the next name available!", "STAT_OK")
     else -- Rise a status bar message
       luapad.SetStatus("There are more than [%s] files in [%s] origin! (clean the folder)", "STAT_ER", nF, oB)
@@ -1947,114 +2021,94 @@ function luapad.DeleteScript(pTre)
   )
 end
 
-function luapad.RunScriptClient()
-  local pS = luapad.PropertySheet
-  if(not IsValid(pS)) then return end
+function luapad.RunScriptHandler(code, index, cons)
+  if(SERVER or not canUserAccess(LocalPlayer())) then return end
 
-  local aT = pS:GetActiveTab()
-  if(not IsValid(aT)) then return end
-
-  local sC = aT:GetContents()
-  local tS = aT:GetStreamInfo()
-  local sF = "[".. tS.Path .. tS.Name .."]"
-  local oR = CompileString(sC, sF, false)
-  if(isstring(oR)) then -- Error during compilation
-    luapad.SetStatus("Compilation error: %s", "STAT_ER", oR)
-  elseif(isfunction(oR)) then -- Compiled successfully
+  local runSt = (cons and luapad.SetConsole or luapad.SetStatus)
+  local oR = CompileString(code, index, false)
+  if(isfunction(oR)) then -- Compiled successfully
     local bS, sE = pcall(oR)
     if bS then -- The code executes successfully
-      luapad.SetStatus("Code "..sF.." ran successfully!", "STAT_OK")
+      runSt("Code [%s%s] ran successfully!", "COMS_OK", sD, sN)
     else -- The code gives an error at runtime
-      luapad.SetStatus("Runtime error: %s", "STAT_ER", sE)
+      runSt("Runtime error: %s", "COMS_ER", sE)
     end
+  else -- Error during compilation
+    runSt("Compilation error: %s", "COMS_ER", oR)
   end
 end
 
-function luapad.RunScriptClientFromServer(script)
-  local bS, sE = pcall(RunString, script)
-  if bS then
-    luapad.SetStatus("Code ran successfully!", "COMS_OK")
-  else
-    luapad.SetStatus("Runtime error: %s", "COMS_ER", sE)
-  end
-end
-
-function luapad.RunScriptServer()
-  if SERVER or not canUserAccess(LocalPlayer()) then
-    return
-  end
+function luapad.RunScriptClient(pTre)
+  if(SERVER or not canUserAccess(LocalPlayer())) then return end
 
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local aT = pS:GetActiveTab()
-  if(not IsValid(aT)) then return end
+  local cT = pS:GetTabStitch(pTre)
+  if(not IsValid(cT)) then return end
 
-  local sC, bA = aT:GetContents()
+  local sC = cT:GetContents()
+  local tS = cT:GetStreamInfo()
+  local sD, sN = tS.Path, tS.Name
+  local sI = "RunScriptClient:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
 
-  net.Receive("luapad.UploadCallback", function() bA = true end)
-
-  net.Start("luapad.Upload")
-  net.WriteString(sC)
-  net.SendToServer()
-
-  luapad.SetStatus("Upload to server completed! (check server console for errors)", "COMS_OK")
-
-  if (bA) then
-    luapad.SetStatus("Upload accepted, now uploading...", "COMS_OK")
-  else
-    luapad.SetStatus("Upload denied by server! (maybe you are not an admin)", "COMS_ER")
-  end
+  luapad.RunScriptHandler(sC, sI, false)
 end
 
-function luapad.RunScriptServerClient()
-  if SERVER or not canUserAccess(LocalPlayer()) then
-    return
-  end
+function luapad.RunScriptClientFromServer(code, index)
+  luapad.RunScriptHandler(code, index, true)
+end
+
+function luapad.RunScriptServer(pTre)
+  if(SERVER or not canUserAccess(LocalPlayer())) then return end
 
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local aT = pS:GetActiveTab()
-  if(not IsValid(aT)) then return end
+  local cT = pS:GetTabStitch(pTre)
+  if(not IsValid(cT)) then return end
 
-  local sC, bA = aT:GetContents()
+  local sC = cT:GetContents()
+  local tS = cT:GetStreamInfo()
+  local sD, sN = tS.Path, tS.Name
+  local sI = "RunScriptServer:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
 
-  net.Receive("luapad.UploadClientCallback", function() bA = true end)
+  net.Receive(GLOB_CONFIG.LOWADN..".UploadCallback",
+    function()
+      local sM = net.ReadString()
+      local cM = net.ReadString()
+      luapad.SetStatus(sM, cM)
+    end)
 
-  net.Start("luapad.UploadClient")
+  net.Start(GLOB_CONFIG.LOWADN..".Upload")
   net.WriteString(sC)
+  net.WriteString(sI)
   net.SendToServer()
-
-  luapad.SetStatus("Upload to client completed! (check server console for errors)", "COMS_OK")
-
-  if (bA) then
-    luapad.SetStatus("Upload accepted, now uploading...", "COMS_OK")
-  else
-    luapad.SetStatus("Upload denied by server! (maybe you are not an admin)", "COMS_ER")
-  end
 end
 
-function luapad.RunScriptMenu()
-  local pMenu = DermaMenu()
-  if(not IsValid(pMenu)) then return end
-  pMenu:SetPos(gui.MousePos())
-  -- Run a script
-  pMenu:AddOption("Client", function()
-    luapad.RunScriptClient()
-  end):SetImage(luapad.ToIcon("user_go"))
-  pMenu:AddOption("Server", function()
-    luapad.RunScriptServer()
-  end):SetImage(luapad.ToIcon("server_go"))
-  pMenu:AddOption("Shared", function()
-    luapad.RunScriptClient()
-    luapad.RunScriptServer()
-  end):SetImage(luapad.ToIcon("building_go"))
-  pMenu:AddOption("Broadcast", function()
-    luapad.RunScriptServerClient()
-  end):SetImage(luapad.ToIcon("feed_go"))
+function luapad.RunScriptBroadcast(pTre)
+  if(SERVER or not canUserAccess(LocalPlayer())) then return end
 
-  pMenu:Open()
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local cT = pS:GetTabStitch(pTre)
+  if(not IsValid(cT)) then return end
+
+  local sC = cT:GetContents()
+  local tS = cT:GetStreamInfo()
+  local sD, sN = tS.Path, tS.Name
+  local sI = "RunScriptBroadcast:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
+
+  net.Receive(GLOB_CONFIG.LOWADN..".UploadClientCallback",
+    function()
+      luapad.SetStatus("Round trip %s successful (check client console for errors)!", "COMS_OK", sI)
+    end)
+
+  net.Start(GLOB_CONFIG.LOWADN..".UploadClient")
+  net.WriteString(sC)
+  net.WriteString(sI)
+  net.SendToServer()
 end
 
-concommand.Add("Luapad", luapad.Toggle)
+concommand.Add(GLOB_CONFIG.ADDONN, luapad.Toggle)
