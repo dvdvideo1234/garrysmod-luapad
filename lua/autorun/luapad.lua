@@ -859,13 +859,13 @@ function luapad.CloseTabName(name, term)
   else -- At least one tab
     local sS  = tostring(term or name)
     -- The context menu option is available
-    local sO = tS.Path .. tS.Name
-    local sN, sM = tS.Name, tS.Term
     for iD = 1, #tI do
       local tP = tI[iD]
       local cT = tP.Tab
       local tS = cT:GetStreamInfo()
-      if(sM and sM:find(sS, 1, true)) then
+      local sO = tS.Path .. tS.Name
+      local sN, sT = tS.Name, tS.Term
+      if(sT and sT:find(sS, 1, true)) then
         if(nI > 1) then -- More tabs
           pS:CloseTab(cT, true)
         else -- Only one tab is open
@@ -1044,7 +1044,7 @@ function luapad.RefreshTabName(name, term)
 
   local sS  = tostring(term or name)
 
-  for iT = 1, nT do
+  for iT = 1, nI do
     local cT = tI[iT].Tab
     if(IsValid(cT)) then
       local tS, bS = cT:GetStreamInfo(), false
@@ -1944,6 +1944,7 @@ function luapad.SaveAll()
   for iT = 1, nI do
     local cT = tI[iT].Tab
     if(IsValid(cT)) then
+      local tS = cT:GetStreamInfo()
       local sD, sN = tS.Path, tS.Name
       local bB, sB, oB = luapad.GetPath(sD)
       if(bB) then
@@ -1951,7 +1952,7 @@ function luapad.SaveAll()
           luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
           return
         end
-        local sF, sC = (sB .. sN), (pT:GetContents() or "")
+        local sF, sC = (sB .. sN), (cT:GetContents() or "")
         file.CreateDir(sB); file.Write(sF, sC)
         if(file.Exists(sF, "DATA")) then
           nU = nU + 1
@@ -2032,7 +2033,7 @@ function luapad.RunScriptHandler(sCode, sID, bCon)
   if(isfunction(oR)) then -- Compiled successfully
     local bS, sE = pcall(oR)
     if bS then -- The code executes successfully
-      runFn("Code [%s%s] ran successfully!", "COMS_CL", sD, sN)
+      runFn("Code %s ran successfully!", "COMS_CL", sID)
     else -- The code gives an error at runtime
       runFn("Runtime error: %s", "COMS_ER", sE)
     end
