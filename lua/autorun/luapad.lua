@@ -208,7 +208,7 @@ local function getString(...)
   return unpack(tA)
 end
 
-function luapad.RunScriptHandler(sCon, sID, aSta)
+local function runScriptHandler(sCon, sID, aSta)
   if(SERVER or not canUserAccess(LocalPlayer())) then return end
 
   local oR = CompileString(sCon, sID, false)
@@ -408,14 +408,15 @@ if (SERVER) then
         else -- Error during compilation
           sM, cM = string.format("Compilation error: %s", getString(oR)), "COMS_ER"
         end
-      end
-      if(bC) then
-        luapad.SetConsole(sM, cM)
-      else
-        net.Start(GLOB_CONFIG.LOWADN..".StatusCallback")
-        net.WriteString(sM)
-        net.WriteString(cM)
-        net.Send(ply)
+        -- There is no point to run a message in case user has no access
+        if(bC) then
+          luapad.SetConsole(sM, cM)
+        else
+          net.Start(GLOB_CONFIG.LOWADN..".StatusCallback")
+          net.WriteString(sM)
+          net.WriteString(cM)
+          net.Send(ply)
+        end
       end
     end)
 
@@ -423,18 +424,24 @@ if (SERVER) then
     function(len, ply)
       if(not canUserAccess(ply)) then return end
 
-      local sP = GLOB_CONFIG.LOWADN
+      local sP, cM, sM = GLOB_CONFIG.LOWADN, nil, nil
       local sS, sI = net.ReadString(), net.ReadString()
       if(sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
         net.Start(sP..".BroadcastUsers")
         net.WriteString(sS)
         net.WriteString(sI)
         net.Broadcast()
+
+        cM = "COMS_OK" -- Sent the status back to the client with the opened panel
+        sM = string.format("Broadcast %s successful! (check client console for errors)", getString(sI))
+      else
+        cM = "COMS_WR" -- Sent the status back to the client with the opened panel
+        sM = string.format("Broadcast %s missed! (check your admin rights)", getString(sI))
       end
 
       net.Start(sP..".StatusCallback")
-      net.WriteString(string.format("Broadcast %s successful! (check client console for errors)", getString(sI)))
-      net.WriteString("COMS_OK")
+      net.WriteString(sM)
+      net.WriteString(cM)
       net.Send(ply)
     end)
 
@@ -444,7 +451,7 @@ end
 if (CLIENT) then
   net.Receive(GLOB_CONFIG.LOWADN..".BroadcastUsers",
     function(len)
-      luapad.RunScriptHandler(net.ReadString(), net.ReadString(), luapad.SetConsole)
+      runScriptHandler(net.ReadString(), net.ReadString(), luapad.SetConsole)
     end)
 
   net.Receive(GLOB_CONFIG.LOWADN..".StatusCallback",
@@ -2071,7 +2078,7 @@ function luapad.RunScriptClient(pTre)
   local sD, sN = tS.Path, tS.Name
   local sI = "RunScriptClient:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
 
-  luapad.RunScriptHandler(sC, sI, luapad.SetStatus)
+  runScriptHandler(sC, sI, luapad.SetStatus)
 end
 
 function luapad.RunScriptServer(pTre, bCon)
