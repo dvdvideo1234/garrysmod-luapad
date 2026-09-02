@@ -215,7 +215,7 @@ local function runScriptHandler(sCon, sID, aSta)
   if(isfunction(oR)) then -- Compiled successfully
     local bS, sE = pcall(oR)
     if bS then -- The code executes successfully
-      aSta("Code %s ran successfully!", "COMS_CL", sID)
+      aSta("Execute %s successful!", "COMS_CL", sID)
     else -- The code gives an error at runtime
       aSta("Runtime error: %s", "COMS_ER", sE)
     end
@@ -401,22 +401,24 @@ if (SERVER) then
         if(isfunction(oR)) then -- Compiled successfully
           local bS, sE = pcall(oR)
           if bS then -- The code executes successfully
-            sM, cM = string.format("Code %s ran successfully!", getString(sI)), "COMS_SV"
+            sM, cM = string.format("Execute %s successful!", getString(sI)), "COMS_SV"
           else -- The code gives an error at runtime
             sM, cM = string.format("Runtime error: %s", getString(sE)), "COMS_ER"
           end
         else -- Error during compilation
           sM, cM = string.format("Compilation error: %s", getString(oR)), "COMS_ER"
         end
-        -- There is no point to run a message in case user has no access
-        if(bC) then
-          luapad.SetConsole(sM, cM)
-        else
-          net.Start(GLOB_CONFIG.LOWADN..".StatusCallback")
-          net.WriteString(sM)
-          net.WriteString(cM)
-          net.Send(ply)
-        end
+      else -- The user has no rights
+        sM, cM = string.format("Execute %s declined! (check your admin rights)", getString(sI)), "COMS_WR"
+      end
+
+      if(bC) then
+        luapad.SetConsole(sM, cM)
+      else
+        net.Start(GLOB_CONFIG.LOWADN..".StatusCallback")
+        net.WriteString(sM)
+        net.WriteString(cM)
+        net.Send(ply)
       end
     end)
 
@@ -436,7 +438,7 @@ if (SERVER) then
         sM = string.format("Broadcast %s successful! (check client console for errors)", getString(sI))
       else
         cM = "COMS_WR" -- Sent the status back to the client with the opened panel
-        sM = string.format("Broadcast %s missed! (check your admin rights)", getString(sI))
+        sM = string.format("Broadcast %s declined! (check your admin rights)", getString(sI))
       end
 
       net.Start(sP..".StatusCallback")
@@ -1022,7 +1024,8 @@ function luapad.CloseTabActive()
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local nT = #pS.Items
+  local tI = pS:GetItems()
+  local nT = #tI
 
   if(nT == 0) then
     return
@@ -1036,9 +1039,9 @@ function luapad.CloseTabActive()
     if(not iT) then return end
 
     if(iT == 1) then
-      pS:SetActiveTab(pS.Items[2].Tab)
+      pS:SetActiveTab(tI[2].Tab)
     else -- Avoid triggering active tab close
-      pS:SetActiveTab(pS.Items[iT - 1].Tab)
+      pS:SetActiveTab(tI[iT - 1].Tab)
     end
 
     pS:CloseTab(aT, true)
