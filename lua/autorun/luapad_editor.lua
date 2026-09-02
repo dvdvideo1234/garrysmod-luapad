@@ -140,9 +140,14 @@ function luapad.EditorPanel:CursorToCaret()
 end
 
 function luapad.EditorPanel:OnMousePressed(code)
+  local shift = input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT)
+
   if (code == MOUSE_LEFT) then
     local cucar = self:CursorToCaret()
-    if ((CurTime() - self.LastClick) < 1 and self.Temp and cucar[1] == self.Caret[1] and cucar[2] == self.Caret[2]) then
+    if ((CurTime() - self.LastClick) < 1 and
+      cucar[1] == self.Caret[1] and
+      cucar[2] == self.Caret[2] and self.Temp
+    ) then
       self.Start = self:getWordStart(self.Caret)
       self.Caret = self:getWordEnd(self.Caret)
       self.Temp = false
@@ -157,7 +162,7 @@ function luapad.EditorPanel:OnMousePressed(code)
     self.MouseDown = true
     self.Caret = self:CursorToCaret()
 
-    if (not input.IsKeyDown(KEY_LSHIFT) and not input.IsKeyDown(KEY_RSHIFT)) then
+    if (not shift) then
       self.Start = self:CursorToCaret()
     end
   elseif (code == MOUSE_RIGHT) then
