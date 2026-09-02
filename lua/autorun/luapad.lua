@@ -202,26 +202,95 @@ local function canWriteString(sCon)
   return (string.len(tostring(sCon or "")) <= GLOB_CONFIG.MAXMSL)
 end
 
+local function getString(...)
+  local tA, nA = table.Pack(...)
+  for iA = 1, nA do tA[iA] = tostring(tA[iA]) end
+  return unpack(tA)
+end
+
+function luapad.RunScriptHandler(sCon, sID, aSta)
+  if(SERVER or not canUserAccess(LocalPlayer())) then return end
+
+  local oR = CompileString(sCon, sID, false)
+  if(isfunction(oR)) then -- Compiled successfully
+    local bS, sE = pcall(oR)
+    if bS then -- The code executes successfully
+      aSta("Code %s ran successfully!", "COMS_CL", sID)
+    else -- The code gives an error at runtime
+      aSta("Runtime error: %s", "COMS_ER", sE)
+    end
+  else -- Error during compilation
+    aSta("Compilation error: %s", "COMS_ER", oR)
+  end
+end
+
+--[[
+ * Populates the status bar with the popper message
+ * The message alpha is fading until it disappears
+ * sFmt > Message format. All substitutions are strings
+ * sKey > Color key from the status table
+ * ...  > The values that match the format string
+ * Returns: The Created label panel
+]]
+function luapad.SetStatus(sFmt, sKey, ...)
+  if(not sKey) then return end
+  local cDrw = COLOR_STATUS[sKey]
+  if(not cDrw) then return end
+  local cTmc = COLOR_STATUS["#TEMCO#"]
+
+  local pB = luapad.Statusbar
+  if(not IsValid(pB)) then return end
+
+  local sI = GLOB_CONFIG.LOWADN..".Statusbar.Fade"
+
+  -- Moce color data to status color
+  cTmc.r, cTmc.g = cDrw.r, cDrw.g
+  cTmc.b, cTmc.a = cDrw.b, cDrw.a
+
+  timer.Remove(sI); pB:Clear()
+
+  local pLab = vgui.Create("DLabel", pB)
+  pLab:SetText(sFmt:format(getString(...)))
+  pLab:SetTextColor(cTmc) -- Reference assignment
+  pLab:SizeToContents()
+
+  timer.Create(sI, 0.01, 0,
+    function()
+      if(not IsValid(pLab)) then return end
+      local cBar = pLab:GetTextColor()
+      cBar.a = math.Clamp(cBar.a - 1, 0, 255)
+      pLab:SetTextColor(cBar)
+
+      if (cBar.a == 0) then timer.Remove(sI)
+        if(IsValid(pLab)) then pLab:Remove() end
+      end
+    end)
+
+  pB:Add(pLab)
+
+  -- https://wiki.facepunch.com/gmod/HL2_Sound_List
+  surface.PlaySound(GLOB_CONFIG.PRESND:format(math.random(1, 4)))
+
+  return pLab
+end
+
 function luapad.SetConsole(sFmt, sKey, ...)
   if(not sKey) then return end
   local cDrw = COLOR_STATUS[sKey]
   if(not cDrw) then return end
   local cTmc = COLOR_STATUS["#TEMCO#"]
 
-  local nC, tC = select("#", ...), {...}
-  for iC = 1, nC do tC[iC] = tostring(tC[iC]) end
-
   -- Moce color data to status color
   cTmc.r, cTmc.g = cDrw.r, cDrw.g
   cTmc.b, cTmc.a = cDrw.b, cDrw.a
 
-  MsgC(cTmc, sFmt:format(unpack(tC)).."\n")
+  MsgC(cTmc, sFmt:format(getString(...)).."\n")
 end
 
 if (SERVER) then
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".Upload")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadClient")
-  util.AddNetworkString(GLOB_CONFIG.LOWADN..".DownloadClient")
+  util.AddNetworkString(GLOB_CONFIG.LOWADN..".BroadcastUsers")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".StatusCallback")
 
   if (luapad.forcedownload) then
@@ -332,12 +401,12 @@ if (SERVER) then
         if(isfunction(oR)) then -- Compiled successfully
           local bS, sE = pcall(oR)
           if bS then -- The code executes successfully
-            sM, cM = string.format("Code %s ran successfully!", sI), "COMS_SV"
+            sM, cM = string.format("Code %s ran successfully!", getString(sI)), "COMS_SV"
           else -- The code gives an error at runtime
-            sM, cM = string.format("Runtime error: %s", sE), "COMS_ER"
+            sM, cM = string.format("Runtime error: %s", getString(sE)), "COMS_ER"
           end
         else -- Error during compilation
-          sM, cM = string.format("Compilation error: %s", tostring(oR)), "COMS_ER"
+          sM, cM = string.format("Compilation error: %s", getString(oR)), "COMS_ER"
         end
       end
       if(bC) then
@@ -357,14 +426,14 @@ if (SERVER) then
       local sP = GLOB_CONFIG.LOWADN
       local sS, sI = net.ReadString(), net.ReadString()
       if(sS and (ply:IsAdmin() or ply:IsSuperAdmin())) then
-        net.Start(sP..".DownloadClient")
+        net.Start(sP..".BroadcastUsers")
         net.WriteString(sS)
         net.WriteString(sI)
         net.Broadcast()
       end
 
       net.Start(sP..".StatusCallback")
-      net.WriteString(string.format("Broadcast %s successful! (check client console for errors)", sI))
+      net.WriteString(string.format("Broadcast %s successful! (check client console for errors)", getString(sI)))
       net.WriteString("COMS_OK")
       net.Send(ply)
     end)
@@ -373,9 +442,9 @@ if (SERVER) then
 end
 
 if (CLIENT) then
-  net.Receive(GLOB_CONFIG.LOWADN..".DownloadClient",
+  net.Receive(GLOB_CONFIG.LOWADN..".BroadcastUsers",
     function(len)
-      luapad.RunScriptHandler(net.ReadString(), net.ReadString(), true)
+      luapad.RunScriptHandler(net.ReadString(), net.ReadString(), luapad.SetConsole)
     end)
 
   net.Receive(GLOB_CONFIG.LOWADN..".StatusCallback",
@@ -410,9 +479,9 @@ end
  * Shows a standard confirmation dialog window
  * sMsg  > The massage being send to the user
  * sTxt  > Enable text entry and fill it with this value
- * fnSuc > Function to run then the feft button is clicked
+ * fnSuc > Function to run then the left button is clicked
  * fnDsc > Function to run then the right button is clicked
- * sSuc  > Label to use for the feft button
+ * sSuc  > Label to use for the left button
  * sDsc  > Label to use for the right button
 ]]
 function luapad.ShowConfirmDialog(sMsg, sTxt, fnSuc, fnDsc, sSuc, sDsc)
@@ -751,56 +820,6 @@ function luapad.Toggle()
 end
 
 --[[
- * Populates the status bar with the popper message
- * The message alpha is fading until it disappears
- * sFmt > Message format. All substitutions are strings
- * sKey > Color key from the status table
- * ...  > The values that match the format string
- * Returns: The Created label panel
-]]
-function luapad.SetStatus(sFmt, sKey, ...)
-  if(not sKey) then return end
-  local cDrw = COLOR_STATUS[sKey]
-  if(not cDrw) then return end
-  local cTmc = COLOR_STATUS["#TEMCO#"]
-
-  local sI = GLOB_CONFIG.LOWADN..".Statusbar.Fade"
-  local nC, tC = select("#", ...), {...}
-  for iC = 1, nC do tC[iC] = tostring(tC[iC]) end
-
-  -- Moce color data to status color
-  cTmc.r, cTmc.g = cDrw.r, cDrw.g
-  cTmc.b, cTmc.a = cDrw.b, cDrw.a
-
-  timer.Remove(sI)
-  luapad.Statusbar:Clear()
-
-  local pLab = vgui.Create("DLabel", luapad.Statusbar)
-  pLab:SetText(sFmt:format(unpack(tC)))
-  pLab:SetTextColor(cTmc) -- Reference assignment
-  pLab:SizeToContents()
-
-  timer.Create(sI, 0.01, 0,
-    function()
-      if(not IsValid(pLab)) then return end
-      local cBar = pLab:GetTextColor()
-      cBar.a = math.Clamp(cBar.a - 1, 0, 255)
-      pLab:SetTextColor(cBar)
-
-      if (cBar.a == 0) then
-        timer.Remove(sI)
-        if(IsValid(pLab)) then pLab:Remove() end
-      end
-    end)
-
-  luapad.Statusbar:Add(pLab)
-  -- https://wiki.facepunch.com/gmod/HL2_Sound_List
-  surface.PlaySound(GLOB_CONFIG.PRESND:format(math.random(1, 4)))
-
-  return pLab
-end
-
---[[
  * This can add a custom item to the toolbar that adds custom behavior
  * vTip      > Tooltip used for help text
  * sIco      > Image icon to be displayed with
@@ -873,29 +892,31 @@ function luapad.CloseTabName(name, term)
     for iD = 1, #tI do
       local tP = tI[iD]
       local cT = tP.Tab
-      local tS = cT:GetStreamInfo()
-      local sO = tS.Path .. tS.Name
-      local sN, sT = tS.Name, tS.Term
-      if(sT and sT:find(sS, 1, true)) then
-        if(nI > 1) then -- More tabs
-          pS:CloseTab(cT, true)
-        else -- Only one tab is open
-          pS:Clear()
-        end; break
-      end
-      if(sO and sO:find(sS, 1, true)) then
-         if(nI > 1) then -- More tabs
-          pS:CloseTab(cT, true)
-        else -- Only one tab is open
-          pS:Clear()
-        end; break
-      end
-      if(sN and sN:find(sS, 1, true)) then
-         if(nI > 1) then -- More tabs
-          pS:CloseTab(cT, true)
-        else -- Only one tab is open
-          pS:Clear()
-        end; break
+      if(IsValid(cT)) then
+        local tS = cT:GetStreamInfo()
+        local sO = tS.Path .. tS.Name
+        local sN, sT = tS.Name, tS.Term
+        if(sT and sT:find(sS, 1, true)) then
+          if(nI > 1) then -- More tabs
+            pS:CloseTab(cT, true)
+          else -- Only one tab is open
+            pS:Clear()
+          end; break
+        end
+        if(sO and sO:find(sS, 1, true)) then
+           if(nI > 1) then -- More tabs
+            pS:CloseTab(cT, true)
+          else -- Only one tab is open
+            pS:Clear()
+          end; break
+        end
+        if(sN and sN:find(sS, 1, true)) then
+           if(nI > 1) then -- More tabs
+            pS:CloseTab(cT, true)
+          else -- Only one tab is open
+            pS:Clear()
+          end; break
+        end
       end
     end; pS:InvalidateLayout()
   end
@@ -2036,23 +2057,6 @@ function luapad.DeleteScript(pTre)
   )
 end
 
-function luapad.RunScriptHandler(sCode, sID, bCon)
-  if(SERVER or not canUserAccess(LocalPlayer())) then return end
-
-  local runFn = (bCon and luapad.SetConsole or luapad.SetStatus)
-  local oR = CompileString(sCode, sID, false)
-  if(isfunction(oR)) then -- Compiled successfully
-    local bS, sE = pcall(oR)
-    if bS then -- The code executes successfully
-      runFn("Code %s ran successfully!", "COMS_CL", sID)
-    else -- The code gives an error at runtime
-      runFn("Runtime error: %s", "COMS_ER", sE)
-    end
-  else -- Error during compilation
-    runFn("Compilation error: %s", "COMS_ER", oR)
-  end
-end
-
 function luapad.RunScriptClient(pTre)
   if(SERVER or not canUserAccess(LocalPlayer())) then return end
 
@@ -2067,7 +2071,7 @@ function luapad.RunScriptClient(pTre)
   local sD, sN = tS.Path, tS.Name
   local sI = "RunScriptClient:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
 
-  luapad.RunScriptHandler(sC, sI, false)
+  luapad.RunScriptHandler(sC, sI, luapad.SetStatus)
 end
 
 function luapad.RunScriptServer(pTre, bCon)
