@@ -123,10 +123,10 @@ function luapad.EditorPanel:CursorToCaret()
   x = ((x < 0) and 0 or x)
   y = ((y < 0) and 0 or y)
 
+  local last = #self.Rows
   local line = math.floor(y / self.FontHeight)
   local char = math.floor(x / self.FontWidth + 0.5)
 
-  last = #self.Rows
   line = line + self.Scroll[1]
   char = char + self.Scroll[2]
   line = ((line > last) and last or line)
@@ -302,7 +302,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
   self:NextChar()
 
   while self.char do
-    token = ""
+    local token = ""
     self.str = ""
 
     while self.char and self.char == " " do
