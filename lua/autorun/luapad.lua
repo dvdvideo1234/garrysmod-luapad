@@ -18,6 +18,7 @@ local GLOB_CONFIG = {
   LOWADN = "luapad", -- Addon name lower case for hashes, messages and convars
   ICOFMT = "icon16/%s.png", -- Icon path format string
   FMNAME = "untitled%d.txt", -- Untitled new file format string
+  MSGCAL = "%s > %s:", -- Used for status messages send across the realms
   FFDRPT = "[%s%s]", -- Fire format identifier for user messages
   STORKY = "gmod_luapad",    -- Dedicated tab panel key to store stream info
   PRESND = "ambient/water/drip%d.wav", -- Sound format played on button press
@@ -215,7 +216,7 @@ local function runScriptHandler(sCon, sID, aSta)
   if(isfunction(oR)) then -- Compiled successfully
     local bS, sE = pcall(oR)
     if bS then -- The code executes successfully
-      aSta("Execute %s successful!", "COMS_CL", sID)
+      aSta("Execute %s successfully!", "COMS_CL", sID)
     else -- The code gives an error at runtime
       aSta("Runtime error: %s", "COMS_ER", sE)
     end
@@ -401,7 +402,7 @@ if (SERVER) then
         if(isfunction(oR)) then -- Compiled successfully
           local bS, sE = pcall(oR)
           if bS then -- The code executes successfully
-            sM, cM = string.format("Execute %s successful!", getString(sI)), "COMS_SV"
+            sM, cM = string.format("Execute %s successfully!", getString(sI)), "COMS_SV"
           else -- The code gives an error at runtime
             sM, cM = string.format("Runtime error: %s", getString(sE)), "COMS_ER"
           end
@@ -409,7 +410,7 @@ if (SERVER) then
           sM, cM = string.format("Compilation error: %s", getString(oR)), "COMS_ER"
         end
       else -- The user has no rights
-        sM, cM = string.format("Execute %s declined! (check your admin rights)", getString(sI)), "COMS_WR"
+        sM, cM = string.format("Execute %s renounce! (check your admin rights)", getString(sI)), "COMS_WR"
       end
 
       if(bC) then
@@ -438,7 +439,7 @@ if (SERVER) then
         sM = string.format("Broadcast %s successful! (check client console for errors)", getString(sI))
       else
         cM = "COMS_WR" -- Sent the status back to the client with the opened panel
-        sM = string.format("Broadcast %s declined! (check your admin rights)", getString(sI))
+        sM = string.format("Broadcast %s renounce! (check your admin rights)", getString(sI))
       end
 
       net.Start(sP..".StatusCallback")
@@ -1543,8 +1544,8 @@ function luapad.AddTab(name, cont, path, term, icon)
     pIn:AddOption("All", function()
       luapad.RefreshTabAll()
     end):SetImage(luapad.ToIcon("arrow_in"))
-    -- Run a script
-    local pIn, pOp = pMenu:AddSubMenu("Run")
+    -- Execute a script
+    local pIn, pOp = pMenu:AddSubMenu("Execute")
     pOp:SetIcon(luapad.ToIcon("table_go"))
     pIn:AddOption("Client", function()
       luapad.RunScriptClient(self)
@@ -1601,7 +1602,7 @@ function luapad.RunScriptMenu()
   local pMenu = DermaMenu()
   if(not IsValid(pMenu)) then return end
   pMenu:SetPos(gui.MousePos())
-  -- Run a script
+  -- Execute a script
   pMenu:AddOption("Client", function()
     luapad.RunScriptClient()
   end):SetImage(luapad.ToIcon("user_go"))
@@ -2068,7 +2069,8 @@ function luapad.DeleteScript(pTre)
 end
 
 function luapad.RunScriptClient(pTre)
-  if(SERVER or not canUserAccess(LocalPlayer())) then return end
+  local user = LocalPlayer()
+  if(SERVER or not canUserAccess(user)) then return end
 
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -2079,7 +2081,9 @@ function luapad.RunScriptClient(pTre)
   local sC = cT:GetContents()
   local tS = cT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
-  local sI = "RunScriptClient:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
+
+  local sI = GLOB_CONFIG.MSGCAL:format(user:Nick(), "Client")..
+             GLOB_CONFIG.FFDRPT:format(getString(sD, sN))
 
   runScriptHandler(sC, sI, luapad.SetStatus)
 end
@@ -2109,7 +2113,8 @@ function luapad.RunScriptServer(pTre, bCon)
 
   local tS = cT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
-  local sI = "RunScriptServer:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
+  local sI = GLOB_CONFIG.MSGCAL:format(user:Nick(), "Server")..
+             GLOB_CONFIG.FFDRPT:format(getString(sD, sN))
 
   net.Start(sA)
   net.WriteString(sC)
@@ -2143,7 +2148,8 @@ function luapad.RunScriptBroadcast(pTre)
 
   local tS = cT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
-  local sI = "RunScriptBroadcast:"..GLOB_CONFIG.FFDRPT:format(sD, sN)
+  local sI = GLOB_CONFIG.MSGCAL:format(user:Nick(), "Broadcast")..
+             GLOB_CONFIG.FFDRPT:format(getString(sD, sN))
 
   net.Start(sA)
   net.WriteString(sC)
