@@ -1884,11 +1884,8 @@ function luapad.SaveScript(pTre)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local pT = (pTre or pS:GetActiveTab())
+  local pT = pS:GetTabStitch(pTre)
   if(not IsValid(pT)) then return end
-
-  local iT = pS:GetTabIndex(pT)
-  if(not iT) then return end
 
   local tS = pT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
@@ -1928,11 +1925,8 @@ function luapad.SaveAsScript(pTre)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local pT = (pTre or pS:GetActiveTab())
+  local pT = pS:GetTabStitch(pTre)
   if(not IsValid(pT)) then return end
-
-  local iT = pS:GetTabIndex(pT)
-  if(not iT) then return end
 
   local tS = pT:GetStreamInfo()
 
@@ -2023,11 +2017,8 @@ function luapad.DeleteScript(pTre)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  local pT = (pTre or pS:GetActiveTab())
+  local pT = pS:GetTabStitch(pTre)
   if(not IsValid(pT)) then return end
-
-  local iT = pS:GetTabIndex(pT)
-  if(not iT) then return end
 
   local tS = pT:GetStreamInfo()
 
