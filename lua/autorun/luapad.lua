@@ -1077,7 +1077,7 @@ end
 --[[
  * Refreshes all the tabs on name/term
 ]]
-function luapad.RefreshTabName(name, term)
+function luapad.RefreshTabName(name, term, nopat)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1096,11 +1096,11 @@ function luapad.RefreshTabName(name, term)
       if(bB) then
         local sO = (sD .. sN)
         local sF = (sB .. sN)
-        if(sT and sT:find(sS, 1, true)) then
+        if(sT and sT:find(sS, 1, nopat)) then
           bS = true  -- Match by term
-        elseif(sO and sO:find(sS, 1, true)) then
+        elseif(sO and sO:find(sS, 1, nopat)) then
           bS = true -- Match by origin
-        elseif(sN and sN:find(sS, 1, true)) then
+        elseif(sN and sN:find(sS, 1, nopat)) then
           bS = true -- Match by name
         else -- Assign false in other cases
           bS = false -- Do not match anything
