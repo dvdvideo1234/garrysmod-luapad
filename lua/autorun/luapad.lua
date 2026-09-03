@@ -410,7 +410,7 @@ if (SERVER) then
           sM, cM = string.format("Compilation error: %s", getString(oR)), "COMS_ER"
         end
       else -- The user has no rights
-        sM, cM = string.format("Execute %s renounce! (check your admin rights)", getString(sI)), "COMS_WR"
+        sM, cM = string.format("Execute %s forbidden! (check your admin rights)", getString(sI)), "COMS_WR"
       end
 
       if(bC) then
@@ -439,7 +439,7 @@ if (SERVER) then
         sM = string.format("Broadcast %s successful! (check client console for errors)", getString(sI))
       else
         cM = "COMS_WR" -- Sent the status back to the client with the opened panel
-        sM = string.format("Broadcast %s renounce! (check your admin rights)", getString(sI))
+        sM = string.format("Broadcast %s forbidden! (check your admin rights)", getString(sI))
       end
 
       net.Start(sP..".StatusCallback")
@@ -888,7 +888,7 @@ end
  * Closes a tab via name, full path or term
  * Closes only one tab if matched
 ]]
-function luapad.CloseTabName(name, term)
+function luapad.CloseTabName(name, term, nopat)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
   -- Check the property sheet tab
@@ -906,21 +906,21 @@ function luapad.CloseTabName(name, term)
         local tS = cT:GetStreamInfo()
         local sO = tS.Path .. tS.Name
         local sN, sT = tS.Name, tS.Term
-        if(sT and sT:find(sS, 1, true)) then
+        if(sT and sT:find(sS, 1, nopat)) then
           if(nI > 1) then -- More tabs
             pS:CloseTab(cT, true)
           else -- Only one tab is open
             pS:Clear()
           end; break
         end
-        if(sO and sO:find(sS, 1, true)) then
+        if(sO and sO:find(sS, 1, nopat)) then
            if(nI > 1) then -- More tabs
             pS:CloseTab(cT, true)
           else -- Only one tab is open
             pS:Clear()
           end; break
         end
-        if(sN and sN:find(sS, 1, true)) then
+        if(sN and sN:find(sS, 1, nopat)) then
            if(nI > 1) then -- More tabs
             pS:CloseTab(cT, true)
           else -- Only one tab is open
