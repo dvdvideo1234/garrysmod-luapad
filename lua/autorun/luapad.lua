@@ -29,7 +29,7 @@ local GLOB_CONFIG = {
 
 -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
 local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.CFLAGS, "Makes the luapad addon admin only", 0, 1)
-local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.CFLAGS, "Makes the luapad addon admin only", 0, 100)
+local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.CFLAGS, "Maximum number of new files in the folder", 0, 100)
 local VAR_MXR = CreateConVar(GLOB_CONFIG.LOWADN.."_maxrecurs", 20, GLOB_CONFIG.CFLAGS, "Recurse depth when opening a file system", 0, 100)
 local VAR_EDT = CreateConVar(GLOB_CONFIG.LOWADN.."_endataorg",  1, GLOB_CONFIG.CFLAGS, "File operation in the whole data folder", 0, 1)
 
