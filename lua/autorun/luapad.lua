@@ -885,10 +885,10 @@ function luapad.AddToolbarSpacer()
 end
 
 --[[
- * Closes a tab via name, full path or term
+ * Closes a tab via name, full path
  * Closes only one tab if matched
 ]]
-function luapad.CloseTabName(name, term, nopat)
+function luapad.CloseTabName(name, nopat)
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
   -- Check the property sheet tab
@@ -897,7 +897,8 @@ function luapad.CloseTabName(name, term, nopat)
   if(nI == 0) then
     return -- Nothing to close
   else -- At least one tab
-    local sS  = tostring(term or name)
+    local sS = tostring(name or "")
+    if(sS == "") then return end
     -- The context menu option is available
     for iD = 1, #tI do
       local tP = tI[iD]
