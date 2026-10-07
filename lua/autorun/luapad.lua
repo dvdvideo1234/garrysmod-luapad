@@ -648,7 +648,10 @@ function luapad.CheckGlobal(func)
   return false
 end
 
-function luapad.OnPlayerQuit()
+function luapad.Clear()
+  if(IsValid(luapad.Frame)) then
+    luapad.Frame:Remove()
+  end
 end
 
 function luapad.SaveTabs()
