@@ -773,37 +773,51 @@ function luapad.Toggle()
     end
   end
 
-  function luapad.PropertySheet:GetTabIndex(vTre)
+  function luapad.PropertySheet:GetTabIndex(vTre, bNop)
     if(IsValid(vTre)) then -- Valid panel
       local tI = self:GetItems()
-      for iT = 1, #tI do
+      for iT = 1, #tI do -- Try to match reference
         local tP = tI[iT] -- Try to index the item
         local vT = tP.Tab -- Try to index the tab
         local bT = IsValid(vT) -- Validate tab entry
         if(bT and vT == vTre) then return iT, vT end
       end; return nil -- Tab is not found in items
-    elseif(tonumber(vTre)) then -- Tab index
-      local iT = math.floor(tonumber(vTre) or 0)
+    elseif(isnumber(vTre)) then -- Tab index
+      local iT = math.floor(vTre)
       if(iT <= 0) then return nil end
       local tI = self:GetItems() -- Read items
       local tP = tI[iT] -- Try to index the item
       if(not tP) then return nil end
       local vT = tP.Tab -- Try to index the tab
       if(not IsValid(vT)) then return nil end
-      return iT, vT
+      return iT, vT -- Return tab and index
+    elseif(isstring(vTre)) then -- Tab index
+      if(vTre == "") then return end -- Empty string
+      local tI = self:GetItems() -- Loop the tab items
+      for iT = 1, #tI do -- Try to match some info string
+        local tP = tI[iT] -- Try to index the item
+        local vT = tP.Tab -- Try to index the tab
+        if(IsValid(vT)) then -- Only check valid tabs
+          local tS = vT:GetStreamInfo() -- Read stream info
+          local sO = tS.Path .. tS.Name -- Generate file origin
+          local sN, sT = tS.Name, tS.Term -- Extract term and name
+          if(sT and sT:find(vTre, 1, bNop)) then return iT, vT end
+          if(sO and sO:find(vTre, 1, bNop)) then return iT, vT end
+          if(sN and sN:find(vTre, 1, bNop)) then return iT, vT end
+        end -- This tab did not match the provided string
+      end; return nil -- Tab is not found in items
     else return nil end
   end
 
-  function luapad.PropertySheet:GetTabStitch(pTre)
-    if(pTre ~= nil) then -- There is an argument
-      if(not IsValid(pTre)) then return nil end
-      local iT = self:GetTabIndex(pTre)
+  function luapad.PropertySheet:GetTabStitch(vTre)
+    if(vTre) then -- There is an argument
+      local iT, vT = self:GetTabIndex(vTre)
       if(not iT) then return nil end
-      return pTre -- The argument is validated
+      return vT -- The argument is validated
     else
-      local pAct = self:GetActiveTab()
-      if(not IsValid(pAct)) then return nil end
-      return pAct -- No argument use active
+      local vT = self:GetActiveTab()
+      if(not IsValid(vT)) then return nil end
+      return vT -- No argument use active
     end
   end
 
@@ -901,7 +915,7 @@ function luapad.AddToolbarSpacer()
 end
 
 --[[
- * Closes a tab via name, full path
+ * Closes a tab via term, name or full path
  * Closes only one tab if matched
 ]]
 function luapad.CloseTabName(name, nopat)
@@ -910,42 +924,13 @@ function luapad.CloseTabName(name, nopat)
   -- Check the property sheet tab
   local tI = pS:GetItems()
   local nI = #tI
-  if(nI == 0) then
-    return -- Nothing to close
-  else -- At least one tab
-    local sS = tostring(name or "")
-    if(sS == "") then return end
-    -- The context menu option is available
-    for iD = 1, #tI do
-      local tP = tI[iD]
-      local cT = tP.Tab
-      if(IsValid(cT)) then
-        local tS = cT:GetStreamInfo()
-        local sO = tS.Path .. tS.Name
-        local sN, sT = tS.Name, tS.Term
-        if(sT and sT:find(sS, 1, nopat)) then
-          if(nI > 1) then -- More tabs
-            pS:CloseTab(cT, true)
-          else -- Only one tab is open
-            pS:Clear()
-          end; break
-        end
-        if(sO and sO:find(sS, 1, nopat)) then
-           if(nI > 1) then -- More tabs
-            pS:CloseTab(cT, true)
-          else -- Only one tab is open
-            pS:Clear()
-          end; break
-        end
-        if(sN and sN:find(sS, 1, nopat)) then
-           if(nI > 1) then -- More tabs
-            pS:CloseTab(cT, true)
-          else -- Only one tab is open
-            pS:Clear()
-          end; break
-        end
-      end
-    end; pS:InvalidateLayout()
+  if(nI == 0) then -- Is there anything to close
+    return -- There is nothing to close currently
+  else -- At least one tab is available check its info
+    local iT, vT = pS:GetTabIndex(tostring(name or ""), nopat)
+    if(not iT) then return end -- No such tab do nothing
+    if(nI > 1) then pS:CloseTab(vT, true) else pS:Clear() end
+    pS:InvalidateLayout()
   end
 end
 
