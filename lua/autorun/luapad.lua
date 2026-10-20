@@ -773,23 +773,36 @@ function luapad.Toggle()
     end
   end
 
-  function luapad.PropertySheet:GetTabIndex(pTre)
-    if(not IsValid(pTre)) then return nil end
-    local tT = self:GetItems()
-    for iT = 1, #tT do local tP = tT[iT]
-      if(pTre == tP.Tab) then return iT end
-    end; return nil
+  function luapad.PropertySheet:GetTabIndex(vTre)
+    if(IsValid(vTre)) then -- Valid panel
+      local tI = self:GetItems()
+      for iT = 1, #tI do
+        local tP = tI[iT] -- Try to index the item
+        local vT = tP.Tab -- Try to index the tab
+        local bT = IsValid(vT) -- Validate tab entry
+        if(bT and vT == vTre) then return iT, vT end
+      end; return nil -- Tab is not found in items
+    elseif(tonumber(vTre)) then -- Tab index
+      local iT = math.floor(tonumber(vTre) or 0)
+      if(iT <= 0) then return nil end
+      local tI = self:GetItems() -- Read items
+      local tP = tI[iT] -- Try to index the item
+      if(not tP) then return nil end
+      local vT = tP.Tab -- Try to index the tab
+      if(not IsValid(vT)) then return nil end
+      return iT, vT
+    else return nil end
   end
 
   function luapad.PropertySheet:GetTabStitch(pTre)
     if(pTre ~= nil) then -- There is an argument
-      if(not IsValid(pTre)) then return end
+      if(not IsValid(pTre)) then return nil end
       local iT = self:GetTabIndex(pTre)
       if(not iT) then return nil end
       return pTre -- The argument is validated
     else
       local pAct = self:GetActiveTab()
-      if(not IsValid(pAct)) then return end
+      if(not IsValid(pAct)) then return nil end
       return pAct -- No argument use active
     end
   end
@@ -1374,7 +1387,8 @@ function luapad.AddTab(name, cont, path, term, icon)
   local sNam = tostring(name or "")
   local sCon = tostring(cont or "")
   local sIco = tostring(icon or "page_white")
-  local sTag = ((term ~= nil and term ~= "") and tostring(term) or nil)
+  local bTrm = (term ~= nil and term ~= "")
+  local sTag = (bTrm and tostring(term) or nil)
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -1487,7 +1501,8 @@ function luapad.AddTab(name, cont, path, term, icon)
       SetClipboardText(self:GetStreamInfo().Name)
     end):SetImage(luapad.ToIcon("page_green"))
     pIn:AddOption("Label", function()
-      SetClipboardText(self:GetStreamInfo().Term)
+      local tS = self:GetStreamInfo()
+      SetClipboardText(tS.Term or tS.Name)
     end):SetImage(luapad.ToIcon("tag_green"))
     pIn:AddOption("Path", function()
       SetClipboardText(self:GetStreamInfo().Path)
