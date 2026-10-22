@@ -97,10 +97,10 @@ local ENABLE_FOLDER = {
 local RESTRICTED_FILES = {
   "data/"..GLOB_CONFIG.FOLDER.."welcome.txt",
   "data/"..GLOB_CONFIG.FOLDER.."saved_tabs.txt",
-  "data/"..GLOB_CONFIG.FOLDER.."server_globals.txt",
+  "data/"..GLOB_CONFIG.FOLDER.."syntax_globals.txt",
   "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."welcome.txt",
   "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."saved_tabs.txt",
-  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."server_globals.txt",
+  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."syntax_globals.txt",
 }
 
 local FMSYNTAX_HILIGHT = {
@@ -248,6 +248,9 @@ local function runScriptHandler(sCon, sID, aSta)
   end
 end
 
+--[[
+ * Global shared function to show status in the console
+]]
 function luapad.SetConsole(sFmt, sKey, ...)
   if(not sKey) then return end
   local cDrw = COLOR_STATUS[sKey]
@@ -261,125 +264,135 @@ function luapad.SetConsole(sFmt, sKey, ...)
   MsgC(cTmc, sFmt:format(getString(...)).."\n")
 end
 
+function luapad.genSyntaxGlobals()
+  -- Generate a syntax highlighting configuration file based on the instance
+  local sG = GLOB_CONFIG.FOLDER.."syntax_globals.txt"
+
+  -- Check whenever the file has to be renewed and generate it again
+  local bE, bA = file.Exists(sG, "DATA"), isAutoRenewDue(sG, "DATA")
+  if(bE and not bA) then return end
+
+  -- Replace the file on the instance
+  local fS = file.Open(sG, "wb", "DATA")
+  if(not fS) then -- The file open attempt has failed
+    luapad.SetConsole("Failed opening globals: %s", "STAT_WR", sG)
+    return -- Exit the routine end report the status
+  end
+
+  -- Allocate placeholders for registry elements
+  local tMeta, tEnum, tPass = {}, {}, {[package] = true}
+  local sN, sV = FMSYNTAX_HILIGHT.N, FMSYNTAX_HILIGHT.V
+  local sI, sH = FMSYNTAX_HILIGHT.I, FMSYNTAX_HILIGHT.H
+
+   -- Global registry includes itself
+  local function exportSyntax(sB, tS, iD)
+    local iD = math.max((tonumber(iD) or 0), 0)
+    if(iD > 5) then return end -- Recursion depth
+    if(tPass[tS]) then return end -- Already printed
+    local sU, rU = sB:gsub("^.-%[\"", ""):gsub("\"%]$", "")
+    local tK, sC, nU = table.GetKeys(tS), ("\"][\""), 0
+    local tU, bH = sC:Explode(sU), true; nU = (#tU + 1)
+    table.sort(tK, function(u, v) return u < v end)
+    for iE = 1, #tK do
+      local vK = tK[iE]
+      local vE = tS[vK]
+      if(isfunction(vE)) then
+        if(bH) then bH = false
+          fS:Write(sB)
+          fS:Write(sH)
+          fS:Write("\n")
+        end
+        fS:Write(sB)
+        fS:Write(sI:format(vK))
+        fS:Write(sV:format("f"))
+        fS:Write("\n")
+      elseif(string.upper(vK) == vK) then
+        if(bH) then bH = false
+          fS:Write(sB)
+          fS:Write(sH)
+          fS:Write("\n")
+        end
+        if(rU == 0) then table.insert(tEnum, vK) else
+          tU[nU] = vK -- Register local enums
+          table.insert(tEnum, table.concat(tU, sC))
+        end -- Nothing is replaced no keys registered
+      elseif(istable(vE)) then tPass[tS] = true
+        exportSyntax(sB..sI:format(vK), vE, iD + 1)
+      end
+    end
+  end
+
+  fS:Write("-- This is an automatically generated cache file on the server-side\n")
+  fS:Write("-- The content includes global functions, meta-tables, and enumerations\n")
+  fS:Write("-- Don't touch it, or you'll probably mess up your syntax highlighting\n")
+  fS:Write("-- The timestamp of this generated file is ["..os.date(GLOB_CONFIG.DATFMT).."]\n")
+
+  fS:Write("\n-- Global functions and libraries\n\n")
+  local tK = table.GetKeys(_G) -- Global registry includes itself
+  table.sort(tK, function(u, v) return u < v end); exportSyntax(sN, _G)
+
+  local nE = #tEnum
+  if(nE > 0) then
+    fS:Write("\n-- Enumerations\n\n")
+    table.sort(tEnum, function(u, v) return u < v end)
+    for iE = 1, nE do
+      local sK = tEnum[iE]
+      fS:Write(sN)
+      fS:Write(sI:format(sK))
+      fS:Write(sV:format("e"))
+      fS:Write("\n")
+    end
+  end
+
+  fS:Write("\n-- Meta-tables\n\n")
+  -- https://wiki.facepunch.com/gmod/Enums/TYPE
+  local sS = "-- Source: [%s][%s]\n"
+  local tK = table.GetKeys(FMSYNTAX_METATYP)
+  table.sort(tK, function(u, v) return u < v end)
+  for iM = 1, #tK do
+    local sC = tK[iM]
+    local vM = FMSYNTAX_METATYP[sC]
+    if (vM.ID) then -- Type exists in TypeID
+      local mM = FindMetaTable(sC)
+      if(mM and istable(mM)) then
+        local tK, bH = table.GetKeys(mM), true
+        for iK = 1, #tK do
+          local n = tK[iK]
+          local e = mM[n]
+          if (isfunction(e) and not tMeta[n]) then
+            if(bH) then bH = false
+              fS:Write(sS:format(tostring(vM.ID), sC))
+            end
+            fS:Write(sN)
+            fS:Write(sI:format(n))
+            fS:Write(sV:format("m"))
+            fS:Write("\n"); tMeta[n] = true
+          end
+        end; if(not bH) then fS:Write("\n") end
+      end
+    end
+  end
+
+  fS:Flush(); fS:Close()
+  luapad.SetConsole("Syntax globals generated: %s", "STAT_OK", sG)
+end
+
 if (SERVER) then
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".Upload")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadClient")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".BroadcastUsers")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".StatusCallback")
 
+  luapad.genSyntaxGlobals() -- Generate server-side globals
+
   if (luapad.forcedownload) then
     AddCSLuaFile("autorun/luapad.lua")
     AddCSLuaFile("autorun/luapad_editor.lua")
   end
 
-  -- Generate a syntax highlighting configuration file based on the instance
-  if(not file.Exists(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA")
-      or isAutoRenewDue(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA")) then
-
-    local fS = file.Open(GLOB_CONFIG.FOLDER.."server_globals.txt", "wb", "DATA")
-
-    if(fS) then
-      local tMeta, tEnum, tPass = {}, {}, {[package] = true}
-      local sN, sV = FMSYNTAX_HILIGHT.N, FMSYNTAX_HILIGHT.V
-      local sI, sH = FMSYNTAX_HILIGHT.I, FMSYNTAX_HILIGHT.H
-
-       -- Global registry includes itself
-      local function exportSyntax(sB, tS, iD)
-        local iD = math.max((tonumber(iD) or 0), 0)
-        if(iD > 5) then return end -- Recursion depth
-        if(tPass[tS]) then return end -- Already printed
-        local sU, rU = sB:gsub("^.-%[\"", ""):gsub("\"%]$", "")
-        local tK, sC, nU = table.GetKeys(tS), ("\"][\""), 0
-        local tU, bH = sC:Explode(sU), true; nU = (#tU + 1)
-        table.sort(tK, function(u, v) return u < v end)
-        for iE = 1, #tK do
-          local vK = tK[iE]
-          local vE = tS[vK]
-          if(isfunction(vE)) then
-            if(bH) then bH = false
-              fS:Write(sB)
-              fS:Write(sH)
-              fS:Write("\n")
-            end
-            fS:Write(sB)
-            fS:Write(sI:format(vK))
-            fS:Write(sV:format("f"))
-            fS:Write("\n")
-          elseif(string.upper(vK) == vK) then
-            if(bH) then bH = false
-              fS:Write(sB)
-              fS:Write(sH)
-              fS:Write("\n")
-            end
-            if(rU == 0) then table.insert(tEnum, vK) else
-              tU[nU] = vK -- Register local enums
-              table.insert(tEnum, table.concat(tU, sC))
-            end -- Nothing is replaced no keys registered
-          elseif(istable(vE)) then tPass[tS] = true
-            exportSyntax(sB..sI:format(vK), vE, iD + 1)
-          end
-        end
-      end
-
-      fS:Write("-- This is an automatically generated cache file on the server-side\n")
-      fS:Write("-- The content includes global functions, meta-tables, and enumerations\n")
-      fS:Write("-- Don't touch it, or you'll probably mess up your syntax highlighting\n")
-      fS:Write("-- The timestamp of this generated file is ["..os.date(GLOB_CONFIG.DATFMT).."]\n")
-      fS:Write("\n"); fS:Write(sN); fS:Write(sH); fS:Write("\n")
-
-      fS:Write("\n\n-- Global functions and libraries\n\n")
-      local tK = table.GetKeys(_G) -- Global registry includes itself
-      table.sort(tK, function(u, v) return u < v end); exportSyntax(sN, _G)
-
-      local nE = #tEnum
-      if(nE > 0) then
-        fS:Write("\n\n-- Enumerations\n\n")
-        table.sort(tEnum, function(u, v) return u < v end)
-        for iE = 1, nE do
-          local sK = tEnum[iE]
-          fS:Write(sN)
-          fS:Write(sI:format(sK))
-          fS:Write(sV:format("e"))
-          fS:Write("\n")
-        end
-      end
-
-      fS:Write("\n\n-- Meta-tables\n\n")
-      -- https://wiki.facepunch.com/gmod/Enums/TYPE
-      local sS = "-- Source: [%s][%s]\n"
-      local tK = table.GetKeys(FMSYNTAX_METATYP)
-      table.sort(tK, function(u, v) return u < v end)
-      for iM = 1, #tK do
-        local sM = tK[iM]
-        local vM = FMSYNTAX_METATYP[sM]
-        if (vM.ID) then -- Type exists in TypeID
-          local mM = FindMetaTable(sM)
-          if(mM and istable(mM)) then
-            local tK, bH = table.GetKeys(mM), true
-            for iK = 1, #tK do
-              local n = tK[iK]
-              local e = mM[n]
-              if (isfunction(e) and not tMeta[n]) then
-                if(bH) then bH = false
-                  fS:Write(sS:format(tostring(vM.ID), sM))
-                end
-                fS:Write(sN)
-                fS:Write(sI:format(n))
-                fS:Write(sV:format("m"))
-                fS:Write("\n"); tMeta[n] = true
-              end
-            end; if(not bH) then fS:Write("\n") end
-          end
-        end
-      end
-
-      fS:Flush(); fS:Close()
-    end
-  end
-
   -- If the server has configuration files send them to the clients
-  if(file.Exists(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA")) then
-    resource.AddSingleFile("data/"..GLOB_CONFIG.FOLDER.."server_globals.txt")
+  if(file.Exists(GLOB_CONFIG.FOLDER.."syntax_globals.txt", "DATA")) then
+    resource.AddSingleFile("data/"..GLOB_CONFIG.FOLDER.."syntax_globals.txt")
   end
 
   -- The sever owners can write their own custom welcome files
@@ -467,10 +480,10 @@ if (CLIENT) then
     end)
 end
 
-if (file.Exists(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA")) then
-  RunString(file.Read(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA"))
+if (file.Exists(GLOB_CONFIG.FOLDER.."syntax_globals.txt", "DATA")) then
+  RunString(file.Read(GLOB_CONFIG.FOLDER.."syntax_globals.txt", "DATA"))
 else -- Load the hard-coded syntax highlighter relative to the lua folder
-  include("autorun/server_globals.lua")
+  include("autorun/syntax_globals.lua")
 end
 
 --[[
