@@ -248,56 +248,6 @@ local function runScriptHandler(sCon, sID, aSta)
   end
 end
 
---[[
- * Populates the status bar with the popper message
- * The message alpha is fading until it disappears
- * sFmt > Message format. All substitutions are strings
- * sKey > Color key from the status table
- * ...  > The values that match the format string
- * Returns: The Created label panel
-]]
-function luapad.SetStatus(sFmt, sKey, ...)
-  if(not sKey) then return end
-  local cDrw = COLOR_STATUS[sKey]
-  if(not cDrw) then return end
-  local cTmc = COLOR_STATUS["#TEMCO#"]
-
-  local pB = luapad.Statusbar
-  if(not IsValid(pB)) then return end
-
-  local sI = GLOB_CONFIG.LOWADN..".Statusbar.Fade"
-
-  -- Moce color data to status color
-  cTmc.r, cTmc.g = cDrw.r, cDrw.g
-  cTmc.b, cTmc.a = cDrw.b, cDrw.a
-
-  timer.Remove(sI); pB:Clear()
-
-  local pLab = vgui.Create("DLabel", pB)
-  pLab:SetText(sFmt:format(getString(...)))
-  pLab:SetTextColor(cTmc) -- Reference assignment
-  pLab:SizeToContents()
-
-  timer.Create(sI, 0.01, 0,
-    function()
-      if(not IsValid(pLab)) then return end
-      local cBar = pLab:GetTextColor()
-      cBar.a = math.Clamp(cBar.a - 1, 0, 255)
-      pLab:SetTextColor(cBar)
-
-      if (cBar.a == 0) then timer.Remove(sI)
-        if(IsValid(pLab)) then pLab:Remove() end
-      end
-    end)
-
-  pB:Add(pLab)
-
-  -- https://wiki.facepunch.com/gmod/HL2_Sound_List
-  surface.PlaySound(GLOB_CONFIG.PRESND:format(math.random(1, 4)))
-
-  return pLab
-end
-
 function luapad.SetConsole(sFmt, sKey, ...)
   if(not sKey) then return end
   local cDrw = COLOR_STATUS[sKey]
@@ -329,8 +279,7 @@ if (SERVER) then
     local fS = file.Open(GLOB_CONFIG.FOLDER.."server_globals.txt", "wb", "DATA")
 
     if(fS) then
-      local tMeta, tEnum = {}, {}
-      local tPass = {[_G] = true, [package] = true}
+      local tMeta, tEnum, tPass = {}, {}, {[package] = true}
       local sN, sV = FMSYNTAX_HILIGHT.N, FMSYNTAX_HILIGHT.V
       local sI, sH = FMSYNTAX_HILIGHT.I, FMSYNTAX_HILIGHT.H
 
@@ -339,7 +288,9 @@ if (SERVER) then
         local iD = math.max((tonumber(iD) or 0), 0)
         if(iD > 5) then return end -- Recursion depth
         if(tPass[tS]) then return end -- Already printed
-        local tK, bH = table.GetKeys(tS), true
+        local sU, rU = sB:gsub("^.-%[\"", ""):gsub("\"%]$", "")
+        local tK, sC, nU = table.GetKeys(tS), ("\"][\""), 0
+        local tU, bH = sC:Explode(sU), true; nU = (#tU + 1)
         table.sort(tK, function(u, v) return u < v end)
         for iE = 1, #tK do
           local vK = tK[iE]
@@ -354,13 +305,23 @@ if (SERVER) then
             fS:Write(sI:format(vK))
             fS:Write(sV:format("f"))
             fS:Write("\n")
+          elseif(string.upper(vK) == vK) then
+            if(bH) then bH = false
+              fS:Write(sB)
+              fS:Write(sH)
+              fS:Write("\n")
+            end
+            if(rU == 0) then table.insert(tEnum, vK) else
+              tU[nU] = vK -- Register local enums
+              table.insert(tEnum, table.concat(tU, sC))
+            end -- Nothing is replaced no keys registered
           elseif(istable(vE)) then tPass[tS] = true
             exportSyntax(sB..sI:format(vK), vE, iD + 1)
           end
         end
       end
 
-      fS:Write("-- This is an automatically generated cache file for server-side\n")
+      fS:Write("-- This is an automatically generated cache file on the server-side\n")
       fS:Write("-- The content includes global functions, meta-tables, and enumerations\n")
       fS:Write("-- Don't touch it, or you'll probably mess up your syntax highlighting\n")
       fS:Write("-- The timestamp of this generated file is ["..os.date(GLOB_CONFIG.DATFMT).."]\n")
@@ -368,27 +329,13 @@ if (SERVER) then
 
       fS:Write("\n\n-- Global functions and libraries\n\n")
       local tK = table.GetKeys(_G) -- Global registry includes itself
-      table.sort(tK, function(u, v) return u < v end)
-      for iK = 1, #tK do
-        local k = tK[iK]
-        local v = _G[k]
-        if (isfunction(v)) then
-          fS:Write(sN)
-          fS:Write(sI:format(k))
-          fS:Write(sV:format("f"))
-          fS:Write("\n")
-        elseif(string.upper(k) == k) then
-          table.insert(tEnum, k) -- Enumerators
-        elseif (istable(v)) then
-          exportSyntax(sN..sI:format(k), v)
-        end -- Enumerators have uppercase names
-      end
+      table.sort(tK, function(u, v) return u < v end); exportSyntax(sN, _G)
 
       local nE = #tEnum
       if(nE > 0) then
         fS:Write("\n\n-- Enumerations\n\n")
         table.sort(tEnum, function(u, v) return u < v end)
-        for iE = 1, #tEnum do
+        for iE = 1, nE do
           local sK = tEnum[iE]
           fS:Write(sN)
           fS:Write(sI:format(sK))
@@ -399,17 +346,22 @@ if (SERVER) then
 
       fS:Write("\n\n-- Meta-tables\n\n")
       -- https://wiki.facepunch.com/gmod/Enums/TYPE
-      for k, v in pairs(FMSYNTAX_METATYP) do
-        if (v.ID) then -- Type exists in TypeID
-          local m = FindMetaTable(k)
-          if(m and istable(m)) then
-            local tK, bH = table.GetKeys(m), true
+      local sS = "-- Source: [%s][%s]\n"
+      local tK = table.GetKeys(FMSYNTAX_METATYP)
+      table.sort(tK, function(u, v) return u < v end)
+      for iM = 1, #tK do
+        local sM = tK[iM]
+        local vM = FMSYNTAX_METATYP[sM]
+        if (vM.ID) then -- Type exists in TypeID
+          local mM = FindMetaTable(sM)
+          if(mM and istable(mM)) then
+            local tK, bH = table.GetKeys(mM), true
             for iK = 1, #tK do
               local n = tK[iK]
-              local e = m[n]
+              local e = mM[n]
               if (isfunction(e) and not tMeta[n]) then
                 if(bH) then bH = false
-                  fS:Write("-- Source: ["..k.."]\n")
+                  fS:Write(sS:format(tostring(vM.ID), sM))
                 end
                 fS:Write(sN)
                 fS:Write(sI:format(n))
@@ -519,6 +471,57 @@ if (file.Exists(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA")) then
   RunString(file.Read(GLOB_CONFIG.FOLDER.."server_globals.txt", "DATA"))
 else -- Load the hard-coded syntax highlighter relative to the lua folder
   include("autorun/server_globals.lua")
+end
+
+--[[
+ * Populates the status bar with the popper message
+ * The message alpha is fading until it disappears
+ * sFmt > Message format. All substitutions are strings
+ * sKey > Color key from the status table
+ * ...  > The values that match the format string
+ * Returns: The Created label panel
+]]
+function luapad.SetStatus(sFmt, sKey, ...)
+  if(SERVER) then return end
+  if(not sKey) then return end
+  local cDrw = COLOR_STATUS[sKey]
+  if(not cDrw) then return end
+  local cTmc = COLOR_STATUS["#TEMCO#"]
+
+  local pB = luapad.Statusbar
+  if(not IsValid(pB)) then return end
+
+  local sI = GLOB_CONFIG.LOWADN..".Statusbar.Fade"
+
+  -- Moce color data to status color
+  cTmc.r, cTmc.g = cDrw.r, cDrw.g
+  cTmc.b, cTmc.a = cDrw.b, cDrw.a
+
+  timer.Remove(sI); pB:Clear()
+
+  local pLab = vgui.Create("DLabel", pB)
+  pLab:SetText(sFmt:format(getString(...)))
+  pLab:SetTextColor(cTmc) -- Reference assignment
+  pLab:SizeToContents()
+
+  timer.Create(sI, 0.01, 0,
+    function()
+      if(not IsValid(pLab)) then return end
+      local cBar = pLab:GetTextColor()
+      cBar.a = math.Clamp(cBar.a - 1, 0, 255)
+      pLab:SetTextColor(cBar)
+
+      if (cBar.a == 0) then timer.Remove(sI)
+        if(IsValid(pLab)) then pLab:Remove() end
+      end
+    end)
+
+  pB:Add(pLab)
+
+  -- https://wiki.facepunch.com/gmod/HL2_Sound_List
+  surface.PlaySound(GLOB_CONFIG.PRESND:format(math.random(1, 4)))
+
+  return pLab
 end
 
 function luapad.About()
