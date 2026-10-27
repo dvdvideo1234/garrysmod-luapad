@@ -97,17 +97,19 @@ local ENABLE_FOLDER = {
 local RESTRICTED_FILES = {
   "data/"..GLOB_CONFIG.FOLDER.."welcome.txt",
   "data/"..GLOB_CONFIG.FOLDER.."saved_tabs.txt",
-  "data/"..GLOB_CONFIG.FOLDER.."syntax_globals.txt",
+  "data/"..GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt",
+  "data/"..GLOB_CONFIG.FOLDER.."cl_syntax_globals.txt",
   "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."welcome.txt",
   "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."saved_tabs.txt",
-  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."syntax_globals.txt",
+  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt",
+  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."cl_syntax_globals.txt"
 }
 
 local FMSYNTAX_HILIGHT = {
   N = GLOB_CONFIG.LOWADN.. "._sG", -- Name
   I = "[\"%s\"]",   -- Index
   V = " = \"%s\"",  -- Value
-  H = " = {}"       -- Header
+  H = " = %s or {}" -- Header
 }
 
 local PATPATH_CONVERT = {
@@ -266,7 +268,8 @@ end
 
 function luapad.genSyntaxGlobals()
   -- Generate a syntax highlighting configuration file based on the instance
-  local sG = GLOB_CONFIG.FOLDER.."syntax_globals.txt"
+  local sP = SERVER and "sv_" or (CLIENT and "cl_" or "na_")
+  local sG = GLOB_CONFIG.FOLDER..sP.."syntax_globals.txt"
 
   -- Check whenever the file has to be renewed and generate it again
   local bE, bA = file.Exists(sG, "DATA"), isAutoRenewDue(sG, "DATA")
@@ -299,7 +302,7 @@ function luapad.genSyntaxGlobals()
       if(isfunction(vE)) then
         if(bH) then bH = false
           fS:Write(sB)
-          fS:Write(sH)
+          fS:Write(sH:format(sB))
           fS:Write("\n")
         end
         fS:Write(sB)
@@ -309,7 +312,7 @@ function luapad.genSyntaxGlobals()
       elseif(string.upper(vK) == vK) then
         if(bH) then bH = false
           fS:Write(sB)
-          fS:Write(sH)
+          fS:Write(sH:format(sB))
           fS:Write("\n")
         end
         if(rU == 0) then table.insert(tEnum, vK) else
@@ -377,13 +380,13 @@ function luapad.genSyntaxGlobals()
   luapad.SetConsole("Syntax globals generated: %s", "STAT_OK", sG)
 end
 
+luapad.genSyntaxGlobals() -- Generate server-side globals
+
 if (SERVER) then
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".Upload")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".UploadClient")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".BroadcastUsers")
   util.AddNetworkString(GLOB_CONFIG.LOWADN..".StatusCallback")
-
-  luapad.genSyntaxGlobals() -- Generate server-side globals
 
   if (luapad.forcedownload) then
     AddCSLuaFile("autorun/luapad.lua")
@@ -391,8 +394,8 @@ if (SERVER) then
   end
 
   -- If the server has configuration files send them to the clients
-  if(file.Exists(GLOB_CONFIG.FOLDER.."syntax_globals.txt", "DATA")) then
-    resource.AddSingleFile("data/"..GLOB_CONFIG.FOLDER.."syntax_globals.txt")
+  if(file.Exists(GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt", "DATA")) then
+    resource.AddSingleFile("data/"..GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt")
   end
 
   -- The sever owners can write their own custom welcome files
@@ -480,8 +483,11 @@ if (CLIENT) then
     end)
 end
 
-if (file.Exists(GLOB_CONFIG.FOLDER.."syntax_globals.txt", "DATA")) then
-  RunString(file.Read(GLOB_CONFIG.FOLDER.."syntax_globals.txt", "DATA"))
+if (file.Exists(GLOB_CONFIG.FOLDER.."cl_syntax_globals.txt", "DATA")) then
+  RunString(file.Read(GLOB_CONFIG.FOLDER.."cl_syntax_globals.txt", "DATA"))
+  if (file.Exists(GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt", "DATA")) then
+    RunString(file.Read(GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt", "DATA"))
+  end -- In case the server file is added and transferred merge the syntax keys
 else -- Load the hard-coded syntax highlighter relative to the lua folder
   include("autorun/syntax_globals.lua")
 end
@@ -496,6 +502,7 @@ end
 ]]
 function luapad.SetStatus(sFmt, sKey, ...)
   if(SERVER) then return end
+
   if(not sKey) then return end
   local cDrw = COLOR_STATUS[sKey]
   if(not cDrw) then return end
@@ -538,6 +545,8 @@ function luapad.SetStatus(sFmt, sKey, ...)
 end
 
 function luapad.About()
+  if(SERVER) then return end
+
   local sD = GLOB_CONFIG.FOLDER
   if (not file.Exists(sD.."about.txt", "DATA")) then
     return
@@ -561,6 +570,8 @@ end
  * sDsc  > Label to use for the right button
 ]]
 function luapad.ShowConfirmDialog(sMsg, sTxt, fnSuc, fnDsc, sSuc, sDsc)
+  if(SERVER) then return end
+
   local pFrame = vgui.Create("DFrame")
   if(not IsValid(pFrame)) then return end
 
@@ -715,15 +726,18 @@ function luapad.CheckGlobal(func)
 end
 
 function luapad.Clear()
+  if(SERVER) then return end
+
   if(IsValid(luapad.Frame)) then
     luapad.Frame:Remove()
   end
 end
 
 function luapad.SaveTabs()
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-
   local tO, tW = {"", "", "", ""}, {}
   local tI = pS:GetItems()
   local aT = pS:GetActiveTab()
@@ -742,9 +756,10 @@ function luapad.SaveTabs()
 end
 
 function luapad.LoadTabs()
+  if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-   pS:Clear() -- The * symbol is invalid for a file name
+  pS:Clear() -- The * symbol is invalid for a file name
   -- Read the saved tabs file and load the related files
   local sF = file.Read(GLOB_CONFIG.FOLDER.."saved_tabs.txt", "DATA" )
   if(not sF) then return end -- File not found then bail out
@@ -932,6 +947,8 @@ end
  * act(LRMD) > Action functions done by the user mouse
 ]]
 function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
+  if(SERVER) then return end
+
   local pB = luapad.Toolbar
   if(not IsValid(pB)) then return end
 
@@ -971,6 +988,8 @@ function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
 end
 
 function luapad.AddToolbarSpacer()
+  if(SERVER) then return end
+
   local pLab = luapad.Toolbar:Add("DLabel")
   if(not IsValid(pLab)) then return end
 
@@ -985,6 +1004,7 @@ end
  * Closes only one tab if matched
 ]]
 function luapad.CloseTabName(name, nopat)
+  if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
   -- Check the property sheet tab
@@ -1005,6 +1025,8 @@ end
  * pTre > The tab reference that must be closed
 ]]
 function luapad.CloseTabView(pTre)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1036,6 +1058,7 @@ end
  * bInc > Close also the reference tab
 ]]
 function luapad.CloseTabLeft(pTre, bInc)
+  if(SERVER) then return end
   if(not IsValid(pTre)) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1064,6 +1087,7 @@ end
  * bInc > Close also the reference tab
 ]]
 function luapad.CloseTabRight(pTre, bInc)
+  if(SERVER) then return end
   if(not IsValid(pTre)) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1090,6 +1114,8 @@ end
  * Closes the active tab
 ]]
 function luapad.CloseTabActive()
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1122,6 +1148,8 @@ end
  * Closes Other tabs
 ]]
 function luapad.CloseTabOther(pTre)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1136,6 +1164,8 @@ end
  * Closes all the tabs
 ]]
 function luapad.CloseTabAll()
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1146,6 +1176,8 @@ end
  * Refreshes all the tabs on name/term
 ]]
 function luapad.RefreshTabName(name, term, nopat)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1195,6 +1227,8 @@ function luapad.RefreshTabName(name, term, nopat)
 end
 
 function luapad.RefreshTabView(pTre)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1232,6 +1266,8 @@ end
  * bInc > Close also the reference tab
 ]]
 function luapad.RefreshTabLeft(pTre, bInc)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1278,6 +1314,8 @@ end
  * bInc > Close also the reference tab
 ]]
 function luapad.RefreshTabRight(pTre, bInc)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1321,6 +1359,8 @@ end
  * Refreshes the active tab
 ]]
 function luapad.RefreshTabActive()
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1354,6 +1394,8 @@ end
  * bInc > Close also the reference tab
 ]]
 function luapad.RefreshTabOther(pTre)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1392,6 +1434,8 @@ function luapad.RefreshTabOther(pTre)
 end
 
 function luapad.RefreshTabAll()
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1434,6 +1478,8 @@ end
  * term > Tab custom title instead of the file name
 ]]
 function luapad.AddTab(name, cont, path, term, icon)
+  if(SERVER) then return end
+
   local sPth = tostring(path or "")
   local sNam = tostring(name or "")
   local sCon = tostring(cont or "")
@@ -1691,6 +1737,8 @@ function luapad.RunScriptMenu()
 end
 
 function luapad.IsOpen(name, path)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return false end
 
@@ -1726,6 +1774,8 @@ end
  * path > The file path relative to the game folder
 ]]
 function luapad.NewTab(cont, path)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1763,6 +1813,8 @@ end
  * Adds a new tab relative to the active tab path
 ]]
 function luapad.NewTabActive()
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1783,6 +1835,8 @@ end
  * the content is refreshed during the game startup
 ]]
 function luapad.OpenTree()
+  if(SERVER) then return end
+
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
 
@@ -1903,6 +1957,8 @@ function luapad.OpenTree()
 end
 
 function luapad.OpenTab(path)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1928,6 +1984,8 @@ function luapad.OpenTab(path)
 end
 
 function luapad.OpenBrowse()
+  if(SERVER) then return end
+
   local tK = table.GetKeys(ENABLE_FOLDER)
   table.sort(tK, function(u, v)
     local ru = ENABLE_FOLDER[u]
@@ -1951,6 +2009,8 @@ function luapad.OpenBrowse()
 end
 
 function luapad.SaveScript(pTre)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -1992,6 +2052,8 @@ function luapad.SaveScript(pTre)
 end
 
 function luapad.SaveAsScript(pTre)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -2041,6 +2103,8 @@ function luapad.SaveAsScript(pTre)
 end
 
 function luapad.SaveAll()
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
@@ -2084,6 +2148,8 @@ end
  * Tab reference to be deleted. Defaults to active
 ]]
 function luapad.DeleteScript(pTre)
+  if(SERVER) then return end
+
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
