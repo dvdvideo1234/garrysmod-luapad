@@ -29,8 +29,8 @@ local GLOB_CONFIG = {
 }
 
 -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
-local VAR_ARN = CreateConVar(GLOB_CONFIG.LOWADN.."_autorenew", 30, GLOB_CONFIG.CFLAGS, "File grace period for auto renew", 0, 1000)
-local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.CFLAGS, "Makes the luapad addon admin only", 0, 1)
+local VAR_ARN = CreateConVar(GLOB_CONFIG.LOWADN.."_autorenew", 14, GLOB_CONFIG.CFLAGS, "File grace period for auto renew in days", 0, 1000)
+local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.CFLAGS, "Makes the luapad addon admin usable only", 0, 1)
 local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.CFLAGS, "Maximum number of new files in the folder", 0, 100)
 local VAR_MXR = CreateConVar(GLOB_CONFIG.LOWADN.."_maxrecurs", 20, GLOB_CONFIG.CFLAGS, "Recurse depth when opening a file system", 0, 100)
 local VAR_EDT = CreateConVar(GLOB_CONFIG.LOWADN.."_endataorg",  1, GLOB_CONFIG.CFLAGS, "File operation in the whole data folder", 0, 1)
@@ -106,6 +106,7 @@ local RESTRICTED_FILES = {
 }
 
 local FMSYNTAX_HILIGHT = {
+  X = {package}, -- Syntax ignore globals
   N = GLOB_CONFIG.LOWADN.. "._sG", -- Name
   I = "[\"%s\"]",   -- Index
   V = " = \"%s\"",  -- Value
@@ -273,7 +274,7 @@ function luapad.genSyntaxGlobals()
 
   -- Check whenever the file has to be renewed and generate it again
   local bE, bA = file.Exists(sG, "DATA"), isAutoRenewDue(sG, "DATA")
-  if(bE and not bA) then return end
+  if(bE and not bA) then return end -- Exists and not auto renewed
 
   -- Replace the file on the instance
   local fS = file.Open(sG, "wb", "DATA")
@@ -283,9 +284,13 @@ function luapad.genSyntaxGlobals()
   end
 
   -- Allocate placeholders for registry elements
-  local tMeta, tEnum, tPass = {}, {}, {[package] = true}
+  local tMeta, tEnum, tPass = {}, {}, {}
+  local tX = FMSYNTAX_HILIGHT.X -- Terminate recurs early
   local sN, sV = FMSYNTAX_HILIGHT.N, FMSYNTAX_HILIGHT.V
   local sI, sH = FMSYNTAX_HILIGHT.I, FMSYNTAX_HILIGHT.H
+  for iX = 1, #tX do local vX = tX[iX] -- Ignore globals
+    if(istable(vX) and vX ~= nul) then tPass[vX] = true end
+  end -- Ignored global tables are loaded and ignored
 
    -- Global registry includes itself
   local function exportSyntax(sB, tS, iD)
@@ -296,7 +301,7 @@ function luapad.genSyntaxGlobals()
     local tK, sC, nU = table.GetKeys(tS), ("\"][\""), 0
     local tU, bH = sC:Explode(sU), true; nU = (#tU + 1)
     table.sort(tK, function(u, v) return u < v end)
-    for iE = 1, #tK do
+    for iE = 1, #tK do -- Loop alphabetically
       local vK = tK[iE]
       local vE = tS[vK]
       if(isfunction(vE)) then
@@ -338,7 +343,7 @@ function luapad.genSyntaxGlobals()
   if(nE > 0) then
     fS:Write("\n-- Enumerations\n\n")
     table.sort(tEnum, function(u, v) return u < v end)
-    for iE = 1, nE do
+    for iE = 1, nE do -- Loop alphabetically
       local sK = tEnum[iE]
       fS:Write(sN)
       fS:Write(sI:format(sK))
@@ -352,7 +357,7 @@ function luapad.genSyntaxGlobals()
   local sS = "-- Source: [%s][%s]\n"
   local tK = table.GetKeys(FMSYNTAX_METATYP)
   table.sort(tK, function(u, v) return u < v end)
-  for iM = 1, #tK do
+  for iM = 1, #tK do -- Loop alphabetically
     local sC = tK[iM]
     local vM = FMSYNTAX_METATYP[sC]
     if (vM.ID) then -- Type exists in TypeID
