@@ -14,7 +14,8 @@ local GLOB_CONFIG = {
   PANLSZ = 2 / 3, -- The ratio panel will use according to the screen size
   DAYINS = 86400, -- The amount of second present in one day
   MAXMSL = 60000, -- As the maximum write string limit is 65532
-  ADDONN = "Luapad", -- Generic addon name
+  FMQUOT = "\"%s\"", -- Format something to put it in double quotes
+  ADDONN = "Luapad", -- Generic addon name used to distiguish messages
   FOLDER = "luapad/", -- Default application folder in the data file system
   LOWADN = "luapad", -- Addon name lower case for hashes, messages and convars
   ICOFMT = "icon16/%s.png", -- Icon path format string
@@ -381,6 +382,15 @@ function luapad.genSyntaxGlobals()
     end
   end
 
+  local sQ = GLOB_CONFIG.FMQUOT
+  local sA = sQ:format(GLOB_CONFIG.ADDONN)
+  local sP = sQ:format(GLOB_CONFIG.FFDRPT:format(sG, ""))
+  local sC = sQ:format("COMS_"..(SERVER and "SV" or "CL"))
+  local sF = sQ:format("%s > Syntax imported: %s")
+  local sT = "luapad.SetConsole(%s, %s, %s, %s)\n"
+  fS:Write("-- Write a console message for the imported syntax\n") 
+  fS:Write(sT:format(sF, sC, sA, sP))
+  
   fS:Flush(); fS:Close()
   luapad.SetConsole("Syntax globals generated: %s", "STAT_OK", sG)
 end
