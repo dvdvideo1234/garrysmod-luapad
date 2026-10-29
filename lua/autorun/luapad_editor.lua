@@ -30,37 +30,23 @@ local KEYWORD_TOKENS = {
   ["||"      ] = true,
   ["&&"      ] = true
 }
---[[
- |¶| : The end of a paragraph (pressing Enter)
- |·| : A standard space bar press between words
- |→| : A tab stop jump (pressing the Tab key)
- |°| : A non-breaking space (Ctrl + Shift + Space)
- |↵| : A soft line break (Shift + Enter)
- |¤| : The end of a table cell or a table row
- |¬| : A soft hyphen used for conditional word wrapping
- |■| : Appears in the left margin to show paragraph layout
-]]
-local SHOW_PARAGRAPH = {
-}
 
 --[[
- * TODO: Color customization
+ * Default theme customization
  * [1] : Current color used for a bunch of text
  * [2] : Use bold text style when drawing
 ]]
 local COLOR_HIGHLIGHT = {
-  ["none"       ] = {Color(0, 0, 0, 255)      , false},
-  ["number"     ] = {Color(218, 165, 32, 255) , false},
-  ["function"   ] = {Color(100, 100, 255, 255), false},
-  ["enumeration"] = {Color(184, 134, 11, 255) , false},
-  ["metatable"  ] = {Color(140, 100, 90, 255) , false},
-  ["string"     ] = {Color(120, 120, 120, 255), false},
-  ["expression" ] = {Color(0, 0, 255, 255)    , false},
-  ["operator"   ] = {Color(0, 0, 128, 255)    , false},
-  ["comment"    ] = {Color(0, 120, 0, 255)    , false}
+  ["none"       ] = Color(  0,   0,   0, 255),
+  ["number"     ] = Color(218, 165,  32, 255),
+  ["function"   ] = Color(100, 100, 255, 255),
+  ["enumeration"] = Color(184, 134,  11, 255),
+  ["metatable"  ] = Color(140, 100,  90, 255),
+  ["string"     ] = Color(120, 120, 120, 255),
+  ["expression" ] = Color(  0,   0, 255, 255),
+  ["operator"   ] = Color(  0,   0, 128, 255),
+  ["comment"    ] = Color(  0, 120,   0, 255)
 }
-
-COLOR_HIGHLIGHT["string2"] = COLOR_HIGHLIGHT["string"]
 
 luapad.EditorPanel = {}
 
@@ -103,9 +89,49 @@ function luapad.EditorPanel:Init()
     self.Parent:CustomOnKeyCodeTyped(code)
   end
 
+  self:SetThemeDefault()
+
   self.TextEntry.Parent = self
 
   self.LastClick = 0
+end
+
+function luapad.EditorPanel:SetThemeDefault()
+  self.Highlight = (self.Highlight or {})
+  table.Empty(self.Highlight) -- Clear highlighting
+  for sT, vC in pairs(COLOR_HIGHLIGHT) do
+    self.Highlight[sT] = {vC, false}
+  end -- Update the string expression
+  self.Highlight["string2"] = self.Highlight["string"]
+end
+
+function luapad.EditorPanel:SetThemeFile(sN)
+  if(not isstring(sN)) then return end
+  local bN = luapad.isHere(sN)
+  local tC = luapad.GetConfig("THMDEF")
+  local sD = luapad.GetConfig("DELIMS")
+  local sN = (bN and sN or tC[2]):lower()..".txt"
+  self:SetThemeDefault() -- Ignore missing gaps
+  if(sN == tC[2]) then return end
+  if(not file.IsDir(tC[1], "DATA")) then file.CreateDir(tC[1]) end
+  -- Open the file so the theme can be extracted
+  local sF = file.Read(tC[1]..sN, "rb", "DATA")
+  if(not sF) then -- The file open attempt has failed
+    luapad.SetConsole("Failed opening highlight: %s%s", "STAT_WR", tC[1], sN)
+    return -- Exit the routine end report the status
+  end
+  local tW = ("[\r\n]+"):Explode(sF, true)
+  for iD = 1, #tW do -- Every line contains token and color
+    local tT = sI:Explode(tW[iD]) -- Empty lines
+    local sT = tT[1] -- Color token to search for
+    if(self.Highlight[sT]) then
+      local nR = luapad.toColor(tT[2], 0)
+      local nG = luapad.toColor(tT[3], 0)
+      local nB = luapad.toColor(tT[4], 0)
+      local nA = luapad.toColor(tT[5], 255)
+      self.Highlight[sT][1] = Color(nR, nG, nB, nA)
+    end
+  end
 end
 
 function luapad.EditorPanel:RequestFocus()
@@ -397,7 +423,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
       token = "operator"
     end
 
-    local tC = COLOR_HIGHLIGHT[token]
+    local tC = self.Highlight[token]
     local nH = #cols
 
     if (nH > 1 and tC == cols[nH][2]) then
