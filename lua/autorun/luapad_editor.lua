@@ -37,15 +37,21 @@ local KEYWORD_TOKENS = {
  * [2] : Use bold text style when drawing
 ]]
 local COLOR_HIGHLIGHT = {
-  ["none"       ] = Color(  0,   0,   0, 255),
-  ["number"     ] = Color(218, 165,  32, 255),
-  ["function"   ] = Color(100, 100, 255, 255),
-  ["enumeration"] = Color(184, 134,  11, 255),
-  ["metatable"  ] = Color(140, 100,  90, 255),
-  ["string"     ] = Color(120, 120, 120, 255),
-  ["expression" ] = Color(  0,   0, 255, 255),
-  ["operator"   ] = Color(  0,   0, 128, 255),
-  ["comment"    ] = Color(  0, 120,   0, 255)
+  ["gui.background" ] = Color(220, 220, 220, 255),
+  ["gui.verticalbar"] = Color(170, 170, 170, 255),
+  ["gui.rownumbers" ] = Color(128, 128, 128, 255),
+  ["gui.blinkcursor"] = Color( 72,  61, 139, 255),
+  ["gui.paintrowstr"] = Color(215, 215, 215, 255),
+  ["gui.paintrowend"] = Color(250, 250, 250, 255),
+  ["code.none"      ] = Color(  0,   0,   0, 255),
+  ["code.number"    ] = Color(218, 165,  32, 255),
+  ["code.function"  ] = Color(100, 100, 255, 255),
+  ["code.enumerator"] = Color(184, 134,  11, 255),
+  ["code.metatable" ] = Color(140, 100,  90, 255),
+  ["code.string"    ] = Color(120, 120, 120, 255),
+  ["code.expression"] = Color(  0,   0, 255, 255),
+  ["code.operator"  ] = Color(  0,   0, 128, 255),
+  ["code.comment"   ] = Color(  0, 120,   0, 255)
 }
 
 luapad.EditorPanel = {}
@@ -96,13 +102,21 @@ function luapad.EditorPanel:Init()
   self.LastClick = 0
 end
 
+function luapad.EditorPanel:GetTheme(sT)
+  local tT = self.Highlight
+  if(not sT) then return nil end
+  if(not istable(tT)) then return nil end
+  if(not isstring(sT)) then return nil end
+  return tT[sT] -- Theme color
+end
+
 function luapad.EditorPanel:SetThemeDefault()
   self.Highlight = (self.Highlight or {})
   table.Empty(self.Highlight) -- Clear highlighting
   for sT, vC in pairs(COLOR_HIGHLIGHT) do
     self.Highlight[sT] = {vC, false}
   end -- Update the string expression
-  self.Highlight["string2"] = self.Highlight["string"]
+  self.Highlight["code.string2"] = self.Highlight["code.string"]
 end
 
 function luapad.EditorPanel:SetThemeFile(sN)
@@ -123,12 +137,12 @@ function luapad.EditorPanel:SetThemeFile(sN)
   local tW = ("[\r\n]+"):Explode(sF, true)
   for iD = 1, #tW do -- Every line contains token and color
     local tT = sI:Explode(tW[iD]) -- Empty lines
-    local sT = tT[1] -- Color token to search for
+    local sT = tT[1]:Trim() -- Color token to search for
     if(self.Highlight[sT]) then
-      local nR = luapad.toColor(tT[2], 0)
-      local nG = luapad.toColor(tT[3], 0)
-      local nB = luapad.toColor(tT[4], 0)
-      local nA = luapad.toColor(tT[5], 255)
+      local nR = luapad.toColor(tT[2]:Trim(), 0)
+      local nG = luapad.toColor(tT[3]:Trim(), 0)
+      local nB = luapad.toColor(tT[4]:Trim(), 0)
+      local nA = luapad.toColor(tT[5]:Trim(), 255)
       self.Highlight[sT][1] = Color(nR, nG, nB, nA)
     end
   end
@@ -344,7 +358,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
         self:NextChar()
       end
 
-      token = "number"
+      token = "code.number"
     elseif (self.char >= "a" and self.char <= "z" or self.char >= "A" and self.char <= "Z") then
 
       while self.char and (self.char >= "a" and self.char <= "z" or
@@ -359,7 +373,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
 
       if (KEYWORD_TOKENS[sstr]) then
 
-        token = "expression"
+        token = "code.expression"
 
       elseif (gstr and (tgstr == "function" or gstr == "f" or gstr == "e" or gstr == "m" or tgstr == "table") or (lasttable and lasttable[sstr])) then
          -- Could be better code, but what the hell; it works
@@ -368,16 +382,16 @@ function luapad.EditorPanel:SyntaxColorLine(row)
         end
 
         if ((gstr == "e") and sstr == string.upper(sstr)) then
-          token = "enumeration"
+          token = "code.enumerator"
         elseif (gstr == "m") then
-          token = "metatable"
+          token = "code.metatable"
         else
-          token = "function"
+          token = "code.function"
         end
 
       else
         lasttable = nil
-        token = "none"
+        token = "code.none"
       end
     elseif (self.char == "\"") then -- TODO: Fix multi line strings, and add support for [[stuff]]!
 
@@ -390,7 +404,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
       end
       self:NextChar()
 
-      token = "string"
+      token = "code.string"
     elseif (self.char == "'") then
 
       self:NextChar()
@@ -402,7 +416,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
       end
       self:NextChar()
 
-      token = "string2"
+      token = "code.string2"
     elseif (self.char == "/" or self.char == "-") then -- TODO: Multi-line comments!
 
       local lastchar = self.char
@@ -413,14 +427,14 @@ function luapad.EditorPanel:SyntaxColorLine(row)
           self:NextChar()
         end
 
-        token = "comment"
+        token = "code.comment"
       else
-        token = "none"
+        token = "code.none"
       end
 
     else
       self:NextChar()
-      token = "operator"
+      token = "code.operator"
     end
 
     local tC = self.Highlight[token]
@@ -448,7 +462,7 @@ function luapad.EditorPanel:PaintLine(row)
   local width, height = self.FontWidth, self.FontHeight
 
   if (row == self.Caret[1] and self.TextEntry:HasFocus()) then
-    surface.SetDrawColor(220, 220, 220, 255)
+    surface.SetDrawColor(self:GetTheme("gui.background"))
     surface.DrawRect(width * 3 + 5, (row - self.Scroll[1]) * height, self:GetWide() - (width * 3 + 5), height)
   end
 
@@ -457,7 +471,7 @@ function luapad.EditorPanel:PaintLine(row)
     local line, char = start[1], start[2]
     local endline, endchar = stop[1], stop[2]
 
-    surface.SetDrawColor(170, 170, 170, 255)
+    surface.SetDrawColor(self:GetTheme("gui.verticalbar"))
     local length = string.len(self.Rows[row]) - self.Scroll[2] + 1
 
     char = char - self.Scroll[2]
@@ -480,7 +494,7 @@ function luapad.EditorPanel:PaintLine(row)
     end
   end
 
-  draw.SimpleText(tostring(row), "LuapadEditor", width * 3, (row - self.Scroll[1]) * height, Color(128, 128, 128, 255), TEXT_ALIGN_RIGHT)
+  draw.SimpleText(tostring(row), "LuapadEditor", width * 3, (row - self.Scroll[1]) * height, self:GetTheme("gui.rownumbers"), TEXT_ALIGN_RIGHT)
 
   local offset = -self.Scroll[2] + 1
   for i, cell in ipairs(self.PaintRows[row]) do
@@ -511,7 +525,7 @@ function luapad.EditorPanel:PaintLine(row)
   if (row == self.Caret[1] and self.TextEntry:HasFocus()) then
     if ((RealTime() - self.Blink) % 0.8 < 0.4) then
       if (self.Caret[2] - self.Scroll[2] >= 0) then
-        surface.SetDrawColor(72, 61, 139, 255)
+        surface.SetDrawColor(self:GetTheme("gui.blinkcursor"))
         surface.DrawRect((self.Caret[2] - self.Scroll[2]) * width + width * 3 + 6,
                          (self.Caret[1] - self.Scroll[1]) * height, 1, height)
       end
@@ -542,10 +556,10 @@ function luapad.EditorPanel:Paint(w, h)
     self.Caret = self:CursorToCaret()
   end
 
-  surface.SetDrawColor(215, 215, 215, 255)
+  surface.SetDrawColor(self:GetTheme("gui.paintrowstr"))
   surface.DrawRect(0, 0, self.FontWidth * 3 + 4, self:GetTall())
 
-  surface.SetDrawColor(250, 250, 250, 255)
+  surface.SetDrawColor(self:GetTheme("gui.paintrowend"))
   surface.DrawRect(self.FontWidth * 3 + 5, 0, self:GetWide() - (self.FontWidth * 3 + 5), self:GetTall())
 
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
