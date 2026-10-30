@@ -37,21 +37,21 @@ local KEYWORD_TOKENS = {
  * [2] : Use bold text style when drawing
 ]]
 local COLOR_HIGHLIGHT = {
-  ["gui.background" ] = Color(220, 220, 220, 255),
-  ["gui.verticalbar"] = Color(170, 170, 170, 255),
-  ["gui.rownumbers" ] = Color(128, 128, 128, 255),
-  ["gui.blinkcursor"] = Color( 72,  61, 139, 255),
-  ["gui.paintrowstr"] = Color(215, 215, 215, 255),
-  ["gui.paintrowend"] = Color(250, 250, 250, 255),
-  ["code.none"      ] = Color(  0,   0,   0, 255),
-  ["code.number"    ] = Color(218, 165,  32, 255),
-  ["code.function"  ] = Color(100, 100, 255, 255),
-  ["code.enumerator"] = Color(184, 134,  11, 255),
-  ["code.metatable" ] = Color(140, 100,  90, 255),
-  ["code.string"    ] = Color(120, 120, 120, 255),
-  ["code.expression"] = Color(  0,   0, 255, 255),
-  ["code.operator"  ] = Color(  0,   0, 128, 255),
-  ["code.comment"   ] = Color(  0, 120,   0, 255)
+  ["gui.background" ] = {Base = Color(220, 220, 220, 255), Skin = "colTextEntryBG"},
+  ["gui.verticalbar"] = {Base = Color(170, 170, 170, 255), Skin = "colTextEntryBorder"},
+  ["gui.blinkcursor"] = {Base = Color( 72,  61, 139, 255), Skin = "colTextEntryTextCursor"},
+  ["gui.rownumbers" ] = {Base = Color(128, 128, 128, 255), Skin = "colTextEntryTextPlaceholder"},
+  ["gui.rowpaintbeg"] = {Base = Color(215, 215, 215, 255), Skin = "colTextEntryTextHighlight"},
+  ["gui.rowpaintend"] = {Base = Color(250, 250, 250, 255), Skin = "colTextEntryBG"},
+  ["code.none"      ] = {Base = Color(  0,   0,   0, 255), Skin = "colTextEntryText"},
+  ["code.number"    ] = {Base = Color(218, 165,  32, 255)},
+  ["code.function"  ] = {Base = Color(100, 100, 255, 255)},
+  ["code.enumerator"] = {Base = Color(184, 134,  11, 255)},
+  ["code.metatable" ] = {Base = Color(140, 100,  90, 255)},
+  ["code.string"    ] = {Base = Color(120, 120, 120, 255)},
+  ["code.construct" ] = {Base = Color(  0,   0, 255, 255)},
+  ["code.operator"  ] = {Base = Color(  0,   0, 128, 255)},
+  ["code.comment"   ] = {Base = Color(  0, 120,   0, 255)}
 }
 
 luapad.EditorPanel = {}
@@ -102,19 +102,51 @@ function luapad.EditorPanel:Init()
   self.LastClick = 0
 end
 
+function luapad.EditorPanel:GetThemeKeys()
+  local tT = self.Highlight
+  if(not tT) then return nil end
+  local tK = table.GetKeys(tT)
+  table.sort(tK, function(u, v) return u < v end)
+  return tK -- Array with palette keys
+end
+
 function luapad.EditorPanel:GetTheme(sT)
   local tT = self.Highlight
+  if(not tT) then return nil end
   if(not sT) then return nil end
-  if(not istable(tT)) then return nil end
-  if(not isstring(sT)) then return nil end
-  return tT[sT] -- Theme color
+  return tT[sT][1]
+end
+
+function luapad.EditorPanel:SetTheme(sT, vC)
+  local tT = self.Highlight
+  if(not tT) then return nil end
+  if(not sT) then return nil end
+  return tT[sT][1] = vC
+end
+
+function luapad.EditorPanel:SetThemeArea(pD, bR)
+  local tS = self.Highlight
+  if(not tT) then return nil end
+  if(not pE) then return nil end
+  local tD = pD:GetTable().Highlight
+  if(not tD) then return nil end
+  for sT, vT in pairs(tS) do
+    local vS, vD = vT, tD[sT]
+    if(vS and vD) then
+      if(bR) then
+        vD[1] = vS[1]
+      else
+        vS[1] = vD[1]
+      end
+    end
+  end
 end
 
 function luapad.EditorPanel:SetThemeDefault()
   self.Highlight = (self.Highlight or {})
   table.Empty(self.Highlight) -- Clear highlighting
-  for sT, vC in pairs(COLOR_HIGHLIGHT) do
-    self.Highlight[sT] = {vC, false}
+  for sT, tC in pairs(COLOR_HIGHLIGHT) do
+    self.Highlight[sT] = {tC.Base, false}
   end -- Update the string expression
   self.Highlight["code.string2"] = self.Highlight["code.string"]
 end
@@ -124,7 +156,7 @@ function luapad.EditorPanel:SetThemeFile(sN)
   local bN = luapad.IsHere(sN)
   local tC = luapad.GetConfig("THMDEF")
   local sE = luapad.GetConfig("PATNLN")
-  local sN = (bN and sN or tC[2]):lower()..".txt"
+  local sN = (bN and sN or tC[2])..".txt"
   self:SetThemeDefault() -- Ignore missing gaps
   if(sN == tC[2]) then return end
   if(not file.IsDir(tC[1], "DATA")) then file.CreateDir(tC[1]) end
@@ -147,6 +179,42 @@ function luapad.EditorPanel:SetThemeFile(sN)
       self.Highlight[sT][1] = Color(nR, nG, nB, nA)
     end
   end
+end
+
+function luapad.EditorPanel:SaveThemeFile(sN)
+  if(not isstring(sN)) then return end
+  local bN = luapad.IsHere(sN)
+  local tC = luapad.GetConfig("THMDEF")
+  local sN = (bN and sN or tC[2]):lower()..".txt"
+  if(not file.IsDir(tC[1], "DATA")) then file.CreateDir(tC[1]) end
+  -- Open the file so the theme can be extracted
+  local fO = file.Open(tC[1]..sN, "wb", "DATA")
+  if(not fO) then -- The file open attempt has failed
+    luapad.SetConsole("Failed opening highlight: %s%s", "STAT_WR", tC[1], sN)
+    return -- Exit the routine end report the status
+  end
+  local tK, tO = self:GetThemeKeys(), {}
+  local sD = luapad.GetConfig("DELIMS")
+  for iK = 1, #tK do -- Every line contains token and color
+    local vK = tK[iK]; tO[1] = vK
+    local vC = self:GetTheme(vK)
+    tO[2], tO[3], tO[4], tO[5] = vC:unpack()
+    fO:Write(table.concat(tO, sD)); fO:Write("\n")
+  end
+  fO:Flush(); fO:Close()
+end
+
+function luapad.EditorPanel:SetThemeSkin(tS)
+  self:SetThemeDefault() -- Ignore missing gaps
+  local tS = (tS or derma.GetDefaultSkin())
+  local sD = luapad.GetConfig("DELIMS")
+  for sT, tC in pairs(COLOR_HIGHLIGHT) do
+    if(tC.Skin) then
+      local vC, tK = tS, sD:Explode(tC.Skin)
+      for iD = 1, #tK do vC = vC[tK[iD]] end
+      if(vC) then self.Highlight[sT][1] = vC end
+    end
+  end -- Update the string expression
 end
 
 function luapad.EditorPanel:RequestFocus()
@@ -389,7 +457,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
 
       if (KEYWORD_TOKENS[sstr]) then
 
-        token = "code.expression"
+        token = "code.construct"
 
       elseif (gstr and (tgstr == "function" or gstr == "f" or gstr == "e" or gstr == "m" or tgstr == "table") or (lasttable and lasttable[sstr])) then
          -- Could be better code, but what the hell; it works
@@ -593,10 +661,10 @@ function luapad.EditorPanel:Paint(w, h)
     self.Caret = self:CursorToCaret()
   end
 
-  surface.SetDrawColor(self:GetTheme("gui.paintrowstr"))
+  surface.SetDrawColor(self:GetTheme("gui.rowpaintbeg"))
   surface.DrawRect(0, 0, self.FontWidth * 3 + 4, self:GetTall())
 
-  surface.SetDrawColor(self:GetTheme("gui.paintrowend"))
+  surface.SetDrawColor(self:GetTheme("gui.rowpaintend"))
   surface.DrawRect(self.FontWidth * 3 + 5, 0, self:GetWide() - (self.FontWidth * 3 + 5), self:GetTall())
 
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)

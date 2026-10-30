@@ -773,18 +773,27 @@ function luapad.Clear()
   end
 end
 
-function luapad.EqualizeTabTheme(sT)
+function luapad.EqualizeThemeTab(vTre)
+  if(SERVER) then return end
   local bSe = input.IsKeyDown(KEY_LSHIFT)
   local bSr = input.IsKeyDown(KEY_RSHIFT)
   if(not (bSe or bSr)) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  local iT, pT = pS:GetTabIndex(vTre)
+  if(not iT) then return end
+  if(not IsValid(pT)) then return end
   local tI = pS:GetItems()
-  local sV = VAR_THM:GetString()
-  local sT = tostring(sT or sV)
+  local pA = pT:GetTextArea()
+  local tK = pA:GetThemeKeys()
   for iD = 1, #tI do
-    local tP = tI[iD]
-    local pT = tP.Tab
-    if(IsValid(pT)) then
-      pT:GetTextArea():SetThemeFile(sT)
+    if(iD ~= iT) then -- Our tab is updated
+      local tP = tI[iD] -- Index the tab
+      local cT = tP.Tab -- Refer the panel
+      if(IsValid(cT)) then -- Apply theme
+        local cA = cT:GetTextArea()
+        cA:SetThemeArea(pA)
+      end
     end
   end
 end
@@ -797,7 +806,7 @@ function luapad.SetThemeEntry(vTre)
   if(not IsValid(pT)) then return end
   local sT = VAR_THM:GetString()
   pT:GetTextArea():SetThemeFile(sT)
-  luapad.EqualizeTabTheme(sT)
+  luapad.EqualizeThemeTab(pT)
 end
 
 function luapad.OpenThemeMenu(vTre)
@@ -1268,21 +1277,46 @@ function luapad.AttachThemeMenu(pMenu, vTre)
   if(not IsValid(pMenu)) then return end
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
-  pMenu:AddOption("default", function()
+  pMenu:AddOption("Export", function()
+    luapad.ShowConfirmDialog(
+      "You are about to save a theme, please enter the desired name.",
+      GLOB_CONFIG.THMDEF[2],
+      function(sName)
+        pT:GetTextArea():SaveThemeFile(sName)
+      end, nil, "Save", "Cancel"
+    )
+  end):SetImage(luapad.ToIcon("picture_save"))
+  pMenu:AddOption("Default", function()
     pT:GetTextArea():SetThemeDefault()
-    luapad.EqualizeTabTheme("default")
+    luapad.EqualizeThemeTab(pT)
     VAR_THM:SetString("default")
-  end):SetImage(luapad.ToIcon("palette"))
+  end):SetImage(luapad.ToIcon("picture_empty"))
+  -- Update the theme via a skin
+  local pIn, pOp = pMenu:AddSubMenu("Skin")
+  if(not IsValid(pIn)) then return end
+  pOp:SetIcon(luapad.ToIcon("picture_key"))
+  local tS = derma.GetSkinTable()
+  for sS, vS in pairs(tS) do
+    pIn:AddOption(tostring(sS), function()
+      pT:GetTextArea():SetThemeSkin(vS)
+      luapad.EqualizeThemeTab(pT)
+      VAR_THM:SetString("#"..sS)
+    end):SetImage(luapad.ToIcon("palette"))
+  end
+  -- Update the theme via a file luapad/theme/*.txt
   local tF = file.Find(GLOB_CONFIG.THMDEF[1].."*.txt", "DATA")
-  if(not tF) then return end -- No files only default is added
-  pMenu:AddSpacer() -- Add all the files with spaces for default
+  if(not tF) then return end -- No files were added
+  if(#tF == 0) then return end -- An empty file table
+  local pIn, pOp = pMenu:AddSubMenu("File")
+  pOp:SetIcon(luapad.ToIcon("picture_go"))
+  if(not IsValid(pIn)) then return end
   for iF = 1, #tF do -- Loop and add al files to the menu
     local vF = tF[iF]:gsub("%..*$", "")
     if(luapad.IsHere(vF)) then
-      pMenu:AddOption(vF, function()
+      pIn:AddOption(vF, function()
         pT:GetTextArea():SetThemeFile(vF)
-        luapad.EqualizeTabTheme(vF)
-        VAR_THM:SetString(vF)
+        luapad.EqualizeThemeTab(pT)
+        VAR_THM:SetString("*"..vF)
       end):SetImage(luapad.ToIcon("palette"))
     end
   end
