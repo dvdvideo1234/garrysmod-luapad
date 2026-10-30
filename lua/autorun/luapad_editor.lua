@@ -121,9 +121,9 @@ end
 
 function luapad.EditorPanel:SetThemeFile(sN)
   if(not isstring(sN)) then return end
-  local bN = luapad.isHere(sN)
+  local bN = luapad.IsHere(sN)
   local tC = luapad.GetConfig("THMDEF")
-  local sD = luapad.GetConfig("DELIMS")
+  local sE = luapad.GetConfig("PATNLN")
   local sN = (bN and sN or tC[2]):lower()..".txt"
   self:SetThemeDefault() -- Ignore missing gaps
   if(sN == tC[2]) then return end
@@ -134,15 +134,16 @@ function luapad.EditorPanel:SetThemeFile(sN)
     luapad.SetConsole("Failed opening highlight: %s%s", "STAT_WR", tC[1], sN)
     return -- Exit the routine end report the status
   end
-  local tW = ("[\r\n]+"):Explode(sF, true)
+  local tW = sE:Explode(sF, true)
+  local sD = luapad.GetConfig("DELIMS")
   for iD = 1, #tW do -- Every line contains token and color
-    local tT = sI:Explode(tW[iD]) -- Empty lines
+    local tT = sD:Explode(tW[iD]) -- Empty lines
     local sT = tT[1]:Trim() -- Color token to search for
     if(self.Highlight[sT]) then
-      local nR = luapad.toColor(tT[2]:Trim(), 0)
-      local nG = luapad.toColor(tT[3]:Trim(), 0)
-      local nB = luapad.toColor(tT[4]:Trim(), 0)
-      local nA = luapad.toColor(tT[5]:Trim(), 255)
+      local nR = luapad.ToColor(tT[2]:Trim(), 0)
+      local nG = luapad.ToColor(tT[3]:Trim(), 0)
+      local nB = luapad.ToColor(tT[4]:Trim(), 0)
+      local nA = luapad.ToColor(tT[5]:Trim(), 255)
       self.Highlight[sT][1] = Color(nR, nG, nB, nA)
     end
   end
@@ -188,8 +189,8 @@ function luapad.EditorPanel:OnMousePressed(code)
       cucar[1] == self.Caret[1] and
       cucar[2] == self.Caret[2] and self.Temp
     ) then
-      self.Start = self:getWordStart(self.Caret)
-      self.Caret = self:getWordEnd(self.Caret)
+      self.Start = self:GetWordStart(self.Caret)
+      self.Caret = self:GetWordEnd(self.Caret)
       self.Temp = false
       return
     end
@@ -336,6 +337,8 @@ function luapad.EditorPanel:SyntaxColorLine(row)
   local lasttable
   self.line = self.Rows[row]
   self.pos = 0
+  self.multy = nil
+  self.token = nil
   self.char = ""
   self.str = ""
 
@@ -352,7 +355,20 @@ function luapad.EditorPanel:SyntaxColorLine(row)
       break
     end
 
-    if (self.char >= "0" and self.char <= "9") then
+    if(self.multy and self.char == "]") then
+      local last, multy = self.char, self.multy
+      self:NextChar()
+      while(self.char and self.char == "=") do
+        multy = multy - 1
+        self:NextChar()
+      end
+      if(multy == 0 and self.char == last) then
+        token = "code.none" -- Equals are same amount as start
+        self.token, self.multy = nil, nil -- Reset multi line
+      else -- Otherwise continue with the multi line comment/string
+        token = self.token or "code.none" -- Keep the last token
+      end
+    elseif (self.char >= "0" and self.char <= "9") then
       while self.char and (self.char >= "0" and self.char <= "9" or
                            self.char == "." or self.char == "_") do
         self:NextChar()
@@ -393,10 +409,11 @@ function luapad.EditorPanel:SyntaxColorLine(row)
         lasttable = nil
         token = "code.none"
       end
-    elseif (self.char == "\"") then -- TODO: Fix multi line strings, and add support for [[stuff]]!
+
+    elseif (self.char == "\"") then
 
       self:NextChar()
-      while self.char and self.char ~= "\"" do
+      while(self.char and self.char ~= "\"") do
         if (self.char == "\\") then
           self:NextChar()
         end
@@ -406,9 +423,9 @@ function luapad.EditorPanel:SyntaxColorLine(row)
 
       token = "code.string"
     elseif (self.char == "'") then
-
+      local last = self.char
       self:NextChar()
-      while self.char and self.char ~= "'" do
+      while(self.char and self.char ~= last) do
         if (self.char == "\\") then
           self:NextChar()
         end
@@ -417,13 +434,12 @@ function luapad.EditorPanel:SyntaxColorLine(row)
       self:NextChar()
 
       token = "code.string2"
-    elseif (self.char == "/" or self.char == "-") then -- TODO: Multi-line comments!
-
-      local lastchar = self.char
+    elseif (self.char == "/" or self.char == "-") then
+      local last = self.char
       self:NextChar()
 
-      if (self.char == lastchar) then
-        while self.char do
+      if (self.char == last) then
+        while(self.char and self.char == last) do
           self:NextChar()
         end
 
@@ -431,7 +447,24 @@ function luapad.EditorPanel:SyntaxColorLine(row)
       else
         token = "code.none"
       end
+    elseif (self.char == "[") then
+      local last, multy = self.char, 0
+      self:NextChar()
 
+      while(self.char and self.char == "=") do
+        self:NextChar()
+        multy = multy + 1
+      end
+      if (self.char == last) then
+        self.multy = multy
+        self:NextChar()
+        if(token ~= "code.comment") then
+          token = "code.string"
+        end
+        self.token = token
+      end
+        token = "code.none"
+      end
     else
       self:NextChar()
       token = "code.operator"
@@ -460,10 +493,12 @@ function luapad.EditorPanel:PaintLine(row)
   end
 
   local width, height = self.FontWidth, self.FontHeight
+  local scstr, scend  = self.Scroll[1], self.Scroll[2]
+  local castr, caend  = self.Caret[1] , self.Caret[2]
 
-  if (row == self.Caret[1] and self.TextEntry:HasFocus()) then
+  if (row == castr and self.TextEntry:HasFocus()) then
     surface.SetDrawColor(self:GetTheme("gui.background"))
-    surface.DrawRect(width * 3 + 5, (row - self.Scroll[1]) * height, self:GetWide() - (width * 3 + 5), height)
+    surface.DrawRect(width * 3 + 5, (row - scstr) * height, self:GetWide() - (width * 3 + 5), height)
   end
 
   if (self:HasSelection()) then
@@ -472,62 +507,64 @@ function luapad.EditorPanel:PaintLine(row)
     local endline, endchar = stop[1], stop[2]
 
     surface.SetDrawColor(self:GetTheme("gui.verticalbar"))
-    local length = string.len(self.Rows[row]) - self.Scroll[2] + 1
+    local length = string.len(self.Rows[row]) - scend + 1
 
-    char = char - self.Scroll[2]
-    endchar = endchar - self.Scroll[2]
+    char = char - scend
     if (char < 0) then
       char = 0
     end
+
+    endchar = endchar - scend
     if (endchar < 0) then
       endchar = 0
     end
 
     if (row == line and line == endline) then
-      surface.DrawRect(char * width + width * 3 + 6, (row - self.Scroll[1]) * height, width * (endchar - char), height)
+      surface.DrawRect(char * width + width * 3 + 6, (row - scstr) * height, width * (endchar - char), height)
     elseif (row == line) then
-      surface.DrawRect(char * width + width * 3 + 6, (row - self.Scroll[1]) * height, width * (length - char + 1), height)
+      surface.DrawRect(char * width + width * 3 + 6, (row - scstr) * height, width * (length - char + 1), height)
     elseif (row == endline) then
-      surface.DrawRect(width * 3 + 6, (row - self.Scroll[1]) * height, width * endchar, height)
+      surface.DrawRect(width * 3 + 6, (row - scstr) * height, width * endchar, height)
     elseif (row > line and row < endline) then
-      surface.DrawRect(width * 3 + 6, (row - self.Scroll[1]) * height, width * (length + 1), height)
+      surface.DrawRect(width * 3 + 6, (row - scstr) * height, width * (length + 1), height)
     end
   end
 
-  draw.SimpleText(tostring(row), "LuapadEditor", width * 3, (row - self.Scroll[1]) * height, self:GetTheme("gui.rownumbers"), TEXT_ALIGN_RIGHT)
+  draw.SimpleText(tostring(row), "LuapadEditor", width * 3, (row - scstr) * height, self:GetTheme("gui.rownumbers"), TEXT_ALIGN_RIGHT)
 
-  local offset = -self.Scroll[2] + 1
+  local offset = -scend + 1
   for i, cell in ipairs(self.PaintRows[row]) do
+    local ccon, cstr, cend = cell[1], cell[2][1], cell[2][2]
     if (offset < 0) then
-      if (string.len(cell[1]) > -offset) then
-        line = string.sub(cell[1], -offset + 1)
+      if (string.len(ccon) > -offset) then
+        line = string.sub(ccon, -offset + 1)
         offset = string.len(line)
 
-        if (cell[2][2]) then
-          draw.SimpleText(line, "LuapadEditorBold", width * 3 + 6, (row - self.Scroll[1]) * height, cell[2][1])
+        if (cend) then
+          draw.SimpleText(line, "LuapadEditorBold", width * 3 + 6, (row - scstr) * height, cstr)
         else
-          draw.SimpleText(line, "LuapadEditor", width * 3 + 6, (row - self.Scroll[1]) * height, cell[2][1])
+          draw.SimpleText(line, "LuapadEditor", width * 3 + 6, (row - scstr) * height, cstr)
         end
       else
-        offset = offset + string.len(cell[1])
+        offset = offset + string.len(ccon)
       end
     else
-      if (cell[2][2]) then
-        draw.SimpleText(cell[1], "LuapadEditorBold", offset * width + width * 3 + 6, (row - self.Scroll[1]) * height, cell[2][1])
+      if (cend) then
+        draw.SimpleText(ccon, "LuapadEditorBold", offset * width + width * 3 + 6, (row - scstr) * height, cstr)
       else
-        draw.SimpleText(cell[1], "LuapadEditor", offset * width + width * 3 + 6, (row - self.Scroll[1]) * height, cell[2][1])
+        draw.SimpleText(ccon, "LuapadEditor", offset * width + width * 3 + 6, (row - scstr) * height, cstr)
       end
 
-      offset = offset + string.len(cell[1])
+      offset = offset + string.len(ccon)
     end
   end
 
-  if (row == self.Caret[1] and self.TextEntry:HasFocus()) then
+  if (row == castr and self.TextEntry:HasFocus()) then
     if ((RealTime() - self.Blink) % 0.8 < 0.4) then
-      if (self.Caret[2] - self.Scroll[2] >= 0) then
+      if (caend - scend >= 0) then
         surface.SetDrawColor(self:GetTheme("gui.blinkcursor"))
-        surface.DrawRect((self.Caret[2] - self.Scroll[2]) * width + width * 3 + 6,
-                         (self.Caret[1] - self.Scroll[1]) * height, 1, height)
+        surface.DrawRect((caend - scend) * width + width * 3 + 6,
+                         (castr - scstr) * height, 1, height)
       end
     end
   end
@@ -761,7 +798,7 @@ function luapad.EditorPanel:CustomOnTextChanged()
   local text = self.TextEntry:GetText()
   self.TextEntry:SetText("")
 
-  if input.IsKeyDown(KEY_BACKQUOTE) and luapad.IgnoreConsoleOpen then
+  if input.IsKeyDown(KEY_BACKQUOTE) and luapad.ignoreconsoleopen then
     return
   end
 
@@ -930,7 +967,7 @@ function luapad.EditorPanel:CustomOnKeyCodeTyped(code)
       if (self:HasSelection() and not shift) then
         self.Start = self:CopyPosition(self.Caret)
       else
-        self.Caret = self:getWordStart(self:MovePosition(self.Caret, -2))
+        self.Caret = self:GetWordStart(self:MovePosition(self.Caret, -2))
       end
 
       self:ScrollCaret()
@@ -942,7 +979,7 @@ function luapad.EditorPanel:CustomOnKeyCodeTyped(code)
       if (self:HasSelection() and not shift) then
         self.Start = self:CopyPosition(self.Caret)
       else
-        self.Caret = self:getWordEnd(self:MovePosition(self.Caret, 1))
+        self.Caret = self:GetWordEnd(self:MovePosition(self.Caret, 1))
       end
 
       self:ScrollCaret()
@@ -1159,7 +1196,7 @@ function luapad.EditorPanel:CustomOnKeyCodeTyped(code)
   end
 end
 
-function luapad.EditorPanel:getWordStart(caret)
+function luapad.EditorPanel:GetWordStart(caret)
   local line = string.ToTable(self.Rows[caret[1]])
   if (#line < caret[2]) then
     return caret
@@ -1181,7 +1218,7 @@ function luapad.EditorPanel:getWordStart(caret)
   return {caret[1], 1}
 end
 
-function luapad.EditorPanel:getWordEnd(caret)
+function luapad.EditorPanel:GetWordEnd(caret)
   local line = string.ToTable(self.Rows[caret[1]])
   if (#line < caret[2]) then
     return caret

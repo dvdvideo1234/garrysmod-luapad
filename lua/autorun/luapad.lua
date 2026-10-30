@@ -7,7 +7,7 @@ luapad = {}
 
 luapad.debugmode = true
 luapad.forcedownload = true
-luapad.IgnoreConsoleOpen = true
+luapad.ignoreconsoleopen = true
 
 local GLOB_CONFIG = {
   DELIMS = "|", -- General symbol used for separator
@@ -15,6 +15,7 @@ local GLOB_CONFIG = {
   DAYINS = 86400, -- The amount of second present in one day
   MAXMSL = 60000, -- As the maximum write string limit is 65532
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
+  PATNLN = "[\r\n]+", -- Pattern for reading configuration files
   THMDEF = {"luapad/theme/", "default"}, -- Default theme configuration
   ADDONN = "Luapad", -- Generic addon name used to distinguish messages
   FOLDER = "luapad/", -- Default application folder in the data file system
@@ -180,14 +181,14 @@ end
 --[[
  * Checks whenever the parameter is present
 ]]
-function luapad.isHere(vA)
+function luapad.IsHere(vA)
   return (vA ~= nil and vA ~= "")
 end
 
 --[[
  * Checks whenever the parameter is present
 ]]
-function luapad.toColor(vC, nD)
+function luapad.ToColor(vC, nD)
   return math.floor(math.Clamp(tonumber(vC) or nD, 0, 255))
 end
 
@@ -634,7 +635,7 @@ function luapad.ShowConfirmDialog(sMsg, sTxt, fnSuc, fnDsc, sSuc, sDsc)
   pMesg:SetContentAlignment(5)
   pMesg:SetTextColor(color_white)
 
-  if(luapad.isHere(sTxt)) then
+  if(luapad.IsHere(sTxt)) then
     pText = vgui.Create("DTextEntry", pSors)
     if(not IsValid(pText)) then return end
 
@@ -840,7 +841,7 @@ function luapad.LoadTabs()
   -- Read the saved tabs file and load the related files
   local sF = file.Read(GLOB_CONFIG.FOLDER.."saved_tabs.txt", "DATA")
   if(not sF) then return end -- File not found then bail out
-  local tW, aT = ("[\r\n]+"):Explode(sF, true), nil
+  local tW, aT = GLOB_CONFIG.PATNLN:Explode(sF, true), nil
   for iD = 1, #tW do -- Basically we have one tab on one line
     local tO = GLOB_CONFIG.DELIMS:Explode(tW[iD]) -- Empty lines are excluded
     local bA = (string.sub(tO[1], 1, 1) == "*") -- File name starts with * when active
@@ -973,7 +974,7 @@ function luapad.Toggle()
   end
 
   function luapad.PropertySheet:GetTabSwitch(vTre)
-    if(luapad.isHere(vTre)) then -- There is an argument
+    if(luapad.IsHere(vTre)) then -- There is an argument
       local iT, pT = self:GetTabIndex(vTre)
       if(not iT) then return nil end
       return pT -- The argument is validated
@@ -1039,7 +1040,7 @@ function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
   if(not IsValid(pBut)) then return end
   -- Configure image and help text
   pBut:SetImage(luapad.ToIcon(sIco or "lightning"))
-  if(luapad.isHere(vTip)) then pBut:SetTooltip(tostring(vTip)) end
+  if(luapad.IsHere(vTip)) then pBut:SetTooltip(tostring(vTip)) end
   pBut:SetSize(nS, nS) -- Make the button a square image that runs functions
   -- Do not pass the button reference here unless the button must be changed
   if(actL) then
@@ -1277,7 +1278,7 @@ function luapad.AttachThemeMenu(pMenu, vTre)
   pMenu:AddSpacer() -- Add all the files with spaces for default
   for iF = 1, #tF do -- Loop and add al files to the menu
     local vF = tF[iF]:gsub("%..*$", "")
-    if(luapad.isHere(vF)) then
+    if(luapad.IsHere(vF)) then
       pMenu:AddOption(vF, function()
         pT:GetTextArea():SetThemeFile(vF)
         luapad.EqualizeTabTheme(vF)
@@ -1761,8 +1762,8 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   local sNam = tostring(name or "")
   local sCon = tostring(cont or "")
   local sIco = tostring(icon or "page_white")
-  local sTag = (luapad.isHere(term) and tostring(term) or nil)
-  local sTem = (luapad.isHere(teme) and tostring(teme) or VAR_THM:GetString())
+  local sTag = (luapad.IsHere(term) and tostring(term) or nil)
+  local sTem = (luapad.IsHere(teme) and tostring(teme) or VAR_THM:GetString())
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
