@@ -17,6 +17,9 @@ local GLOB_CONFIG = {
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
   PATNLN = "[\r\n]+", -- Pattern for reading configuration files
   THMDEF = {"luapad/theme/", "default"}, -- Default theme configuration
+  VALUFS = {"[%/\\:%*%?\"<>|]", "^([^%.]+)"}, -- File system name zvalisation
+  RESNAM = {CON = true, PRN = true, AUX = true, NUL = true}, -- Disabled dir names
+  PATENM = "[A-Z_]+", -- General pattern matching a enumeration key
   ADDONN = "Luapad", -- Generic addon name used to distinguish messages
   FOLDER = "luapad/", -- Default application folder in the data file system
   LOWADN = "luapad", -- Addon name lower case for hashes, messages and convars
@@ -28,15 +31,16 @@ local GLOB_CONFIG = {
   PRESND = "ambient/water/drip%d.wav", -- Sound format played on button press
   DATFMT = "%Y-%m-%d %H:%M:%S", -- Date and time general format
   SRCHFM = "Found routine [%s] in %s", -- Debug search messages
-  CFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY)
+  CFLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY),
+  RFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY)
 }
 
 -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
-local VAR_ARN = CreateConVar(GLOB_CONFIG.LOWADN.."_autorenew", 14, GLOB_CONFIG.CFLAGS, "File grace period for auto renew in days", 0, 1000)
-local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.CFLAGS, "Makes the luapad addon admin usable only", 0, 1)
-local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.CFLAGS, "Maximum number of new files in the folder", 0, 100)
-local VAR_MXR = CreateConVar(GLOB_CONFIG.LOWADN.."_maxrecurs", 20, GLOB_CONFIG.CFLAGS, "Recurse depth when opening a file system", 0, 100)
-local VAR_EDT = CreateConVar(GLOB_CONFIG.LOWADN.."_endataorg",  1, GLOB_CONFIG.CFLAGS, "File operation in the whole data folder", 0, 1)
+local VAR_ARN = CreateConVar(GLOB_CONFIG.LOWADN.."_autorenew", 14, GLOB_CONFIG.RFLAGS, "File grace period for auto renew in days", 0, 1000)
+local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.RFLAGS, "Makes the luapad addon admin usable only", 0, 1)
+local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.RFLAGS, "Maximum number of new files in the folder", 0, 100)
+local VAR_MXR = CreateConVar(GLOB_CONFIG.LOWADN.."_maxrecurs", 20, GLOB_CONFIG.RFLAGS, "Recurse depth when opening a file system", 0, 100)
+local VAR_EDT = CreateConVar(GLOB_CONFIG.LOWADN.."_endataorg",  1, GLOB_CONFIG.RFLAGS, "File operation in the whole data folder", 0, 1)
 local VAR_THM = CreateConVar(GLOB_CONFIG.LOWADN.."_themename", "default", GLOB_CONFIG.CFLAGS, "Syntax highlighting theme being used")
 
 local COLOR_STATUS = {
@@ -110,7 +114,12 @@ local RESTRICTED_FILES = {
 }
 
 local FMSYNTAX_HILIGHT = {
-  X = {package}, -- Syntax ignore globals
+  X = {
+    ["package"                   ] = true, ["wire_expression2_funcs"  ] = true,
+    ["ArcCW.AttachmentTable"     ] = true, ["duplicator.EntityClasses"] = true,
+    ["duplicator.EntityModifiers"] = true, ["jcon.binds"              ] = true,
+    ["net.Receivers"             ] = true, ["properties.List"         ] = true
+  },
   N = GLOB_CONFIG.LOWADN.. "._sG", -- Name
   I = "[\"%s\"]",   -- Index
   V = " = \"%s\"",  -- Value
@@ -314,22 +323,35 @@ function luapad.genSyntaxGlobals()
   local tX = FMSYNTAX_HILIGHT.X -- Terminate recurs early
   local sN, sV = FMSYNTAX_HILIGHT.N, FMSYNTAX_HILIGHT.V
   local sI, sH = FMSYNTAX_HILIGHT.I, FMSYNTAX_HILIGHT.H
-  for iX = 1, #tX do local vX = tX[iX] -- Ignore globals
-    if(istable(vX) and vX ~= nul) then tPass[vX] = true end
-  end -- Ignored global tables are loaded and ignored
+
+  local function extractStringKeys(tS, sB)
+    if(not istable(tS)) then return {} end
+    local tK = table.GetKeys(tS)
+    local sA = GLOB_CONFIG.ADDONN
+    for aK, aV in pairs(tK) do
+      if(not isstring(aV)) then tK[aK] = nil
+        if(luapad.debugmode and sB) then
+          luapad.SetConsole("%s > Syntax: Base {%s} key {%s} is {%s}!", "STAT_WR", sA, sB, aV, type(aV))
+        end -- In case the debug mode is enabled you can see the dropped keys from processing
+      end -- Make sure to get rid of every entry that is not a string
+    end -- Process all the strings and pack them up in client/server
+    return table.ClearKeys(tK, false)
+  end
 
    -- Global registry includes itself
-  local function exportSyntax(sB, tS, iD)
+  local function exportSyntax(sB, tS, iD, sK)
     local iD = math.max((tonumber(iD) or 0), 0)
     if(iD > 5) then return end -- Recursion depth
     if(tPass[tS]) then return end -- Already printed
+    local sP, nU, sK = GLOB_CONFIG.PATENM, 0, tostring(sK or "")
     local sU, rU = sB:gsub("^.-%[\"", ""):gsub("\"%]$", "")
-    local tK, sC, nU = table.GetKeys(tS), ("\"][\""), 0
+    local tK, sC = extractStringKeys(tS, sB), ("\"][\"")
     local tU, bH = sC:Explode(sU), true; nU = (#tU + 1)
     table.sort(tK, function(u, v) return u < v end)
     for iE = 1, #tK do -- Loop alphabetically
       local vK = tK[iE]
       local vE = tS[vK]
+      local vO = sK..vK
       if(isfunction(vE)) then
         if(bH) then bH = false
           fS:Write(sB)
@@ -340,7 +362,7 @@ function luapad.genSyntaxGlobals()
         fS:Write(sI:format(vK))
         fS:Write(sV:format("f"))
         fS:Write("\n")
-      elseif(string.upper(vK) == vK) then
+      elseif(string.upper(vK) == vK and vK:match(sP)) then
         if(bH) then bH = false
           fS:Write(sB)
           fS:Write(sH:format(sB))
@@ -351,7 +373,14 @@ function luapad.genSyntaxGlobals()
           table.insert(tEnum, table.concat(tU, sC))
         end -- Nothing is replaced no keys registered
       elseif(istable(vE)) then tPass[tS] = true
-        exportSyntax(sB..sI:format(vK), vE, iD + 1)
+        if(not table.IsEmpty(vE) and not tX[vO]) then
+          if(bH) then bH = false
+            fS:Write(sB)
+            fS:Write(sH:format(sB))
+            fS:Write("\n")
+          end
+          exportSyntax(sB..sI:format(vK), vE, iD + 1)
+        end
       end
     end
   end
@@ -362,7 +391,7 @@ function luapad.genSyntaxGlobals()
   fS:Write("-- The timestamp of this generated file is ["..os.date(GLOB_CONFIG.DATFMT).."]\n")
 
   fS:Write("\n-- Global functions and libraries\n\n")
-  local tK = table.GetKeys(_G) -- Global registry includes itself
+  local tK = extractStringKeys(_G) -- Global registry includes itself
   table.sort(tK, function(u, v) return u < v end); exportSyntax(sN, _G)
 
   local nE = #tEnum
@@ -804,8 +833,20 @@ function luapad.SetThemeEntry(vTre)
   if(not IsValid(pS)) then return end
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
-  local sT = VAR_THM:GetString()
-  pT:GetTextArea():SetThemeFile(sT)
+  local sV = VAR_THM:GetString()
+  local sI = sV:sub(1,1)
+  if(sI == "#") then
+    local sT = string.sub(sV, 2, -1)
+    local tS = derma.GetNamedSkin(sT)
+    if(not istable(tS)) then return end
+    print("-----------------------")
+    PrintTable(tS)
+    pT:GetTextArea():SetThemeSkin(tS)
+  elseif(sI == "@") then
+    local sT = string.sub(sV, 2, -1)
+    pT:GetTextArea():SetThemeFile(sT)
+    print(sI, sT)
+  end
   luapad.EqualizeThemeTab(pT)
 end
 
@@ -1279,17 +1320,32 @@ function luapad.AttachThemeMenu(pMenu, vTre)
   if(not IsValid(pT)) then return end
   pMenu:AddOption("Export", function()
     luapad.ShowConfirmDialog(
-      "You are about to save a theme, please enter the desired name.",
+      "You are about to save a theme under ["..GLOB_CONFIG.THMDEF[1].."], please enter the desired name.",
       GLOB_CONFIG.THMDEF[2],
       function(sName)
-        pT:GetTextArea():SaveThemeFile(sName)
+        local tV = GLOB_CONFIG.VALUFS
+        local tR = GLOB_CONFIG.RESNAM
+        local sN = string.GetFileFromFilename(sName)
+        if(not luapad.IsHere(sN)) then
+            luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
+            return
+        end
+        if(sN:match(tV[1])) then
+            luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
+            return
+        end
+        if(tR[sN:upper():match(tV[2])]) then
+            luapad.SetStatus("File name [%s] is a reseved record name!", "STAT_ER", sN)
+            return
+        end
+        pT:GetTextArea():SaveThemeFile(sN)
       end, nil, "Save", "Cancel"
     )
   end):SetImage(luapad.ToIcon("picture_save"))
   pMenu:AddOption("Default", function()
     pT:GetTextArea():SetThemeDefault()
     luapad.EqualizeThemeTab(pT)
-    VAR_THM:SetString("default")
+    RunConsoleCommand(VAR_THM:GetName(), "default")
   end):SetImage(luapad.ToIcon("picture_empty"))
   -- Update the theme via a skin
   local pIn, pOp = pMenu:AddSubMenu("Skin")
@@ -1300,7 +1356,7 @@ function luapad.AttachThemeMenu(pMenu, vTre)
     pIn:AddOption(tostring(sS), function()
       pT:GetTextArea():SetThemeSkin(vS)
       luapad.EqualizeThemeTab(pT)
-      VAR_THM:SetString("#"..sS)
+      RunConsoleCommand(VAR_THM:GetName(), "#"..sS)
     end):SetImage(luapad.ToIcon("palette"))
   end
   -- Update the theme via a file luapad/theme/*.txt
@@ -1316,7 +1372,7 @@ function luapad.AttachThemeMenu(pMenu, vTre)
       pIn:AddOption(vF, function()
         pT:GetTextArea():SetThemeFile(vF)
         luapad.EqualizeThemeTab(pT)
-        VAR_THM:SetString("*"..vF)
+        RunConsoleCommand(VAR_THM:GetName(), "@"..vF)
       end):SetImage(luapad.ToIcon("palette"))
     end
   end
@@ -1422,8 +1478,6 @@ function luapad.AttachRefreshMenu(pMenu, vTre)
   pMenu:AddOption("All", function()
     luapad.RefreshTabAll()
   end):SetImage(luapad.ToIcon("arrow_in"))
-  -- Open menu
-  pMenu:Open()
 end
 
 --[[
@@ -1818,7 +1872,19 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   pText:Dock(FILL)
   pText:RequestFocus()
   pText:SizeToContents()
-  pText:SetThemeFile(sTem)
+
+  local sI = sTem:sub(1, 1)
+  if(sI == "#") then
+    local sT = string.sub(sTem, 2, -1)
+    local tS = derma.GetNamedSkin(sT)
+    if(not istable(tS)) then return end
+    pText:SetThemeSkin(tS)
+  elseif(sI == "@") then
+    local sT = string.sub(sTem, 2, -1)
+    pText:SetThemeFile(sT)
+  else
+    pText:SetThemeDefault()
+  end
 
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
   local pTab  = tInfo.Tab; pTab[GLOB_CONFIG.STORKY] = {}

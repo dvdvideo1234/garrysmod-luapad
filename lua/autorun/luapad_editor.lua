@@ -121,15 +121,16 @@ function luapad.EditorPanel:SetTheme(sT, vC)
   local tT = self.Highlight
   if(not tT) then return nil end
   if(not sT) then return nil end
-  return tT[sT][1] = vC
+  if(not vC) then return nil end
+  tT[sT][1] = vC
 end
 
 function luapad.EditorPanel:SetThemeArea(pD, bR)
   local tS = self.Highlight
-  if(not tT) then return nil end
-  if(not pE) then return nil end
+  if(not istable(tS)) then return nil end
+  if(not IsValid(pD)) then return nil end
   local tD = pD:GetTable().Highlight
-  if(not tD) then return nil end
+  if(not istable(tD)) then return nil end
   for sT, vT in pairs(tS) do
     local vS, vD = vT, tD[sT]
     if(vS and vD) then
@@ -149,6 +150,21 @@ function luapad.EditorPanel:SetThemeDefault()
     self.Highlight[sT] = {tC.Base, false}
   end -- Update the string expression
   self.Highlight["code.string2"] = self.Highlight["code.string"]
+  self:InvalidateLayout()
+end
+
+function luapad.EditorPanel:SetThemeSkin(tS)
+  self:SetThemeDefault() -- Ignore missing gaps
+  local tS = (tS or derma.GetDefaultSkin())
+  local sD = luapad.GetConfig("DELIMS")
+  for sT, tC in pairs(COLOR_HIGHLIGHT) do
+    if(tC.Skin) then
+      local vC, tK = tS, sD:Explode(tC.Skin)
+      for iD = 1, #tK do vC = vC[tK[iD]] end
+      if(vC) then self.Highlight[sT][1] = vC end
+    end
+  end -- Update the string expression
+  self:InvalidateLayout()
 end
 
 function luapad.EditorPanel:SetThemeFile(sN)
@@ -179,6 +195,7 @@ function luapad.EditorPanel:SetThemeFile(sN)
       self.Highlight[sT][1] = Color(nR, nG, nB, nA)
     end
   end
+  self:InvalidateLayout()
 end
 
 function luapad.EditorPanel:SaveThemeFile(sN)
@@ -198,23 +215,10 @@ function luapad.EditorPanel:SaveThemeFile(sN)
   for iK = 1, #tK do -- Every line contains token and color
     local vK = tK[iK]; tO[1] = vK
     local vC = self:GetTheme(vK)
-    tO[2], tO[3], tO[4], tO[5] = vC:unpack()
+    tO[2], tO[3], tO[4], tO[5] = vC:Unpack()
     fO:Write(table.concat(tO, sD)); fO:Write("\n")
   end
   fO:Flush(); fO:Close()
-end
-
-function luapad.EditorPanel:SetThemeSkin(tS)
-  self:SetThemeDefault() -- Ignore missing gaps
-  local tS = (tS or derma.GetDefaultSkin())
-  local sD = luapad.GetConfig("DELIMS")
-  for sT, tC in pairs(COLOR_HIGHLIGHT) do
-    if(tC.Skin) then
-      local vC, tK = tS, sD:Explode(tC.Skin)
-      for iD = 1, #tK do vC = vC[tK[iD]] end
-      if(vC) then self.Highlight[sT][1] = vC end
-    end
-  end -- Update the string expression
 end
 
 function luapad.EditorPanel:RequestFocus()
@@ -419,23 +423,27 @@ function luapad.EditorPanel:SyntaxColorLine(row)
     while self.char and self.char == " " do
       self:NextChar()
     end
-    if (not self.char) then
-      break
-    end
+
+    if(not self.char) then break end
 
     if(self.multy and self.char == "]") then
       local last, multy = self.char, self.multy
       self:NextChar()
+
       while(self.char and self.char == "=") do
         multy = multy - 1
         self:NextChar()
       end
+
+      if(not self.char) then break end
+
       if(multy == 0 and self.char == last) then
         token = "code.none" -- Equals are same amount as start
         self.token, self.multy = nil, nil -- Reset multi line
       else -- Otherwise continue with the multi line comment/string
         token = self.token or "code.none" -- Keep the last token
       end
+
     elseif (self.char >= "0" and self.char <= "9") then
       while self.char and (self.char >= "0" and self.char <= "9" or
                            self.char == "." or self.char == "_") do
@@ -530,8 +538,9 @@ function luapad.EditorPanel:SyntaxColorLine(row)
           token = "code.string"
         end
         self.token = token
-      end
-        token = "code.none"
+      else
+        self.token, self.multy = nil, nil
+        token = "code.none" -- Reset multi line
       end
     else
       self:NextChar()
@@ -602,25 +611,28 @@ function luapad.EditorPanel:PaintLine(row)
 
   local offset = -scend + 1
   for i, cell in ipairs(self.PaintRows[row]) do
-    local ccon, cstr, cend = cell[1], cell[2][1], cell[2][2]
+    local ccon, csr, cen = cell[1], cell[2][1], cell[2][2]
+
+    print("PaintLine", 2, ccon, csr, cen)
+
     if (offset < 0) then
       if (string.len(ccon) > -offset) then
         line = string.sub(ccon, -offset + 1)
         offset = string.len(line)
 
-        if (cend) then
-          draw.SimpleText(line, "LuapadEditorBold", width * 3 + 6, (row - scstr) * height, cstr)
+        if (cen) then
+          draw.SimpleText(line, "LuapadEditorBold", width * 3 + 6, (row - scstr) * height, csr)
         else
-          draw.SimpleText(line, "LuapadEditor", width * 3 + 6, (row - scstr) * height, cstr)
+          draw.SimpleText(line, "LuapadEditor", width * 3 + 6, (row - scstr) * height, csr)
         end
       else
         offset = offset + string.len(ccon)
       end
     else
-      if (cend) then
-        draw.SimpleText(ccon, "LuapadEditorBold", offset * width + width * 3 + 6, (row - scstr) * height, cstr)
+      if (cen) then
+        draw.SimpleText(ccon, "LuapadEditorBold", offset * width + width * 3 + 6, (row - scstr) * height, csr)
       else
-        draw.SimpleText(ccon, "LuapadEditor", offset * width + width * 3 + 6, (row - scstr) * height, cstr)
+        draw.SimpleText(ccon, "LuapadEditor", offset * width + width * 3 + 6, (row - scstr) * height, csr)
       end
 
       offset = offset + string.len(ccon)
@@ -670,6 +682,7 @@ function luapad.EditorPanel:Paint(w, h)
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
 
   for i = self.Scroll[1], self.Scroll[1] + self.Size[1] + 1 do
+    --print("luapad.EditorPanel:PerformLayout", w, h, i)
     self:PaintLine(i)
   end
 
@@ -775,7 +788,7 @@ function luapad.EditorPanel:SetArea(selection, text, isundo, isredo, before, aft
       self.PaintRows = {} -- TODO: fix for cache errors
     end
 
-    -- add empty row at end of file (TODO!)
+    -- Add empty row at end of file
     if (self.Rows[#self.Rows] ~= "") then
       self.Rows[#self.Rows + 1] = ""
       self.PaintRows[#self.Rows + 1] = false
