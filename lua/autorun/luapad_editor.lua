@@ -102,8 +102,14 @@ function luapad.EditorPanel:Init()
   self.LastClick = 0
 end
 
+function luapad.EditorPanel:RefreshThemeView()
+  self:InvalidateLayout() -- Refresh panel changes
+  local tR = self:GetTable().PaintRows -- Clear row cache
+  if(istable(tR)) then table.Empty(tR) else self.PaintRows = {} end
+end
+
 function luapad.EditorPanel:GetThemeKeys()
-  local tT = self.Highlight
+  local tT = self:GetTable().Highlight
   if(not tT) then return nil end
   local tK = table.GetKeys(tT)
   table.sort(tK, function(u, v) return u < v end)
@@ -111,14 +117,14 @@ function luapad.EditorPanel:GetThemeKeys()
 end
 
 function luapad.EditorPanel:GetTheme(sT)
-  local tT = self.Highlight
+  local tT = self:GetTable().Highlight
   if(not tT) then return nil end
   if(not sT) then return nil end
   return tT[sT][1]
 end
 
 function luapad.EditorPanel:SetTheme(sT, vC)
-  local tT = self.Highlight
+  local tT = self:GetTable().Highlight
   if(not tT) then return nil end
   if(not sT) then return nil end
   if(not vC) then return nil end
@@ -126,7 +132,7 @@ function luapad.EditorPanel:SetTheme(sT, vC)
 end
 
 function luapad.EditorPanel:SetThemeArea(pD, bR)
-  local tS = self.Highlight
+  local tS = self:GetTable().Highlight
   if(not istable(tS)) then return nil end
   if(not IsValid(pD)) then return nil end
   local tD = pD:GetTable().Highlight
@@ -141,30 +147,33 @@ function luapad.EditorPanel:SetThemeArea(pD, bR)
       end
     end
   end
+  self:RefreshThemeView()
 end
 
 function luapad.EditorPanel:SetThemeDefault()
-  self.Highlight = (self.Highlight or {})
-  table.Empty(self.Highlight) -- Clear highlighting
+  local tH = self:GetTable().Highlight or {}
+  self.Highlight = tH; table.Empty(tH)
   for sT, tC in pairs(COLOR_HIGHLIGHT) do
-    self.Highlight[sT] = {tC.Base, false}
+    tH[sT] = {tC.Base, false}
   end -- Update the string expression
-  self.Highlight["code.string2"] = self.Highlight["code.string"]
-  self:InvalidateLayout()
+  tH["code.string2"] = tH["code.string"]
+  self:RefreshThemeView()
 end
 
 function luapad.EditorPanel:SetThemeSkin(tS)
   self:SetThemeDefault() -- Ignore missing gaps
   local tS = (tS or derma.GetDefaultSkin())
+  if(not istable(tS)) then return end
+  local tH = self:GetTable().Highlight
   local sD = luapad.GetConfig("DELIMS")
   for sT, tC in pairs(COLOR_HIGHLIGHT) do
     if(tC.Skin) then
       local vC, tK = tS, sD:Explode(tC.Skin)
       for iD = 1, #tK do vC = vC[tK[iD]] end
-      if(vC) then self.Highlight[sT][1] = vC end
+      if(vC) then tH[sT][1] = vC end
     end
   end -- Update the string expression
-  self:InvalidateLayout()
+  self:RefreshThemeView()
 end
 
 function luapad.EditorPanel:SetThemeFile(sN)
@@ -195,7 +204,7 @@ function luapad.EditorPanel:SetThemeFile(sN)
       self.Highlight[sT][1] = Color(nR, nG, nB, nA)
     end
   end
-  self:InvalidateLayout()
+  self:RefreshThemeView()
 end
 
 function luapad.EditorPanel:SaveThemeFile(sN)
@@ -406,7 +415,7 @@ end
 
 function luapad.EditorPanel:SyntaxColorLine(row)
   local cols = {}
-  local lasttable
+  local lastlib = {}
   self.line = self.Rows[row]
   self.pos = 0
   self.multy = nil
@@ -460,17 +469,23 @@ function luapad.EditorPanel:SyntaxColorLine(row)
       end
 
       local sstr = string.Trim(self.str)
-      local gstr = luapad.CheckGlobal(sstr)
+      local gstr = luapad.CheckGlobal(sstr, lastlib)
       local tgstr = type(gstr)
 
       if (KEYWORD_TOKENS[sstr]) then
 
         token = "code.construct"
 
-      elseif (gstr and (tgstr == "function" or gstr == "f" or gstr == "e" or gstr == "m" or tgstr == "table") or (lasttable and lasttable[sstr])) then
+      elseif (gstr and (tgstr == "function" or gstr == "f" or gstr == "e" or gstr == "m" or tgstr == "table") or (lastlib.T and lastlib.T[sstr])) then
          -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
-          lasttable = gstr
+          lastlib.T = gstr
+
+          if(lastlib.N) then
+            lastlib.N = lastlib.N.."."..sstr
+          else
+            lastlib.N = sstr
+          end
         end
 
         if ((gstr == "e") and sstr == string.upper(sstr)) then
@@ -482,7 +497,8 @@ function luapad.EditorPanel:SyntaxColorLine(row)
         end
 
       else
-        lasttable = nil
+        lastlib.T = nil
+        lastlib.N = nil
         token = "code.none"
       end
 
@@ -613,8 +629,6 @@ function luapad.EditorPanel:PaintLine(row)
   for i, cell in ipairs(self.PaintRows[row]) do
     local ccon, csr, cen = cell[1], cell[2][1], cell[2][2]
 
-    print("PaintLine", 2, ccon, csr, cen)
-
     if (offset < 0) then
       if (string.len(ccon) > -offset) then
         line = string.sub(ccon, -offset + 1)
@@ -682,7 +696,6 @@ function luapad.EditorPanel:Paint(w, h)
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
 
   for i = self.Scroll[1], self.Scroll[1] + self.Size[1] + 1 do
-    --print("luapad.EditorPanel:PerformLayout", w, h, i)
     self:PaintLine(i)
   end
 

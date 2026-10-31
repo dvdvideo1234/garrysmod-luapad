@@ -116,9 +116,28 @@ local RESTRICTED_FILES = {
 local FMSYNTAX_HILIGHT = {
   X = {
     ["package"                   ] = true, ["wire_expression2_funcs"  ] = true,
-    ["ArcCW.AttachmentTable"     ] = true, ["duplicator.EntityClasses"] = true,
-    ["duplicator.EntityModifiers"] = true, ["jcon.binds"              ] = true,
-    ["net.Receivers"             ] = true, ["properties.List"         ] = true
+    ["ArcCW|AttachmentTable"     ] = true, ["ArcCW|BulletProfileDict" ] = true,
+    ["ArcCW|ClientMenus"         ] = true, ["CPUGateActions"          ] = true,
+    ["CPUGatesSorted"            ] = true, ["E2Lib"                   ] = true,
+    ["G_BPClassLoaders"          ] = true, ["G_BPMetaRegistry"        ] = true,
+    ["GateActions"               ] = true, ["MediaPlayer"             ] = true,
+    ["duplicator|EntityModifiers"] = true, ["duplicator|EntityClasses"] = true,
+    ["properties|List"           ] = true, ["derma|SkinList"          ] = true,
+    ["SligWolf_Addons"           ] = true, ["StreamRadioLib"          ] = true,
+    ["WireGatesSorted"           ] = true, ["bpdermanode"             ] = true,
+    ["bplayout"                  ] = true, ["bplist_meta"             ] = true,
+    ["bplistdiff_meta"           ] = true, ["bplocalization"          ] = true,
+    ["bpmodule_meta"             ] = true, ["bpmodule"                ] = true,
+    ["bpnewrender2d_meta"        ] = true, ["bpnewrender2d"           ] = true,
+    ["bpmoduleeditor_meta"       ] = true, ["bpmoduleeditor"          ] = true,
+    ["bpnode_meta"               ] = true, ["bpnode"                  ] = true,
+    ["bpobjectlinker_meta"       ] = true, ["bpobjectlinker"          ] = true,
+    ["bppin_meta"                ] = true, ["bppin"                   ] = true,
+    ["coastertabmanager|List"    ] = true, ["matproxy|ProxyList"      ] = true,
+    ["trackmanager"              ] = true, ["tanktracktool"           ] = true,
+    ["jcon|binds"                ] = true, ["net|Receivers"           ] = true,
+    ["jcon|configCache"          ] = true, ["jcon|reg"                ] = true,
+    ["jcon|jconcali"             ] = true, ["jcon|jconpanel"          ] = true
   },
   N = GLOB_CONFIG.LOWADN.. "._sG", -- Name
   I = "[\"%s\"]",   -- Index
@@ -340,24 +359,26 @@ function luapad.genSyntaxGlobals()
 
    -- Global registry includes itself
   local function exportSyntax(sB, tS, iD, sK)
-    local iD = math.max((tonumber(iD) or 0), 0)
+    local iD, nU = math.max((tonumber(iD) or 0), 0), 0
     if(iD > 5) then return end -- Recursion depth
-    if(tPass[tS]) then return end -- Already printed
-    local sP, nU, sK = GLOB_CONFIG.PATENM, 0, tostring(sK or "")
+    if(tPass[tS]) then return end -- Already registered
+    local sD, sT = GLOB_CONFIG.DELIMS, GLOB_CONFIG.VALUFS[1]
+    local sP, sK = GLOB_CONFIG.PATENM, tostring(sK or "")
     local sU, rU = sB:gsub("^.-%[\"", ""):gsub("\"%]$", "")
     local tK, sC = extractStringKeys(tS, sB), ("\"][\"")
-    local tU, bH = sC:Explode(sU), true; nU = (#tU + 1)
+    local tU, bH, bS = sC:Explode(sU), true, false; nU = (#tU + 1)
     table.sort(tK, function(u, v) return u < v end)
     for iE = 1, #tK do -- Loop alphabetically
       local vK = tK[iE]
       local vE = tS[vK]
-      local vO = sK..vK
+      local vO = (iD == 0) and vK or (sK..sD..vK)
       if(isfunction(vE)) then
         if(bH) then bH = false
           fS:Write(sB)
           fS:Write(sH:format(sB))
           fS:Write("\n")
         end
+        bS = true
         fS:Write(sB)
         fS:Write(sI:format(vK))
         fS:Write(sV:format("f"))
@@ -369,20 +390,21 @@ function luapad.genSyntaxGlobals()
           fS:Write("\n")
         end
         if(rU == 0) then table.insert(tEnum, vK) else
-          tU[nU] = vK -- Register local enums
+          tU[nU] = vK; bS = true -- Register local enums
           table.insert(tEnum, table.concat(tU, sC))
         end -- Nothing is replaced no keys registered
       elseif(istable(vE)) then tPass[tS] = true
-        if(not table.IsEmpty(vE) and not tX[vO]) then
+        if(not table.IsEmpty(vE) and not tX[vO] and not vK:match(sT)) then
           if(bH) then bH = false
             fS:Write(sB)
             fS:Write(sH:format(sB))
             fS:Write("\n")
           end
-          exportSyntax(sB..sI:format(vK), vE, iD + 1)
+          local bF = exportSyntax(sB..sI:format(vK), vE, iD + 1, vO)
         end
       end
     end
+    return bS
   end
 
   fS:Write("-- This is an automatically generated cache file on the server-side\n")
@@ -438,7 +460,7 @@ function luapad.genSyntaxGlobals()
 
   local sQ = GLOB_CONFIG.FMQUOT
   local sA = sQ:format(GLOB_CONFIG.ADDONN)
-  local sP = sQ:format(GLOB_CONFIG.FFDRPT:format(sG, ""))
+  local sP = sQ:format(GLOB_CONFIG.FFDRPT:format("data/"..sG, ""))
   local sC = sQ:format("COMS_"..(SERVER and "SV" or "CL"))
   local sF = sQ:format("%s > Syntax imported: %s")
   local sT = "luapad.SetConsole(%s, %s, %s, %s)\n"
@@ -558,7 +580,7 @@ if (file.Exists(GLOB_CONFIG.FOLDER.."cl_syntax_globals.txt", "DATA")) then
     RunString(file.Read(GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt", "DATA"))
   end -- In case the server file is added and transferred merge the syntax keys
 else -- Load the hard-coded syntax highlighter relative to the lua folder
-  include("autorun/syntax_globals.lua")
+  include(GLOB_CONFIG.FOLDER.."syntax_globals.lua")
 end
 
 --[[
@@ -776,13 +798,22 @@ function luapad.GetPath(sOrg)
   return fP, sP.."/", oP.."/"
 end
 
-function luapad.CheckGlobal(func)
+function luapad.CheckGlobal(func, last)
   if (luapad._sG[func] ~= nil) then
     local sN = FMSYNTAX_HILIGHT.N
     if (luapad.debugmode) then
       print(GLOB_CONFIG.SRCHFM:format(func, sN))
     end
     return luapad._sG[func]
+  end
+  if(last and istable(last)) then
+    local tL, sN = last.T, last.N
+      if(tL and istable(tL) and tL[func]) then
+      if (luapad.debugmode) then
+        print(GLOB_CONFIG.SRCHFM:format(func, tostring(sN or "_LAST_")))
+      end
+      return tL[func]
+    end
   end
   if (_G[func] ~= nil) then
     if (luapad.debugmode) then
@@ -839,13 +870,10 @@ function luapad.SetThemeEntry(vTre)
     local sT = string.sub(sV, 2, -1)
     local tS = derma.GetNamedSkin(sT)
     if(not istable(tS)) then return end
-    print("-----------------------")
-    PrintTable(tS)
     pT:GetTextArea():SetThemeSkin(tS)
   elseif(sI == "@") then
     local sT = string.sub(sV, 2, -1)
     pT:GetTextArea():SetThemeFile(sT)
-    print(sI, sT)
   end
   luapad.EqualizeThemeTab(pT)
 end
@@ -1345,6 +1373,7 @@ function luapad.AttachThemeMenu(pMenu, vTre)
   pMenu:AddOption("Default", function()
     pT:GetTextArea():SetThemeDefault()
     luapad.EqualizeThemeTab(pT)
+    pT:GetStreamInfo().Teme = "default"
     RunConsoleCommand(VAR_THM:GetName(), "default")
   end):SetImage(luapad.ToIcon("picture_empty"))
   -- Update the theme via a skin
@@ -1356,6 +1385,7 @@ function luapad.AttachThemeMenu(pMenu, vTre)
     pIn:AddOption(tostring(sS), function()
       pT:GetTextArea():SetThemeSkin(vS)
       luapad.EqualizeThemeTab(pT)
+      pT:GetStreamInfo().Teme = "#"..sS
       RunConsoleCommand(VAR_THM:GetName(), "#"..sS)
     end):SetImage(luapad.ToIcon("palette"))
   end
@@ -1372,6 +1402,7 @@ function luapad.AttachThemeMenu(pMenu, vTre)
       pIn:AddOption(vF, function()
         pT:GetTextArea():SetThemeFile(vF)
         luapad.EqualizeThemeTab(pT)
+        pT:GetStreamInfo().Teme = "@"..vF
         RunConsoleCommand(VAR_THM:GetName(), "@"..vF)
       end):SetImage(luapad.ToIcon("palette"))
     end
