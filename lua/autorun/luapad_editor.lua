@@ -54,6 +54,15 @@ local COLOR_HIGHLIGHT = {
   ["code.comment"   ] = {Base = Color(  0, 120,   0, 255)}
 }
 
+local TOKEN_CLASSIFY = {
+  G = {["f"] = true, ["e"] = true, ["m"] = true},
+  T = {["function"] = true, ["table"] = true},
+  M = {
+    S = {"\"", "'", Esc = "\\"},
+    C = {"-", "/"}
+  }
+}
+
 luapad.EditorPanel = {}
 
 -- Create fonts
@@ -160,7 +169,7 @@ function luapad.EditorPanel:SetThemeDefault()
   self:RefreshThemeView()
 end
 
-function luapad.EditorPanel:SetThemeSkin(tS)
+function luapad.EditorPanel:SetThemeSkin(tS, sS)
   self:SetThemeDefault() -- Ignore missing gaps
   local tS = (tS or derma.GetDefaultSkin())
   if(not istable(tS)) then return end
@@ -168,9 +177,22 @@ function luapad.EditorPanel:SetThemeSkin(tS)
   local sD = luapad.GetConfig("DELIMS")
   for sT, tC in pairs(COLOR_HIGHLIGHT) do
     if(tC.Skin) then
-      local vC, tK = tS, sD:Explode(tC.Skin)
-      for iD = 1, #tK do vC = vC[tK[iD]] end
-      if(vC) then tH[sT][1] = vC end
+      local sC = tC.Skin
+      local vC, tK = tS, sD:Explode(sC)
+      local iD, nD = 1, #tK
+      while(iD <= nD) do
+        local vK = tK[iD]
+        vC, iD = vC[vK], (iD + 1)
+        if(not vC) then
+          luapad.SetStatus("Theme skin [%s] path [%s] is missing!", "STAT_WR", sS, sC)
+          return -- Somewhere along the way a color cannot be obtaines
+        end
+      end
+      if(not IsColor(vC)) then
+        luapad.SetStatus("Theme skin [%s] path [%s] is invalid!", "STAT_WR", sS, sC)
+        return -- Somewhere along the way a color cannot be obtaines
+      end
+      tH[sT][1] = vC
     end
   end -- Update the string expression
   self:RefreshThemeView()
@@ -181,14 +203,19 @@ function luapad.EditorPanel:SetThemeFile(sN)
   local bN = luapad.IsHere(sN)
   local tC = luapad.GetConfig("THMDEF")
   local sE = luapad.GetConfig("PATNLN")
-  local sN = (bN and sN or tC[2])..".txt"
+  local tV = luapad.GetConfig("VALDFS")
+  local sN = (bN and sN or tC[2])
   self:SetThemeDefault() -- Ignore missing gaps
+  if(sN:find(tV[1])) then
+    luapad.SetStatus("File [%s%s] highlight invalid! (apply default theme)", "STAT_WR", tC[1], sN)
+    return
+  end
   if(sN == tC[2]) then return end
   if(not file.IsDir(tC[1], "DATA")) then file.CreateDir(tC[1]) end
   -- Open the file so the theme can be extracted
-  local sF = file.Read(tC[1]..sN, "rb", "DATA")
-  if(not sF) then -- The file open attempt has failed
-    luapad.SetConsole("Failed opening highlight: %s%s", "STAT_WR", tC[1], sN)
+  local sF = file.Read(tC[1]..sN..".txt", "rb", "DATA")
+  if(not sF) then local sP, sN = ("data/"..tC[1]), (sN..".txt") -- The file open attempt has failed
+    luapad.SetStatus("File [%s%s] highlight missing! (apply default theme)", "STAT_WR", sP, sN)
     return -- Exit the routine end report the status
   end
   local tW = sE:Explode(sF, true)
@@ -398,12 +425,31 @@ function luapad.EditorPanel:GetText()
   return string.Implode("\n", self.Rows)
 end
 
-function luapad.EditorPanel:NextChar()
-  if (not self.char) then
-    return
-  end
+function luapad.EditorPanel:MultiLineBlock(vM, vT)
+  if(vM ~= nil) then self.multy = vM end
+  if(vT ~= nil) then self.token = vT end
+  return self.multy, self.token
+end
 
-  self.str = self.str .. self.char
+function luapad.EditorPanel:InitColorLine(row)
+  self.line = self.Rows[row]
+  self.buff = {"", ""}
+  self.pos = 0
+  self.char = ""
+  self.str = ""
+
+  if(row == 1) then
+    self:MultiLineBlock(false, false)
+  end
+end
+
+function luapad.EditorPanel:NextChar()
+  local last = self.char
+  if (not last) then return end
+
+  self.buff[1] = self.str
+  self.buff[2] = self.char
+  self.str = table.concat(self.buff)
   self.pos = self.pos + 1
 
   if (self.pos <= string.len(self.line)) then
@@ -411,68 +457,67 @@ function luapad.EditorPanel:NextChar()
   else
     self.char = nil
   end
+
+  return self.char, last
 end
 
 function luapad.EditorPanel:SyntaxColorLine(row)
   local cols = {}
   local lastlib = {}
-  self.line = self.Rows[row]
-  self.pos = 0
-  self.char = ""
-  self.str = ""
+  local g_synt = TOKEN_CLASSIFY.G
+  local g_type = TOKEN_CLASSIFY.T
+  local g_mapS = TOKEN_CLASSIFY.M.S
+  local g_mapC = TOKEN_CLASSIFY.M.C
+  self:InitColorLine(row)
 
-  if(row == 1) then
-    self.token, self.multy = nil, nil
-  end
+  local char, last = self:NextChar()
 
-  self:NextChar()
-
-  while self.char do
+  while char do
     local token = ""
     self.str = ""
 
-    while self.char and self.char == " " do
-      self:NextChar()
+    while(char and char == " ") do
+      char, last = self:NextChar()
     end
 
-    if(not self.char) then break end
+    if(not char) then break end
 
-    if(self.multy) then
-      if(self.char == "]") then
-        local last, multy = self.char, self.multy
-        self:NextChar()
-        while(self.char and self.char == "=") do
+    local multy, mtoken = self:MultiLineBlock()
+
+    if(multy) then
+      if(char == "]") then
+        local multy, open = multy, char
+        char, last = self:NextChar()
+        while(char and char == "=") do
           multy = multy - 1
-          self:NextChar()
+          char, last = self:NextChar()
         end
-        if(multy == 0 and self.char == last) then
-          self:NextChar()
-          if(self.char) then
-            token = "code.none" -- Equals are same amount as start
-          else
-            token = self.token or "code.none"
-          end
-          self.token, self.multy = nil, nil -- Reset multi line
-        else -- Otherwise continue with the multi line comment/string
-          token = self.token or "code.none" -- Keep the last token
+         -- Equals are same amount as start
+        if(multy == 0 and char == open) then
+          char, last = self:NextChar()
+          token = (mtoken or "code.none")
+          -- Reset multi line block
+          self:MultiLineBlock(false, false)
+        else -- Otherwise continue with the multi line color
+          token = (mtoken or "code.none") -- Keep the last token
         end
       else
-        self:NextChar()
-        token = self.token or "code.none" -- Keep the last token
+        char, last = self:NextChar()
+        token = (mtoken or "code.none") -- Keep the last token
       end
-    elseif (self.char >= "0" and self.char <= "9") then
-      while self.char and (self.char >= "0" and self.char <= "9" or
-                           self.char == "." or self.char == "_") do
-        self:NextChar()
+    elseif (char >= "0" and char <= "9") then
+      while char and (char >= "0" and char <= "9" or
+                      char == "." or char == "_") do
+        char, last = self:NextChar()
       end
 
       token = "code.number"
-    elseif (self.char >= "a" and self.char <= "z" or self.char >= "A" and self.char <= "Z") then
+    elseif (char >= "a" and char <= "z" or char >= "A" and char <= "Z") then
 
-      while self.char and (self.char >= "a" and self.char <= "z" or
-                           self.char >= "A" and self.char <= "Z" or
-                           self.char >= "0" and self.char <= "9" or self.char == "_") do
-        self:NextChar()
+      while char and (char >= "a" and char <= "z" or
+                      char >= "A" and char <= "Z" or
+                      char >= "0" and char <= "9" or char == "_") do
+        char, last = self:NextChar()
       end
 
       local sstr = string.Trim(self.str)
@@ -483,8 +528,9 @@ function luapad.EditorPanel:SyntaxColorLine(row)
 
         token = "code.construct"
 
-      elseif (gstr and (tgstr == "function" or gstr == "f" or gstr == "e" or gstr == "m" or tgstr == "table") or (lastlib.T and lastlib.T[sstr])) then
-         -- Could be better code, but what the hell; it works
+      elseif ((gstr and (g_type[tgstr] or g_synt[gstr])) or
+              (sstr and lastlib.T and lastlib.T[sstr])) then
+      -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
           lastlib.T = gstr
 
@@ -509,66 +555,63 @@ function luapad.EditorPanel:SyntaxColorLine(row)
         token = "code.none"
       end
 
-    elseif (self.char == "\"") then
+    elseif (char == g_mapS[1]) then
 
-      self:NextChar()
-      while(self.char and self.char ~= "\"") do
-        if (self.char == "\\") then
-          self:NextChar()
+      char, last = self:NextChar()
+      while(char and char ~= g_mapS[1]) do
+        if (char == g_mapS.Esc) then
+          char, last = self:NextChar()
         end
-        self:NextChar()
+        char, last = self:NextChar()
       end
-      self:NextChar()
+      char, last = self:NextChar()
 
       token = "code.string"
-    elseif (self.char == "'") then
-      local last = self.char
-      self:NextChar()
-      while(self.char and self.char ~= last) do
-        if (self.char == "\\") then
-          self:NextChar()
+    elseif (char == g_mapS[2]) then
+      char, last = self:NextChar()
+      while(char and char ~= g_mapS[2]) do
+        if (char == g_mapS.Esc) then
+          char, last = self:NextChar()
         end
-        self:NextChar()
+        char, last = self:NextChar()
       end
-      self:NextChar()
+      char, last = self:NextChar()
 
       token = "code.string2"
-    elseif (self.char == "/" or self.char == "-") then
-      local last = self.char
-      self:NextChar()
+    elseif (char == g_mapC[1] or char == g_mapC[2]) then
+      char, last = self:NextChar()
 
-      if (self.char == last) then
-        while(self.char and self.char == last) do
-          self:NextChar()
+      if (char == last) then
+        while(char and char == last) do
+          char, last = self:NextChar()
         end
         token = "code.comment"
-        self.token = token
+        self:MultiLineBlock(nil, token)
       else
         token = "code.none"
-        self.token = nil
+        self:MultiLineBlock(nil, false)
       end
-    elseif (self.char == "[") then
-      local last, multy = self.char, 0
-      self:NextChar()
-      while(self.char and self.char == "=") do
-        self:NextChar()
+    elseif (char == "[") then
+      local multy, open = 0, char
+      char, last = self:NextChar()
+      while(char and char == "=") do
+        char, last = self:NextChar()
         multy = multy + 1
       end
-      if (self.char == last) then
-        self.multy = multy
-        self:NextChar()
-        if(self.token == "code.comment") then
-          token = self.token
+      if (char == open) then
+        char, last = self:NextChar()
+        if(mtoken == "code.comment") then
+          token = mtoken
         else
-          self.token = "code.string"
-          token = self.token
+          token = "code.string"
         end
+        self:MultiLineBlock(multy, token)
       else
-        self.token, self.multy = nil, nil
+        self:MultiLineBlock(false, false)
         token = "code.none" -- Reset multi line
       end
     else
-      self:NextChar()
+      char, last = self:NextChar()
       token = "code.operator"
     end
 

@@ -17,7 +17,7 @@ local GLOB_CONFIG = {
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
   PATNLN = "[\r\n]+", -- Pattern for reading configuration files
   THMDEF = {"luapad/theme/", "default"}, -- Default theme configuration
-  VALUFS = {"[%/\\:%*%?\"<>|]", "^([^%.]+)"}, -- File system name zvalisation
+  VALDFS = {"[%/\\:%*%?\"<>|]", "^([^%.]+)"}, -- File system name validation
   RESNAM = {CON = true, PRN = true, AUX = true, NUL = true}, -- Disabled dir names
   PATENM = "[A-Z_]+", -- General pattern matching a enumeration key
   ADDONN = "Luapad", -- Generic addon name used to distinguish messages
@@ -221,6 +221,18 @@ function luapad.ToColor(vC, nD)
   return math.floor(math.Clamp(tonumber(vC) or nD, 0, 255))
 end
 
+function luapad.GetInvertColor(vC, vO)
+  if(not IsColor(vC)) then return nil end
+  local nR, nG, nB, nA = vC:Unpack()
+  nR, nG, nB = 255 - nR, 255 - nG, 255 - nB
+  if(IsColor(vO)) then
+    vO:SetUnpacked(nR, nG, nB, nA)
+    return vO
+  else
+    return Color(nR, nG, nB, nA)
+  end
+end
+
 --[[
  * The path provided is always relative to the game folder
 ]]
@@ -363,7 +375,7 @@ function luapad.genSyntaxGlobals()
     local iD, nU = math.max((tonumber(iD) or 0), 0), 0
     if(iD > 5) then return end -- Recursion depth
     if(tPass[tS]) then return end -- Already registered
-    local sD, sT = GLOB_CONFIG.DELIMS, GLOB_CONFIG.VALUFS[1]
+    local sD, sT = GLOB_CONFIG.DELIMS, GLOB_CONFIG.VALDFS[1]
     local sP, sK = GLOB_CONFIG.PATENM, tostring(sK or "")
     local sU, rU = sB:gsub("^.-%[\"", ""):gsub("\"%]$", "")
     local tK, sC = extractStringKeys(tS, sB), ("\"][\"")
@@ -871,7 +883,7 @@ function luapad.SetThemeEntry(vTre)
     local sT = string.sub(sV, 2, -1)
     local tS = derma.GetNamedSkin(sT)
     if(not istable(tS)) then return end
-    pT:GetTextArea():SetThemeSkin(tS)
+    pT:GetTextArea():SetThemeSkin(tS, sT)
   elseif(sI == "@") then
     local sT = string.sub(sV, 2, -1)
     pT:GetTextArea():SetThemeFile(sT)
@@ -1008,7 +1020,11 @@ function luapad.Toggle()
       local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
       luapad.Frame:SetTitle(sN .. " - " .. sA)
     else
-      luapad.Frame:SetTitle(sN)
+      local pA = self:GetTabSwitch()
+      if(not IsValid(pA)) then return end
+      local tS = pA:GetStreamInfo()
+      local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
+      luapad.Frame:SetTitle(sN .. " - " .. sA)
     end
   end
 
@@ -1352,7 +1368,7 @@ function luapad.AttachThemeMenu(pMenu, vTre)
       "You are about to save a theme under ["..GLOB_CONFIG.THMDEF[1].."], please enter the desired name.",
       GLOB_CONFIG.THMDEF[2],
       function(sName)
-        local tV = GLOB_CONFIG.VALUFS
+        local tV = GLOB_CONFIG.VALDFS
         local tR = GLOB_CONFIG.RESNAM
         local sN = string.GetFileFromFilename(sName)
         if(not luapad.IsHere(sN)) then
@@ -1384,7 +1400,7 @@ function luapad.AttachThemeMenu(pMenu, vTre)
   local tS = derma.GetSkinTable()
   for sS, vS in pairs(tS) do
     pIn:AddOption(tostring(sS), function()
-      pT:GetTextArea():SetThemeSkin(vS)
+      pT:GetTextArea():SetThemeSkin(vS, sS)
       luapad.EqualizeThemeTab(pT)
       pT:GetStreamInfo().Teme = "#"..sS
       RunConsoleCommand(VAR_THM:GetName(), "#"..sS)
@@ -1910,10 +1926,10 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
     local sT = string.sub(sTem, 2, -1)
     local tS = derma.GetNamedSkin(sT)
     if(istable(tS)) then
-      pText:SetThemeSkin(tS)
+      pText:SetThemeSkin(tS, sT)
     else
       pText:SetThemeDefault()
-      luapad.SetStatus("Skin [%s] is not avaulable! (apply default theme)", "STAT_WR", sT)
+      luapad.SetStatus("Theme from skin [%s] is unavailable! (apply default theme)", "STAT_WR", sT)
     end
   elseif(sI == "@") then
     local sT = string.sub(sTem, 2, -1)
