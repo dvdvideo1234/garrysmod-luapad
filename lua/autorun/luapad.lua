@@ -36,6 +36,7 @@ local GLOB_CONFIG = {
 }
 
 -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
+local VAR_STM = CreateConVar(GLOB_CONFIG.LOWADN.."_statmsgtm",  1, GLOB_CONFIG.RFLAGS, "Status messages time visible fraction delta", 0, 100)
 local VAR_ARN = CreateConVar(GLOB_CONFIG.LOWADN.."_autorenew", 14, GLOB_CONFIG.RFLAGS, "File grace period for auto renew in days", 0, 1000)
 local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.RFLAGS, "Makes the luapad addon admin usable only", 0, 1)
 local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.RFLAGS, "Maximum number of new files in the folder", 0, 100)
@@ -601,7 +602,7 @@ function luapad.SetStatus(sFmt, sKey, ...)
 
   local pB = luapad.Statusbar
   if(not IsValid(pB)) then return end
-
+  local nF = (1 / VAR_STM:GetFloat())
   local sI = GLOB_CONFIG.LOWADN..".Statusbar.Fade"
 
   -- Moce color data to status color
@@ -619,7 +620,7 @@ function luapad.SetStatus(sFmt, sKey, ...)
     function()
       if(not IsValid(pLab)) then return end
       local cBar = pLab:GetTextColor()
-      cBar.a = math.Clamp(cBar.a - 1, 0, 255)
+      cBar.a = math.Clamp(cBar.a - nF, 0, 255)
       pLab:SetTextColor(cBar)
 
       if (cBar.a == 0) then timer.Remove(sI)
@@ -1908,8 +1909,12 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   if(sI == "#") then
     local sT = string.sub(sTem, 2, -1)
     local tS = derma.GetNamedSkin(sT)
-    if(not istable(tS)) then return end
-    pText:SetThemeSkin(tS)
+    if(istable(tS)) then
+      pText:SetThemeSkin(tS)
+    else
+      pText:SetThemeDefault()
+      luapad.SetStatus("Skin [%s] is not avaulable! (apply default theme)", "STAT_WR", sT)
+    end
   elseif(sI == "@") then
     local sT = string.sub(sTem, 2, -1)
     pText:SetThemeFile(sT)
