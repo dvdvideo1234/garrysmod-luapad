@@ -41,8 +41,8 @@ local COLOR_HIGHLIGHT = {
   ["gui.verticalbar"] = {Base = Color(170, 170, 170, 255), Skin = "colTextEntryBorder"},
   ["gui.blinkcursor"] = {Base = Color( 72,  61, 139, 255), Skin = "colTextEntryTextCursor"},
   ["gui.rownumbers" ] = {Base = Color(128, 128, 128, 255), Skin = "colTextEntryTextPlaceholder"},
-  ["gui.rowpaintbeg"] = {Base = Color(215, 215, 215, 255), Skin = "colTextEntryTextHighlight"},
-  ["gui.rowpaintend"] = {Base = Color(250, 250, 250, 255), Skin = "colTextEntryBG"},
+  ["gui.rowtextmark"] = {Base = Color(215, 215, 215, 255), Skin = "colTextEntryTextHighlight"},
+  ["gui.rowtextback"] = {Base = Color(250, 250, 250, 255), Skin = "colTextEntryTextPlaceholder"},
   ["code.none"      ] = {Base = Color(  0,   0,   0, 255), Skin = "colTextEntryText"},
   ["code.number"    ] = {Base = Color(218, 165,  32, 255)},
   ["code.function"  ] = {Base = Color(100, 100, 255, 255)},
@@ -418,10 +418,12 @@ function luapad.EditorPanel:SyntaxColorLine(row)
   local lastlib = {}
   self.line = self.Rows[row]
   self.pos = 0
-  self.multy = nil
-  self.token = nil
   self.char = ""
   self.str = ""
+
+  if(row == 1) then
+    self.token, self.multy = nil, nil
+  end
 
   self:NextChar()
 
@@ -435,24 +437,29 @@ function luapad.EditorPanel:SyntaxColorLine(row)
 
     if(not self.char) then break end
 
-    if(self.multy and self.char == "]") then
-      local last, multy = self.char, self.multy
-      self:NextChar()
-
-      while(self.char and self.char == "=") do
-        multy = multy - 1
+    if(self.multy) then
+      if(self.char == "]") then
+        local last, multy = self.char, self.multy
         self:NextChar()
-      end
-
-      if(not self.char) then break end
-
-      if(multy == 0 and self.char == last) then
-        token = "code.none" -- Equals are same amount as start
-        self.token, self.multy = nil, nil -- Reset multi line
-      else -- Otherwise continue with the multi line comment/string
+        while(self.char and self.char == "=") do
+          multy = multy - 1
+          self:NextChar()
+        end
+        if(multy == 0 and self.char == last) then
+          self:NextChar()
+          if(self.char) then
+            token = "code.none" -- Equals are same amount as start
+          else
+            token = self.token or "code.none"
+          end
+          self.token, self.multy = nil, nil -- Reset multi line
+        else -- Otherwise continue with the multi line comment/string
+          token = self.token or "code.none" -- Keep the last token
+        end
+      else
+        self:NextChar()
         token = self.token or "code.none" -- Keep the last token
       end
-
     elseif (self.char >= "0" and self.char <= "9") then
       while self.char and (self.char >= "0" and self.char <= "9" or
                            self.char == "." or self.char == "_") do
@@ -534,15 +541,15 @@ function luapad.EditorPanel:SyntaxColorLine(row)
         while(self.char and self.char == last) do
           self:NextChar()
         end
-
         token = "code.comment"
+        self.token = token
       else
         token = "code.none"
+        self.token = nil
       end
     elseif (self.char == "[") then
       local last, multy = self.char, 0
       self:NextChar()
-
       while(self.char and self.char == "=") do
         self:NextChar()
         multy = multy + 1
@@ -550,10 +557,12 @@ function luapad.EditorPanel:SyntaxColorLine(row)
       if (self.char == last) then
         self.multy = multy
         self:NextChar()
-        if(token ~= "code.comment") then
-          token = "code.string"
+        if(self.token == "code.comment") then
+          token = self.token
+        else
+          self.token = "code.string"
+          token = self.token
         end
-        self.token = token
       else
         self.token, self.multy = nil, nil
         token = "code.none" -- Reset multi line
@@ -687,10 +696,10 @@ function luapad.EditorPanel:Paint(w, h)
     self.Caret = self:CursorToCaret()
   end
 
-  surface.SetDrawColor(self:GetTheme("gui.rowpaintbeg"))
+  surface.SetDrawColor(self:GetTheme("gui.rowtextmark"))
   surface.DrawRect(0, 0, self.FontWidth * 3 + 4, self:GetTall())
 
-  surface.SetDrawColor(self:GetTheme("gui.rowpaintend"))
+  surface.SetDrawColor(self:GetTheme("gui.rowtextback"))
   surface.DrawRect(self.FontWidth * 3 + 5, 0, self:GetWide() - (self.FontWidth * 3 + 5), self:GetTall())
 
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
