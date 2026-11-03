@@ -229,6 +229,7 @@ function luapad.IsPath(sP)
   if(not luapad.IsHere(sP)) then return false end
   local tP = PATPATH_CONVERT
   local tD = GLOB_CONFIG.RESNAM
+  local sF = GLOB_CONFIG.VALDFS[1]
   for iP = 1, #tP do
     sP = string.gsub(sP, unpack(tP[iP]))
   end
@@ -236,6 +237,7 @@ function luapad.IsPath(sP)
   for iN = 1, #tN do
     local sN = tN[iN]:upper()
     if(tD[sN]) then return false end
+    if(sN:find(sF)) then return false end
   end
   return true, sP
 end
@@ -2391,6 +2393,8 @@ function luapad.SaveScript(vTre)
   local tS = pT:GetStreamInfo()
   local sD, sN = tS.Path, tS.Name
 
+  -- Configure parameters
+  local tV = GLOB_CONFIG.VALDFS
   local bB, sB, oB = luapad.GetPath(sD)
 
   if(bB) then
@@ -2398,19 +2402,35 @@ function luapad.SaveScript(vTre)
       luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
       return
     end
-
+    if(not luapad.IsHere(sN)) then
+      luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
+      return
+    end
+    if(luapad.IsPath(oB..sN)) then
+      luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+      return
+    end
+    if(sN:match(tV[1])) then
+      luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
+      return
+    end
+    if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
+      luapad.SetStatus("File [%s%s] save failed! (file is restricted)", "STAT_ER", oB, sN)
+      return
+    end
+    -- Read contents and path
     local sF, sC = (sB .. sN), (pT:GetContents() or "")
-
+    -- Check is the file exists
     if (not file.Exists(sF, "DATA")) then
       luapad.SaveAsScript()
     else
-      if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
-        luapad.SetStatus("File [%s%s] save failed! (file is restricted)", "STAT_ER", oB, sN)
-        return
-      end
-
       file.Write(sF, sC)
-
+      -- Update path and name
+      tS.Path, tS.Name = oB, sN
+      pT:SetText(sN)
+      pT:SetTooltip(oB..sN)
+      pS:SetActiveTab(pT)
+      -- Check status
       if file.Exists(sF, "DATA") then
         luapad.SetStatus("File [%s%s] successfully saved!", "STAT_OK", oB, sN)
       else
@@ -2443,27 +2463,27 @@ function luapad.SaveAsScript(vTre)
       local sD = string.GetPathFromFilename(sName)
       local sN = string.GetFileFromFilename(sName)
       local bB, sB, oB = luapad.GetPath(sD)
-      -- Perform parameter check
-      if(not luapad.IsHere(sN)) then
-        luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
-        return
-      end
-      if(sN:match(tV[1])) then
-        luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
-        return
-      end
-      if(luapad.IsPath(oB..sN)) then
-        luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
-        return
-      end
-      if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
-        luapad.SetStatus("File [%s%s] save failed! (file is restricted)", "STAT_ER", oB, sN)
-        return
-      end
       -- In case the folder is relative to data can trigger a save
       if(bB) then
+        -- Perform parameter check
         if(not canOperateIn(oB)) then
           luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
+          return
+        end
+        if(not luapad.IsHere(sN)) then
+          luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
+          return
+        end
+        if(luapad.IsPath(oB..sN)) then
+          luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+          return
+        end
+        if(sN:match(tV[1])) then
+          luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
+          return
+        end
+        if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
+          luapad.SetStatus("File [%s%s] save failed! (file is restricted)", "STAT_ER", oB, sN)
           return
         end
         -- Produce a folder relative to the data folder
@@ -2475,7 +2495,8 @@ function luapad.SaveAsScript(vTre)
         if file.Exists(sF, "DATA") then
           luapad.SetStatus("File [%s%s] successfully saved!", "STAT_OK", oB, sN)
           tS.Path, tS.Name = oB, sN -- Update path and name
-          pT:SetText(tS.Name)
+          pT:SetText(sN)
+          pT:SetTooltip(oB..sN)
           pS:SetActiveTab(pT)
         else
           luapad.SetStatus("File [%s%s] save failed! (check your filename)", "STAT_ER", oB, sN)
@@ -2513,7 +2534,7 @@ function luapad.SaveAll()
         if(file.Exists(sF, "DATA")) then
           nU = nU + 1
         else
-          luapad.SetStatus("File [%s%s] save failed! Processed [%s] of [%s] tabs!", "STAT_ER", oB, sN, nU, nI)
+          luapad.SetStatus("File [%s%s] save failed! (processed [%s] of [%s] tabs)!", "STAT_ER", oB, sN, nU, nI)
           return -- First unsuccessful file
         end
       end

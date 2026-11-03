@@ -642,7 +642,7 @@ function PANEL:PaintLine(row)
   local castr, caend  = self.Caret[1] , self.Caret[2]
 
   if (row == castr and self.TextEntry:HasFocus()) then
-    surface.SetDrawColor(self:GetTheme("gui.background"))
+    surface.SetDrawColor(self:GetTheme("gui.background"):Unpack())
     surface.DrawRect(width * 3 + 5, (row - scstr) * height, self:GetWide() - (width * 3 + 5), height)
   end
 
@@ -651,7 +651,7 @@ function PANEL:PaintLine(row)
     local line, char = start[1], start[2]
     local endline, endchar = stop[1], stop[2]
 
-    surface.SetDrawColor(self:GetTheme("gui.verticalbar"))
+    surface.SetDrawColor(self:GetTheme("gui.verticalbar"):Unpack())
     local length = string.len(self.Rows[row]) - scend + 1
 
     char = char - scend
@@ -708,7 +708,7 @@ function PANEL:PaintLine(row)
   if (row == castr and self.TextEntry:HasFocus()) then
     if ((RealTime() - self.Blink) % 0.8 < 0.4) then
       if (caend - scend >= 0) then
-        surface.SetDrawColor(self:GetTheme("gui.blinkcursor"))
+        surface.SetDrawColor(self:GetTheme("gui.blinkcursor"):Unpack())
         surface.DrawRect((caend - scend) * width + width * 3 + 6,
                          (castr - scstr) * height, 1, height)
       end
@@ -739,10 +739,10 @@ function PANEL:Paint(w, h)
     self.Caret = self:CursorToCaret()
   end
 
-  surface.SetDrawColor(self:GetTheme("gui.rowtextmark"))
+  surface.SetDrawColor(self:GetTheme("gui.rowtextmark"):Unpack())
   surface.DrawRect(0, 0, self.FontWidth * 3 + 4, self:GetTall())
 
-  surface.SetDrawColor(self:GetTheme("gui.rowtextback"))
+  surface.SetDrawColor(self:GetTheme("gui.rowtextback"):Unpack())
   surface.DrawRect(self.FontWidth * 3 + 5, 0, self:GetWide() - (self.FontWidth * 3 + 5), self:GetTall())
 
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
@@ -868,14 +868,17 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     self:OnTextChanged()
 
     if (isredo) then
-      self.Undo[#self.Undo + 1] = {{self:CopyPosition(start), self:CopyPosition(start)}, buffer, after, before}
+      local tU = {self:CopyPosition(start), self:CopyPosition(start)}
+      self.Undo[#self.Undo + 1] = {tU, buffer, after, before}
       return before
     elseif (isundo) then
-      self.Redo[#self.Redo + 1] = {{self:CopyPosition(start), self:CopyPosition(start)}, buffer, after, before}
+      local tU = {self:CopyPosition(start), self:CopyPosition(start)}
+      self.Redo[#self.Redo + 1] = {tU, buffer, after, before}
       return before
     else
+      local tU = {self:CopyPosition(start), self:CopyPosition(start)}
       self.Redo = {}
-      self.Undo[#self.Undo + 1] = {{self:CopyPosition(start), self:CopyPosition(start)}, buffer, self:CopyPosition(selection[1]), self:CopyPosition(start)}
+      self.Undo[#self.Undo + 1] = {tU, buffer, self:CopyPosition(selection[1]), self:CopyPosition(start)}
       return start
     end
   end
@@ -912,14 +915,17 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   self:OnTextChanged()
 
   if (isredo) then
-    self.Undo[#self.Undo + 1] = {{self:CopyPosition(start), self:CopyPosition(stop)}, buffer, after, before}
+    local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
+    self.Undo[#self.Undo + 1] = {tU, buffer, after, before}
     return before
   elseif (isundo) then
-    self.Redo[#self.Redo + 1] = {{self:CopyPosition(start), self:CopyPosition(stop)}, buffer, after, before}
+    local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
+    self.Redo[#self.Redo + 1] = {tU, buffer, after, before}
     return before
   else
+    local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
     self.Redo = {}
-    self.Undo[#self.Undo + 1] = {{self:CopyPosition(start), self:CopyPosition(stop)}, buffer, self:CopyPosition(selection[1]), self:CopyPosition(stop)}
+    self.Undo[#self.Undo + 1] = {tU, buffer, self:CopyPosition(selection[1]), self:CopyPosition(stop)}
     return stop
   end
 end
@@ -1020,7 +1026,7 @@ function PANEL:ScrollCaret()
   self.ScrollBar:SetScroll(self.Scroll[1] - 1)
 end
 
-function unIndent(line)
+function PANEL:UnIndent(line)
   local i = line:find("%S")
   if (i == nil or i > 5) then
     i = 5
@@ -1404,7 +1410,7 @@ function PANEL:Indent(shift)
 
   if (shift) then
     local tmp = self:GetSelection():gsub("\n ? ? ? ?", "\n")
-    self:SetSelection(unIndent(tmp))
+    self:SetSelection(self:UnIndent(tmp))
   else
     self:SetSelection("    " .. self:GetSelection():gsub("\n", "\n    "))
   end
