@@ -18,7 +18,7 @@ local GLOB_CONFIG = {
   PATNLN = "[\r\n]+", -- Pattern for reading configuration files
   THMDEF = {"luapad/theme/", "default"}, -- Default theme configuration
   VALDFS = {"[%/\\:%*%?\"<>|]", "^([^%.]+)"}, -- File system name validation
-  RESNAM = {CON = true, PRN = true, AUX = true, NUL = true}, -- Disabled dir names
+  RESNAM = {CON = true, PRN = true, AUX = true, NUL = true}, -- Disabled folder names
   PATENM = "[A-Z_]+", -- General pattern matching a enumeration key
   ADDONN = "Luapad", -- Generic addon name used to distinguish messages
   FOLDER = "luapad/", -- Default application folder in the data file system
@@ -149,7 +149,7 @@ local FMSYNTAX_HILIGHT = {
 local PATPATH_CONVERT = {
   {"[\\/]+", "/"}, {"%.%./", ""},
   {"^[/]+" , "" }, {"[/]+$", ""},
-  Sors = {"^data/", "", 1},
+  Divr = "/", Sors = {"^data/", "", 1},
   Base = {"^"..GLOB_CONFIG.FOLDER, "", 1},
 }
 
@@ -221,6 +221,28 @@ function luapad.ToColor(vC, nD)
   return math.floor(math.Clamp(tonumber(vC) or nD, 0, 255))
 end
 
+--[[
+ * Checks if the path has disabled folder names
+]]
+function luapad.IsPath(sP)
+  local sP = tostring(sP or "")
+  if(not luapad.IsHere(sP)) then return false end
+  local tP = PATPATH_CONVERT
+  local tD = GLOB_CONFIG.RESNAM
+  for iP = 1, #tP do
+    sP = string.gsub(sP, unpack(tP[iP]))
+  end
+  local tN = tP.Divr:Explode(sP, false)
+  for iN = 1, #tN do
+    local sN = tN[iN]:upper()
+    if(tD[sN]) then return false end
+  end
+  return true, sP
+end
+
+--[[
+ * Calculates an inverted color
+]]
 function luapad.GetInvertColor(vC, vO)
   if(not IsColor(vC)) then return nil end
   local nR, nG, nB, nA = vC:Unpack()
@@ -1368,21 +1390,23 @@ function luapad.AttachThemeMenu(pMenu, vTre)
       "You are about to save a theme under ["..GLOB_CONFIG.THMDEF[1].."], please enter the desired name.",
       GLOB_CONFIG.THMDEF[2],
       function(sName)
+        -- Configure parameters
         local tV = GLOB_CONFIG.VALDFS
-        local tR = GLOB_CONFIG.RESNAM
         local sN = string.GetFileFromFilename(sName)
+        -- Perform parameter check
         if(not luapad.IsHere(sN)) then
-            luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
-            return
+          luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
+          return
         end
         if(sN:match(tV[1])) then
-            luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
-            return
+          luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
+          return
         end
-        if(tR[sN:upper():match(tV[2])]) then
-            luapad.SetStatus("File name [%s] is a reseved record name!", "STAT_ER", sN)
-            return
+        if(luapad.IsPath(sN)) then
+          luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+          return
         end
+        -- Everything is valid so write the theme
         pT:GetTextArea():SaveThemeFile(sN)
       end, nil, "Save", "Cancel"
     )
@@ -2412,28 +2436,42 @@ function luapad.SaveAsScript(vTre)
   luapad.ShowConfirmDialog(
     "You are about to save a file, please enter the desired filename.",
     tS.Path .. tS.Name,
-
+    -- The dialog function which handles the input
     function(sName)
-      if (table.HasValue(RESTRICTED_FILES, sName)) then
-        luapad.SetStatus("File [%s] save failed! (file is restricted)", "STAT_ER", sName)
-        return
-      end
-
+      -- Configure parameters
+      local tV = GLOB_CONFIG.VALDFS
       local sD = string.GetPathFromFilename(sName)
       local sN = string.GetFileFromFilename(sName)
       local bB, sB, oB = luapad.GetPath(sD)
-
+      -- Perform parameter check
+      if(not luapad.IsHere(sN)) then
+        luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
+        return
+      end
+      if(sN:match(tV[1])) then
+        luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
+        return
+      end
+      if(luapad.IsPath(oB..sN)) then
+        luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+        return
+      end
+      if (table.HasValue(RESTRICTED_FILES, oB .. sN)) then
+        luapad.SetStatus("File [%s%s] save failed! (file is restricted)", "STAT_ER", oB, sN)
+        return
+      end
+      -- In case the folder is relative to data can trigger a save
       if(bB) then
         if(not canOperateIn(oB)) then
           luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
           return
         end
-
+        -- Produce a folder relative to the data folder
         local sF, sC = (sB .. sN), (pT:GetContents() or "")
-
+        -- Write the actual contents
         file.CreateDir(sB)
         file.Write(sF, sC)
-
+        -- Check if the file exists
         if file.Exists(sF, "DATA") then
           luapad.SetStatus("File [%s%s] successfully saved!", "STAT_OK", oB, sN)
           tS.Path, tS.Name = oB, sN -- Update path and name

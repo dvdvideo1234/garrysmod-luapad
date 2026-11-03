@@ -63,13 +63,13 @@ local TOKEN_CLASSIFY = {
   }
 }
 
-luapad.EditorPanel = {}
+local PANEL = {}
 
 -- Create fonts
 surface.CreateFont("LuapadEditor", {font = "Courier New", size = 16, weight = 400})
 surface.CreateFont("LuapadEditor_Bold", {font = "Courier New", size = 16, weight = 800})
 
-function luapad.EditorPanel:Init()
+function PANEL:Init()
   self:SetCursor("beam")
 
   surface.SetFont("LuapadEditor")
@@ -111,13 +111,13 @@ function luapad.EditorPanel:Init()
   self.LastClick = 0
 end
 
-function luapad.EditorPanel:RefreshThemeView()
+function PANEL:RefreshThemeView()
   self:InvalidateLayout() -- Refresh panel changes
   local tR = self:GetTable().PaintRows -- Clear row cache
   if(istable(tR)) then table.Empty(tR) else self.PaintRows = {} end
 end
 
-function luapad.EditorPanel:GetThemeKeys()
+function PANEL:GetThemeKeys()
   local tT = self:GetTable().Highlight
   if(not tT) then return nil end
   local tK = table.GetKeys(tT)
@@ -125,14 +125,14 @@ function luapad.EditorPanel:GetThemeKeys()
   return tK -- Array with palette keys
 end
 
-function luapad.EditorPanel:GetTheme(sT)
+function PANEL:GetTheme(sT)
   local tT = self:GetTable().Highlight
   if(not tT) then return nil end
   if(not sT) then return nil end
   return tT[sT][1]
 end
 
-function luapad.EditorPanel:SetTheme(sT, vC)
+function PANEL:SetTheme(sT, vC)
   local tT = self:GetTable().Highlight
   if(not tT) then return nil end
   if(not sT) then return nil end
@@ -140,7 +140,7 @@ function luapad.EditorPanel:SetTheme(sT, vC)
   tT[sT][1] = vC
 end
 
-function luapad.EditorPanel:SetThemeArea(pD, bR)
+function PANEL:SetThemeArea(pD, bR)
   local tS = self:GetTable().Highlight
   if(not istable(tS)) then return nil end
   if(not IsValid(pD)) then return nil end
@@ -159,7 +159,7 @@ function luapad.EditorPanel:SetThemeArea(pD, bR)
   self:RefreshThemeView()
 end
 
-function luapad.EditorPanel:SetThemeDefault()
+function PANEL:SetThemeDefault()
   local tH = self:GetTable().Highlight or {}
   self.Highlight = tH; table.Empty(tH)
   for sT, tC in pairs(COLOR_HIGHLIGHT) do
@@ -169,7 +169,7 @@ function luapad.EditorPanel:SetThemeDefault()
   self:RefreshThemeView()
 end
 
-function luapad.EditorPanel:SetThemeSkin(tS, sS)
+function PANEL:SetThemeSkin(tS, sS)
   self:SetThemeDefault() -- Ignore missing gaps
   local tS = (tS or derma.GetDefaultSkin())
   if(not istable(tS)) then return end
@@ -198,7 +198,7 @@ function luapad.EditorPanel:SetThemeSkin(tS, sS)
   self:RefreshThemeView()
 end
 
-function luapad.EditorPanel:SetThemeFile(sN)
+function PANEL:SetThemeFile(sN)
   if(not isstring(sN)) then return end
   local bN = luapad.IsHere(sN)
   local tC = luapad.GetConfig("THMDEF")
@@ -234,7 +234,7 @@ function luapad.EditorPanel:SetThemeFile(sN)
   self:RefreshThemeView()
 end
 
-function luapad.EditorPanel:SaveThemeFile(sN)
+function PANEL:SaveThemeFile(sN)
   if(not isstring(sN)) then return end
   local bN = luapad.IsHere(sN)
   local tC = luapad.GetConfig("THMDEF")
@@ -257,15 +257,15 @@ function luapad.EditorPanel:SaveThemeFile(sN)
   fO:Flush(); fO:Close()
 end
 
-function luapad.EditorPanel:RequestFocus()
+function PANEL:RequestFocus()
   self.TextEntry:RequestFocus()
 end
 
-function luapad.EditorPanel:OnGetFocus()
+function PANEL:OnGetFocus()
   self.TextEntry:RequestFocus()
 end
 
-function luapad.EditorPanel:CursorToCaret()
+function PANEL:CursorToCaret()
   local x, y = self:CursorPos()
 
   x = x - (self.FontWidth * 3 + 6)
@@ -288,7 +288,7 @@ function luapad.EditorPanel:CursorToCaret()
   return {line, char}
 end
 
-function luapad.EditorPanel:OnMousePressed(code)
+function PANEL:OnMousePressed(code)
   local shift = input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT)
 
   if (code == MOUSE_LEFT) then
@@ -388,7 +388,7 @@ function luapad.EditorPanel:OnMousePressed(code)
   end
 end
 
-function luapad.EditorPanel:OnMouseReleased(code)
+function PANEL:OnMouseReleased(code)
   if (not self.MouseDown) then
     return
   end
@@ -402,7 +402,7 @@ function luapad.EditorPanel:OnMouseReleased(code)
   end
 end
 
-function luapad.EditorPanel:SetText(text)
+function PANEL:SetText(text)
   self.Rows = string.Explode("\n", text)
   local last = #self.Rows
 
@@ -421,17 +421,17 @@ function luapad.EditorPanel:SetText(text)
   self.ScrollBar:SetUp(self.Size[1], last - 1)
 end
 
-function luapad.EditorPanel:GetText()
+function PANEL:GetText()
   return string.Implode("\n", self.Rows)
 end
 
-function luapad.EditorPanel:MultiLineBlock(vM, vT)
+function PANEL:MultiLineBlock(vM, vT)
   if(vM ~= nil) then self.multy = vM end
   if(vT ~= nil) then self.token = vT end
   return self.multy, self.token
 end
 
-function luapad.EditorPanel:InitColorLine(row)
+function PANEL:InitColorLine(row)
   self.line = self.Rows[row]
   self.buff = {"", ""}
   self.pos = 0
@@ -443,7 +443,7 @@ function luapad.EditorPanel:InitColorLine(row)
   end
 end
 
-function luapad.EditorPanel:NextChar()
+function PANEL:NextChar()
   local last = self.char
   if (not last) then return end
 
@@ -461,7 +461,7 @@ function luapad.EditorPanel:NextChar()
   return self.char, last
 end
 
-function luapad.EditorPanel:SyntaxColorLine(row)
+function PANEL:SyntaxColorLine(row)
   local cols = {}
   local lastlib = {}
   local g_synt = TOKEN_CLASSIFY.G
@@ -628,7 +628,7 @@ function luapad.EditorPanel:SyntaxColorLine(row)
   return cols
 end
 
-function luapad.EditorPanel:PaintLine(row)
+function PANEL:PaintLine(row)
   if (row > #self.Rows) then
     return
   end
@@ -716,7 +716,7 @@ function luapad.EditorPanel:PaintLine(row)
   end
 end
 
-function luapad.EditorPanel:PerformLayout()
+function PANEL:PerformLayout()
   self.ScrollBar:SetSize(16, self:GetTall())
   self.ScrollBar:SetPos(self:GetWide() - 16, 0)
 
@@ -726,7 +726,7 @@ function luapad.EditorPanel:PerformLayout()
   self.ScrollBar:SetUp(self.Size[1], #self.Rows - 1)
 end
 
-function luapad.EditorPanel:Paint(w, h)
+function PANEL:Paint(w, h)
   if (not input.IsMouseDown(MOUSE_LEFT)) then
     self:OnMouseReleased(MOUSE_LEFT)
   end
@@ -754,17 +754,17 @@ function luapad.EditorPanel:Paint(w, h)
   return true
 end
 
-function luapad.EditorPanel:SetCaret(caret)
+function PANEL:SetCaret(caret)
   self.Caret = self:CopyPosition(caret)
   self.Start = self:CopyPosition(caret)
   self:ScrollCaret()
 end
 
-function luapad.EditorPanel:CopyPosition(caret)
+function PANEL:CopyPosition(caret)
   return {caret[1], caret[2]}
 end
 
-function luapad.EditorPanel:MovePosition(caret, offset)
+function PANEL:MovePosition(caret, offset)
   local caret = {caret[1], caret[2]}
 
   if (offset > 0) then
@@ -803,15 +803,15 @@ function luapad.EditorPanel:MovePosition(caret, offset)
   return caret
 end
 
-function luapad.EditorPanel:HasSelection()
+function PANEL:HasSelection()
   return self.Caret[1] ~= self.Start[1] or self.Caret[2] ~= self.Start[2]
 end
 
-function luapad.EditorPanel:Selection()
+function PANEL:Selection()
   return {{self.Caret[1], self.Caret[2]}, {self.Start[1], self.Start[2]}}
 end
 
-function luapad.EditorPanel:MakeSelection(selection)
+function PANEL:MakeSelection(selection)
   local start, stop = selection[1], selection[2]
 
   if (start[1] < stop[1] or start[1] == stop[1] and start[2] < stop[2]) then
@@ -821,7 +821,7 @@ function luapad.EditorPanel:MakeSelection(selection)
   end
 end
 
-function luapad.EditorPanel:GetArea(selection)
+function PANEL:GetArea(selection)
   local start, stop = self:MakeSelection(selection)
 
   if (start[1] == stop[1]) then
@@ -837,7 +837,7 @@ function luapad.EditorPanel:GetArea(selection)
   end
 end
 
-function luapad.EditorPanel:SetArea(selection, text, isundo, isredo, before, after)
+function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   local start, stop = self:MakeSelection(selection)
 
   local buffer = self:GetArea(selection)
@@ -924,22 +924,22 @@ function luapad.EditorPanel:SetArea(selection, text, isundo, isredo, before, aft
   end
 end
 
-function luapad.EditorPanel:GetSelection()
+function PANEL:GetSelection()
   return self:GetArea(self:Selection())
 end
 
-function luapad.EditorPanel:SetSelection(text)
+function PANEL:SetSelection(text)
   self:SetCaret(self:SetArea(self:Selection(), text))
 end
 
-function luapad.EditorPanel:CustomOnLoseFocus()
+function PANEL:CustomOnLoseFocus()
   if (self.TabFocus) then
     self:RequestFocus()
     self.TabFocus = nil
   end
 end
 
-function luapad.EditorPanel:CustomOnTextChanged()
+function PANEL:CustomOnTextChanged()
   local ctrlv = false
   local text = self.TextEntry:GetText()
   self.TextEntry:SetText("")
@@ -977,7 +977,7 @@ function luapad.EditorPanel:CustomOnTextChanged()
   self:SetSelection(text)
 end
 
-function luapad.EditorPanel:OnMouseWheeled(delta)
+function PANEL:OnMouseWheeled(delta)
   self.Scroll[1] = self.Scroll[1] - 4 * delta
   if (self.Scroll[1] < 1) then
     self.Scroll[1] = 1
@@ -988,7 +988,7 @@ function luapad.EditorPanel:OnMouseWheeled(delta)
   self.ScrollBar:SetScroll(self.Scroll[1] - 1)
 end
 
-function luapad.EditorPanel:ScrollCaret()
+function PANEL:ScrollCaret()
   if (self.Caret[1] - self.Scroll[1] < 2) then
     self.Scroll[1] = self.Caret[1] - 2
     if (self.Scroll[1] < 1) then
@@ -1028,11 +1028,11 @@ function unIndent(line)
   return line:sub(i)
 end
 
-function luapad.EditorPanel:CanUndo()
+function PANEL:CanUndo()
   return #self.Undo > 0
 end
 
-function luapad.EditorPanel:DoUndo()
+function PANEL:DoUndo()
   local tU = self.Undo
   local nU = #tU
   if (nU <= 0) then return end
@@ -1040,11 +1040,11 @@ function luapad.EditorPanel:DoUndo()
   self:SetCaret(self:SetArea(tC[1], tC[2], true, false, tC[3], tC[4]))
 end
 
-function luapad.EditorPanel:CanRedo()
+function PANEL:CanRedo()
   return #self.Redo > 0
 end
 
-function luapad.EditorPanel:DoRedo()
+function PANEL:DoRedo()
   local tR = self.Redo
   local nR = #tR
   if (nR <= 0) then return end
@@ -1052,14 +1052,14 @@ function luapad.EditorPanel:DoRedo()
   self:SetCaret(self:SetArea(tC[1], tC[2], false, true, tC[3], tC[4]))
 end
 
-function luapad.EditorPanel:SelectAll()
+function PANEL:SelectAll()
   local nR = #self.Rows
   self.Caret = {nR, string.len(self.Rows[nR]) + 1}
   self.Start = {1, 1}
   self:ScrollCaret()
 end
 
-function luapad.EditorPanel:CustomOnKeyCodeTyped(code)
+function PANEL:CustomOnKeyCodeTyped(code)
   self.Blink = RealTime()
 
   local alt = input.IsKeyDown(KEY_LALT) or input.IsKeyDown(KEY_RALT)
@@ -1342,7 +1342,7 @@ function luapad.EditorPanel:CustomOnKeyCodeTyped(code)
   end
 end
 
-function luapad.EditorPanel:GetWordStart(caret)
+function PANEL:GetWordStart(caret)
   local line = string.ToTable(self.Rows[caret[1]])
   if (#line < caret[2]) then
     return caret
@@ -1364,7 +1364,7 @@ function luapad.EditorPanel:GetWordStart(caret)
   return {caret[1], 1}
 end
 
-function luapad.EditorPanel:GetWordEnd(caret)
+function PANEL:GetWordEnd(caret)
   local line = string.ToTable(self.Rows[caret[1]])
   if (#line < caret[2]) then
     return caret
@@ -1385,7 +1385,7 @@ function luapad.EditorPanel:GetWordEnd(caret)
   return {caret[1], #line + 1}
 end
 
-function luapad.EditorPanel:Indent(shift)
+function PANEL:Indent(shift)
   local tab_scroll = self:CopyPosition(self.Scroll)
   local tab_start, tab_caret = self:MakeSelection(self:Selection())
   tab_start[2] = 1
@@ -1415,10 +1415,10 @@ function luapad.EditorPanel:Indent(shift)
   self:ScrollCaret()
 end
 
-function luapad.EditorPanel:OnTextChanged()
+function PANEL:OnTextChanged()
 end
 
-function luapad.EditorPanel:OnShortcut()
+function PANEL:OnShortcut()
 end
 
-vgui.Register("LuapadEditor", luapad.EditorPanel, "Panel")
+vgui.Register("LuapadEditor", PANEL, "Panel")
