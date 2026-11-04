@@ -118,22 +118,22 @@ function PANEL:RefreshView()
   self:InvalidateLayout() -- Refresh panel changes
 end
 
-function PANEL:SetFontName(iS, bB)
+function PANEL:SetFontInfo(iS)
   -- Calculate the proper font index
   local iS = math.floor(math.Clamp((tonumber(iD) or 0), 0, #FONT_SIZE))
   local iD = (FONT_SIZE.Size[iS] and iS or FONT_SIZE.ID)
   local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, iD, "")
   local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, iD, "Bold")
   -- Pick the actual bold or regular font
-  if(bB) then
-    surface.SetFont(sB)
-  else
-    surface.SetFont(sR)
-  end
+  surface.SetFont(sR) -- Get proper value from text size
   -- Update the current text size in pixels
   self.FontWidth, self.FontHeight = surface.GetTextSize(" ")
   self.FontName = {R = sR, B = sB}
   self:RefreshView()
+end
+
+function PANEL:GetFontInfo()
+  return FONT_SIZE.ID, table.Copy(FONT_SIZE.Size)
 end
 
 function PANEL:GetFontName(bB)
@@ -143,7 +143,7 @@ end
 
 function PANEL:Init()
   self:SetCursor("beam")
-  self:SetFontName()
+  self:SetFontInfo()
 
   self.Rows = {""}
   self.Caret = {1, 1}

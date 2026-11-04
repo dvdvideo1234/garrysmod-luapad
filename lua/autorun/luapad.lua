@@ -904,6 +904,23 @@ function luapad.EqualizeThemeTab(vTre)
   end
 end
 
+function luapad.SetFontEntry(vTre)
+  if(SERVER) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  local pT = pS:GetTabSwitch(vTre)
+  if(not IsValid(pT)) then return end
+  pT:GetTextArea():SetFontName()
+end
+
+function luapad.OpenFontMenu(vTre)
+  local pMenu = DermaMenu()
+  if(not IsValid(pMenu)) then return end
+  pMenu:SetPos(gui.MousePos())
+  luapad.AttachFontMenu(pMenu, vTre)
+  pMenu:Open()
+end
+
 function luapad.SetThemeEntry(vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
@@ -1137,6 +1154,7 @@ function luapad.Toggle()
   luapad.AddToolbarItem("Refresh / Refresh menu", "page_refresh"    , luapad.RefreshTabActive, luapad.OpenRefreshMenu)
   luapad.AddToolbarItem("Close / Close menu"    , "page_delete"     , luapad.CloseTabActive  , luapad.OpenCloseMenu)
   luapad.AddToolbarSpacer()
+  luapad.AddToolbarItem("Change font / Font menu", "style", luapad.SetFontEntry, luapad.OpenFontMenu)
   luapad.AddToolbarItem("Apply theme / Theme menu", "images", luapad.SetThemeEntry, luapad.OpenThemeMenu)
   luapad.AddToolbarItem("Load tabs / Save tabs"   , "briefcase" , luapad.LoadTabs, luapad.SaveTabs)
 
@@ -1384,6 +1402,32 @@ function luapad.CloseTabAll()
   if(not IsValid(pS)) then return end
 
   pS:Clear()
+end
+
+--[[
+ * Adjusts the font size for the tabs
+]]
+function luapad.AttachFontMenu(pMenu, vTre)
+  if(SERVER) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  if(not IsValid(pMenu)) then return end
+  local pT = pS:GetTabSwitch(vTre)
+  if(not IsValid(pT)) then return end
+  local pC = pT:GetTextArea()
+  local iF, tF = pC:GetFontSize()
+  pMenu:AddOption("Default", function()
+    pC:SetFontName(iF)
+  end):SetImage(luapad.ToIcon("shape_square_key"))
+  -- Add font size options
+  local pIn, pOp = pMenu:AddSubMenu("Sizes")
+  if(not IsValid(pIn)) then return end
+  pOp:SetIcon(luapad.ToIcon("text_uppercase"))
+  for iS = 1, #tF do -- List all available sizes
+    local sI = (iS ~= iF) and "shape_square" or "shape_square_go"
+    pIn:AddOption(tostring(sS), -- Current size will have an arrow
+      function() pC:SetFontName(iS) end):SetImage(luapad.ToIcon(sI))
+  end
 end
 
 --[[
