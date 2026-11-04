@@ -217,8 +217,17 @@ end
 --[[
  * Checks whenever the parameter is present
 ]]
-function luapad.ToColor(vC, nD)
-  return math.floor(math.Clamp(tonumber(vC) or nD, 0, 255))
+function luapad.ToColor(vA, nD)
+  return math.floor(math.Clamp(tonumber(vA) or nD, 0, 255))
+end
+
+--[[
+ * Returns a default value when argument is missing
+]]
+function luapad.ToBool(vA, vD)
+  local sA = tostring(vA or ""):Trim()
+  if(luapad.IsHere(sA)) then return tobool(vA) end
+  return (vD ~= nil and vD or false)
 end
 
 --[[
@@ -1128,7 +1137,7 @@ function luapad.Toggle()
   luapad.AddToolbarItem("Refresh / Refresh menu", "page_refresh"    , luapad.RefreshTabActive, luapad.OpenRefreshMenu)
   luapad.AddToolbarItem("Close / Close menu"    , "page_delete"     , luapad.CloseTabActive  , luapad.OpenCloseMenu)
   luapad.AddToolbarSpacer()
-  luapad.AddToolbarItem("Apply theme / Theme menu", "paintbrush", luapad.SetThemeEntry, luapad.OpenThemeMenu)
+  luapad.AddToolbarItem("Apply theme / Theme menu", "images", luapad.SetThemeEntry, luapad.OpenThemeMenu)
   luapad.AddToolbarItem("Load tabs / Save tabs"   , "briefcase" , luapad.LoadTabs, luapad.SaveTabs)
 
   if (file.Exists(GLOB_CONFIG.FOLDER.."saved_tabs.txt", "DATA")) then
@@ -1413,12 +1422,38 @@ function luapad.AttachThemeMenu(pMenu, vTre)
       end, nil, "Save", "Cancel"
     )
   end):SetImage(luapad.ToIcon("picture_save"))
-  pMenu:AddOption("Default", function()
-    pT:GetTextArea():SetThemeDefault()
+  -- Attach default theme control options
+  local pIn, pOp = pMenu:AddSubMenu("Default")
+  if(not IsValid(pIn)) then return end
+  pOp:SetIcon(luapad.ToIcon("report_picture"))
+  pIn:AddOption("Light", function()
+    local sT = "Default|false|false"
+    pT:GetTextArea():SetThemeDefault(false, false)
     luapad.EqualizeThemeTab(pT)
-    pT:GetStreamInfo().Teme = "default"
-    RunConsoleCommand(VAR_THM:GetName(), "default")
-  end):SetImage(luapad.ToIcon("picture_empty"))
+    pT:GetStreamInfo().Teme = sT
+    RunConsoleCommand(VAR_THM:GetName(), sT)
+  end):SetImage(luapad.ToIcon("picture"))
+  pIn:AddOption("Dark", function()
+    local sT = "Default|true|false"
+    pT:GetTextArea():SetThemeDefault(true, false)
+    luapad.EqualizeThemeTab(pT)
+    pT:GetStreamInfo().Teme = sT
+    RunConsoleCommand(VAR_THM:GetName(), sT)
+  end):SetImage(luapad.ToIcon("picture"))
+  pIn:AddOption("Light bold", function()
+    local sT = "Default|false|true"
+    pT:GetTextArea():SetThemeDefault(false, true)
+    luapad.EqualizeThemeTab(pT)
+    pT:GetStreamInfo().Teme = sT
+    RunConsoleCommand(VAR_THM:GetName(), sT)
+  end):SetImage(luapad.ToIcon("photo"))
+  pIn:AddOption("Dark bold", function()
+    local sT = "Default|true|true"
+    pT:GetTextArea():SetThemeDefault(true, true)
+    luapad.EqualizeThemeTab(pT)
+    pT:GetStreamInfo().Teme = sT
+    RunConsoleCommand(VAR_THM:GetName(), sT)
+  end):SetImage(luapad.ToIcon("photo"))
   -- Update the theme via a skin
   local pIn, pOp = pMenu:AddSubMenu("Skin")
   if(not IsValid(pIn)) then return end
@@ -1961,7 +1996,10 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
     local sT = string.sub(sTem, 2, -1)
     pText:SetThemeFile(sT)
   else
-    pText:SetThemeDefault()
+    local tI = GLOB_CONFIG.DELIMS:Explode(sTem)
+    tI[1], tI[2], tI[3] = getString(tI[1], tI[2], tI[3])
+    pText:SetThemeDefault(tobool(tI[2]), tobool(tI[3]))
+    sTem = table.concat(tI, GLOB_CONFIG.DELIMS)
   end
 
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)

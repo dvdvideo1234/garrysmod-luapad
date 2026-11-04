@@ -6,52 +6,84 @@ if (SERVER) then
 end
 
 local KEYWORD_TOKENS = {
-  ["if"      ] = true,
-  ["elseif"  ] = true,
-  ["else"    ] = true,
-  ["then"    ] = true,
-  ["end"     ] = true,
-  ["function"] = true,
-  ["do"      ] = true,
-  ["while"   ] = true,
-  ["for"     ] = true,
-  ["repeat"  ] = true,
-  ["until"   ] = true,
-  ["break"   ] = true,
-  ["in"      ] = true,
-  ["local"   ] = true,
-  ["true"    ] = true,
-  ["false"   ] = true,
-  ["nil"     ] = true,
-  ["NULL"    ] = true,
-  ["and"     ] = true,
-  ["not"     ] = true,
-  ["or"      ] = true,
-  ["||"      ] = true,
-  ["&&"      ] = true
+    ["if"]       = true,
+    ["elseif"]   = true,
+    ["else"]     = true,
+    ["then"]     = true,
+    ["end"]      = true,
+    ["function"] = true,
+    ["do"]       = true,
+    ["while"]    = true,
+    ["break"]    = true,
+    ["for"]      = true,
+    ["in"]       = true,
+    ["local"]    = true,
+    ["true"]     = true,
+    ["false"]    = true,
+    ["nil"]      = true,
+    ["NULL"]     = true,
+    ["and"]      = true,
+    ["not"]      = true,
+    ["or"]       = true,
+    ["||"]       = true,
+    ["&&"]       = true,
+    ["!"]        = true,
+    ["!="]       = true,
+    ["return"]   = true,
+    ["continue"] = true,
+    ["goto"]     = true,
+    ["repeat"]   = true,
+    ["until"]    = true,
+    ["~="]       = true
 }
 
 --[[
  * Default theme customization
- * [1] : Current color used for a bunch of text
- * [2] : Use bold text style when drawing
 ]]
 local COLOR_HIGHLIGHT = {
-  ["gui.background" ] = {Base = Color(220, 220, 220, 255), Skin = "colTextEntryBG"},
-  ["gui.verticalbar"] = {Base = Color(170, 170, 170, 255), Skin = "colTextEntryBorder"},
-  ["gui.blinkcursor"] = {Base = Color( 72,  61, 139, 255), Skin = "colTextEntryTextCursor"},
-  ["gui.rownumbers" ] = {Base = Color(128, 128, 128, 255), Skin = "colTextEntryTextPlaceholder"},
-  ["gui.rowtextmark"] = {Base = Color(215, 215, 215, 255), Skin = "colTextEntryTextHighlight"},
-  ["gui.rowtextback"] = {Base = Color(250, 250, 250, 255), Skin = "colTextEntryTextPlaceholder"},
-  ["code.none"      ] = {Base = Color(  0,   0,   0, 255), Skin = "colTextEntryText"},
-  ["code.number"    ] = {Base = Color(218, 165,  32, 255)},
-  ["code.function"  ] = {Base = Color(100, 100, 255, 255)},
-  ["code.enumerator"] = {Base = Color(184, 134,  11, 255)},
-  ["code.metatable" ] = {Base = Color(140, 100,  90, 255)},
-  ["code.string"    ] = {Base = Color(120, 120, 120, 255)},
-  ["code.construct" ] = {Base = Color(  0,   0, 255, 255)},
-  ["code.operator"  ] = {Base = Color(  0,   0, 128, 255)},
-  ["code.comment"   ] = {Base = Color(  0, 120,   0, 255)}
+  ["#"] = { -- Current skin
+    ["gui.currentline"] = {"colTextEntryTextPlaceholder"},
+    ["gui.selection"  ] = {"colTextEntryBorder"         },
+    ["gui.caretbase"  ] = {"colTextEntryTextCursor"     },
+    ["gui.rownumbers" ] = {"colTextEntryTextPlaceholder"},
+    ["gui.rowlinebar" ] = {"colTextEntryTextHighlight"  },
+    ["gui.background" ] = {"colTextEntryBG"             },
+    ["code.none"      ] = {"colTextEntryText"           }
+  },
+  ["Light"] = {
+    ["gui.currentline"] = {Color(220, 220, 220, 255)},
+    ["gui.selection"  ] = {Color(170, 170, 170, 255)},
+    ["gui.caretbase"  ] = {Color( 72,  61, 139, 255)},
+    ["gui.rownumbers" ] = {Color(128, 128, 128, 255)},
+    ["gui.rowlinebar" ] = {Color(215, 215, 215, 255)},
+    ["gui.background" ] = {Color(250, 250, 250, 255)},
+    ["code.none"      ] = {Color(  0,   0,   0, 255)},
+    ["code.number"    ] = {Color(218, 165,  32, 255)},
+    ["code.function"  ] = {Color(100, 100, 255, 255)},
+    ["code.enumerator"] = {Color(184, 134,  11, 255)},
+    ["code.metatable" ] = {Color(140, 100,  90, 255)},
+    ["code.string"    ] = {Color(120, 120, 120, 255)},
+    ["code.construct" ] = {Color(  0,   0, 255, 255)},
+    ["code.operator"  ] = {Color(  0,   0, 128, 255)},
+    ["code.comment"   ] = {Color(  0, 120,   0, 255)}
+  },
+  ["Dark"] = {
+    ["gui.currentline"] = {Color( 20,  20,  20, 255)},
+    ["gui.selection"  ] = {Color( 70,  70,  70, 255)},
+    ["gui.caretbase"  ] = {Color(255, 255, 255, 255)},
+    ["gui.rownumbers" ] = {Color(128, 128, 128, 255)},
+    ["gui.rowlinebar" ] = {Color( 15,  15,  15, 255)},
+    ["gui.background" ] = {Color( 50,  50,  50, 255)},
+    ["code.none"      ] = {Color(255, 255, 255, 255)},
+    ["code.number"    ] = {Color(218, 165,  32, 255)},
+    ["code.function"  ] = {Color(220, 220, 170, 255)},
+    ["code.enumerator"] = {Color(184, 134,  11, 255)},
+    ["code.metatable" ] = {Color(  0, 255, 125, 255)},
+    ["code.string"    ] = {Color(206, 145, 120, 255)},
+    ["code.construct" ] = {Color(197, 134, 192, 255)},
+    ["code.operator"  ] = {Color(  0, 255, 255, 255)},
+    ["code.comment"   ] = {Color(  0, 200,   0, 255)}
+  },
 }
 
 local TOKEN_CLASSIFY = {
@@ -63,11 +95,11 @@ local TOKEN_CLASSIFY = {
   }
 }
 
-local PANEL = {}
-
 -- Create fonts
 surface.CreateFont("LuapadEditor", {font = "Courier New", size = 16, weight = 400})
 surface.CreateFont("LuapadEditor_Bold", {font = "Courier New", size = 16, weight = 800})
+
+local PANEL = {}
 
 function PANEL:Init()
   self:SetCursor("beam")
@@ -159,76 +191,83 @@ function PANEL:SetThemeArea(pD, bR)
   self:RefreshThemeView()
 end
 
-function PANEL:SetThemeDefault()
+function PANEL:SetThemeDefault(bD, bB)
   local tH = self:GetTable().Highlight or {}
   self.Highlight = tH; table.Empty(tH)
-  for sT, tC in pairs(COLOR_HIGHLIGHT) do
-    tH[sT] = {tC.Base, false}
+  local sK = (tobool(bD) and "Dark" or "Light")
+  local tT, bB = COLOR_HIGHLIGHT[sK], tobool(bB)
+  for sT, vC in pairs(tT) do -- Default theme
+    local bO = (vC[2] ~= nil) and tobool(vC[2]) or bB
+    tH[sT] = {vC[1], bO} -- Reference copy
   end -- Update the string expression
   tH["code.string2"] = tH["code.string"]
   self:RefreshThemeView()
 end
 
-function PANEL:SetThemeSkin(tS, sS)
-  self:SetThemeDefault() -- Ignore missing gaps
+function PANEL:SetThemeSkin(tS, sS, ...)
+  self:SetThemeDefault(...) -- Ignore missing gaps
   local tS = (tS or derma.GetDefaultSkin())
   if(not istable(tS)) then return end
   local tH = self:GetTable().Highlight
   local sD = luapad.GetConfig("DELIMS")
-  for sT, tC in pairs(COLOR_HIGHLIGHT) do
-    if(tC.Skin) then
-      local sC = tC.Skin
-      local vC, tK = tS, sD:Explode(sC)
-      local iD, nD = 1, #tK
-      while(iD <= nD) do
-        local vK = tK[iD]
-        vC, iD = vC[vK], (iD + 1)
-        if(not vC) then
-          luapad.SetStatus("Theme skin [%s] path [%s] is missing!", "STAT_WR", sS, sC)
-          return -- Somewhere along the way a color cannot be obtaines
+  local tK = self:GetThemeKeys()
+  local tM = COLOR_HIGHLIGHT["#"]
+  for iK = 1, #tK do
+    local sK = tK[iK]
+    local vM = tM[sK]
+    if(vM and isstring(vM[1])) then
+      local sP, bB = vM[1], tobool(tH[sK][2])
+      local bO = (vM[2] ~= nil) and tobool(vM[2]) or bB
+      local vP, tP = tS, sD:Explode(sP)
+      for iP = 1, #tP do vP = vP[tP[iP]]
+        if(not vP) then
+          luapad.SetStatus("Theme skin [%s] path [%s] is missing!", "STAT_WR", sS, sP)
+          return -- Somewhere along the way a color cannot be obtained
         end
       end
-      if(not IsColor(vC)) then
-        luapad.SetStatus("Theme skin [%s] path [%s] is invalid!", "STAT_WR", sS, sC)
-        return -- Somewhere along the way a color cannot be obtaines
+      if(not IsColor(vP)) then
+        luapad.SetStatus("Theme skin [%s] path [%s] is invalid!", "STAT_WR", sS, sP)
+        return -- Somewhere along the way a color cannot be obtained
       end
-      tH[sT][1] = vC
+      tH[sK][1], tH[sK][2] = vP, bO
     end
   end -- Update the string expression
   self:RefreshThemeView()
 end
 
-function PANEL:SetThemeFile(sN)
+function PANEL:SetThemeFile(sN, ...)
   if(not isstring(sN)) then return end
   local bN = luapad.IsHere(sN)
   local tC = luapad.GetConfig("THMDEF")
   local sE = luapad.GetConfig("PATNLN")
   local tV = luapad.GetConfig("VALDFS")
   local sN = (bN and sN or tC[2])
-  self:SetThemeDefault() -- Ignore missing gaps
-  if(sN:find(tV[1])) then
-    luapad.SetStatus("File [%s%s] highlight invalid! (apply default theme)", "STAT_WR", tC[1], sN)
+  self:SetThemeDefault(...) -- Ignore missing gaps
+  if(sN:find(tV[1])) then local sP, sN = ("data/"..tC[1]), (sN..".txt") -- The file open failed
+    luapad.SetStatus("File [%s%s] highlight invalid! (apply default theme)", "STAT_WR", sP, sN)
     return
   end
   if(sN == tC[2]) then return end
   if(not file.IsDir(tC[1], "DATA")) then file.CreateDir(tC[1]) end
   -- Open the file so the theme can be extracted
   local sF = file.Read(tC[1]..sN..".txt", "rb", "DATA")
-  if(not sF) then local sP, sN = ("data/"..tC[1]), (sN..".txt") -- The file open attempt has failed
+  if(not sF) then local sP, sN = ("data/"..tC[1]), (sN..".txt") -- The file open failed
     luapad.SetStatus("File [%s%s] highlight missing! (apply default theme)", "STAT_WR", sP, sN)
     return -- Exit the routine end report the status
   end
   local tW = sE:Explode(sF, true)
+  local tH = self:GetTable().Highlight
   local sD = luapad.GetConfig("DELIMS")
   for iD = 1, #tW do -- Every line contains token and color
     local tT = sD:Explode(tW[iD]) -- Empty lines
     local sT = tT[1]:Trim() -- Color token to search for
-    if(self.Highlight[sT]) then
+    if(tH[sT]) then
       local nR = luapad.ToColor(tT[2]:Trim(), 0)
       local nG = luapad.ToColor(tT[3]:Trim(), 0)
       local nB = luapad.ToColor(tT[4]:Trim(), 0)
       local nA = luapad.ToColor(tT[5]:Trim(), 255)
-      self.Highlight[sT][1] = Color(nR, nG, nB, nA)
+      tH[sT][1] = Color(nR, nG, nB, nA)
+      tH[sT][2] = luapad.ToBool(tT[6], false)
     end
   end
   self:RefreshThemeView()
@@ -642,7 +681,7 @@ function PANEL:PaintLine(row)
   local castr, caend  = self.Caret[1] , self.Caret[2]
 
   if (row == castr and self.TextEntry:HasFocus()) then
-    surface.SetDrawColor(self:GetTheme("gui.background"):Unpack())
+    surface.SetDrawColor(self:GetTheme("gui.currentline"):Unpack())
     surface.DrawRect(width * 3 + 5, (row - scstr) * height, self:GetWide() - (width * 3 + 5), height)
   end
 
@@ -651,7 +690,7 @@ function PANEL:PaintLine(row)
     local line, char = start[1], start[2]
     local endline, endchar = stop[1], stop[2]
 
-    surface.SetDrawColor(self:GetTheme("gui.verticalbar"):Unpack())
+    surface.SetDrawColor(self:GetTheme("gui.selection"):Unpack())
     local length = string.len(self.Rows[row]) - scend + 1
 
     char = char - scend
@@ -708,7 +747,7 @@ function PANEL:PaintLine(row)
   if (row == castr and self.TextEntry:HasFocus()) then
     if ((RealTime() - self.Blink) % 0.8 < 0.4) then
       if (caend - scend >= 0) then
-        surface.SetDrawColor(self:GetTheme("gui.blinkcursor"):Unpack())
+        surface.SetDrawColor(self:GetTheme("gui.caretbase"):Unpack())
         surface.DrawRect((caend - scend) * width + width * 3 + 6,
                          (castr - scstr) * height, 1, height)
       end
@@ -739,10 +778,10 @@ function PANEL:Paint(w, h)
     self.Caret = self:CursorToCaret()
   end
 
-  surface.SetDrawColor(self:GetTheme("gui.rowtextmark"):Unpack())
+  surface.SetDrawColor(self:GetTheme("gui.rowlinebar"):Unpack())
   surface.DrawRect(0, 0, self.FontWidth * 3 + 4, self:GetTall())
 
-  surface.SetDrawColor(self:GetTheme("gui.rowtextback"):Unpack())
+  surface.SetDrawColor(self:GetTheme("gui.background"):Unpack())
   surface.DrawRect(self.FontWidth * 3 + 5, 0, self:GetWide() - (self.FontWidth * 3 + 5), self:GetTall())
 
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
