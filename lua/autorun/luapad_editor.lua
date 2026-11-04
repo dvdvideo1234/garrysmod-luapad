@@ -1,6 +1,6 @@
 -- Andreas "Syranide" Svensson's editor for Wire Expression 2
--- edited by DarKSunrise aka Assassini
--- to work with Luapad and with Lua-syntax
+-- Edited by DarKSunrise aka Assassini to work with Luapad and with Lua-syntax
+
 if (SERVER) then
   return
 end
@@ -87,25 +87,63 @@ local COLOR_HIGHLIGHT = {
 }
 
 local TOKEN_CLASSIFY = {
-  G = {["f"] = true, ["e"] = true, ["m"] = true},
-  T = {["function"] = true, ["table"] = true},
-  M = {
-    S = {"\"", "'", Esc = "\\"},
-    C = {"-", "/"}
-  }
+  G = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
+  T = {["function"] = true, ["table"] = true}, -- Libraries
+  S = {"\"", "'", Esc = "\\"}, -- String and escape character
+  C = {"-", "/"}, -- Comment definitions with pre processor
+  M = {"[", "=", "]"} -- Multi-line token definition
 }
 
 -- Create fonts
-surface.CreateFont("LuapadEditor", {font = "Courier New", size = 16, weight = 400})
-surface.CreateFont("LuapadEditor_Bold", {font = "Courier New", size = 16, weight = 800})
+local FONT_SIZE = {
+  ID = 2, -- Default font index
+  Form = "%s%s%d", -- Name pattern
+  Name = "LuapadCodeFont", -- Base name
+  Size = {12, 16, 20, 24, 28}
+}
+
+for iF = 1, #FONT_SIZE.Size do
+  local iS = FONT_SIZE.Size[iF]
+  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, iS, "")
+  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, iS, "Bold")
+  surface.CreateFont(sR, {font = "Courier New", size = iS, weight = 400})
+  surface.CreateFont(sB, {font = "Courier New", size = iS, weight = 800})
+end
 
 local PANEL = {}
 
+function PANEL:RefreshView()
+  local tR = self:GetTable().PaintRows -- Clear row cache
+  if(istable(tR)) then table.Empty(tR) else self.PaintRows = {} end
+  self:InvalidateLayout() -- Refresh panel changes
+end
+
+function PANEL:SetFontName(iS, bB)
+  -- Calculate the proper font index
+  local iS = math.floor(math.Clamp((tonumber(iD) or 0), 0, #FONT_SIZE))
+  local iD = (FONT_SIZE.Size[iS] and iS or FONT_SIZE.ID)
+  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, iD, "")
+  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, iD, "Bold")
+  -- Pick the actual bold or regular font
+  if(bB) then
+    surface.SetFont(sB)
+  else
+    surface.SetFont(sR)
+  end
+  -- Update the current text size in pixels
+  self.FontWidth, self.FontHeight = surface.GetTextSize(" ")
+  self.FontName = {R = sR, B = sB}
+  self:RefreshView()
+end
+
+function PANEL:GetFontName(bB)
+  local tN = self:GetTable().FontName
+  return (bB and tN.B or tN.R)
+end
+
 function PANEL:Init()
   self:SetCursor("beam")
-
-  surface.SetFont("LuapadEditor")
-  self.FontWidth, self.FontHeight = surface.GetTextSize(" ")
+  self:SetFontName()
 
   self.Rows = {""}
   self.Caret = {1, 1}
@@ -114,8 +152,6 @@ function PANEL:Init()
   self.Size = {1, 1}
   self.Undo = {}
   self.Redo = {}
-  self.PaintRows = {}
-
   self.Blink = RealTime()
 
   self.ScrollBar = vgui.Create("DVScrollBar", self)
@@ -141,12 +177,6 @@ function PANEL:Init()
   self.TextEntry.Parent = self
 
   self.LastClick = 0
-end
-
-function PANEL:RefreshThemeView()
-  self:InvalidateLayout() -- Refresh panel changes
-  local tR = self:GetTable().PaintRows -- Clear row cache
-  if(istable(tR)) then table.Empty(tR) else self.PaintRows = {} end
 end
 
 function PANEL:GetThemeKeys()
@@ -188,7 +218,7 @@ function PANEL:SetThemeArea(pD, bR)
       end
     end
   end
-  self:RefreshThemeView()
+  self:RefreshView()
 end
 
 function PANEL:SetThemeDefault(bD, bB)
@@ -201,7 +231,7 @@ function PANEL:SetThemeDefault(bD, bB)
     tH[sT] = {vC[1], bO} -- Reference copy
   end -- Update the string expression
   tH["code.string2"] = tH["code.string"]
-  self:RefreshThemeView()
+  self:RefreshView()
 end
 
 function PANEL:SetThemeSkin(tS, sS, ...)
@@ -232,7 +262,7 @@ function PANEL:SetThemeSkin(tS, sS, ...)
       tH[sK][1], tH[sK][2] = vP, bO
     end
   end -- Update the string expression
-  self:RefreshThemeView()
+  self:RefreshView()
 end
 
 function PANEL:SetThemeFile(sN, ...)
@@ -270,7 +300,7 @@ function PANEL:SetThemeFile(sN, ...)
       tH[sT][2] = luapad.ToBool(tT[6], false)
     end
   end
-  self:RefreshThemeView()
+  self:RefreshView()
 end
 
 function PANEL:SaveThemeFile(sN)
@@ -286,14 +316,17 @@ function PANEL:SaveThemeFile(sN)
     return -- Exit the routine end report the status
   end
   local tK, tO = self:GetThemeKeys(), {}
+  local tH = self:GetTable().Highlight
   local sD = luapad.GetConfig("DELIMS")
-  for iK = 1, #tK do -- Every line contains token and color
-    local vK = tK[iK]; tO[1] = vK
-    local vC = self:GetTheme(vK)
-    tO[2], tO[3], tO[4], tO[5] = vC:Unpack()
-    fO:Write(table.concat(tO, sD)); fO:Write("\n")
-  end
-  fO:Flush(); fO:Close()
+  for iK = 1, #tK do -- Highlight keys
+    local sK = tK[iK] -- Process a key
+    if(tH[sK]) then tO[1] = sK -- Exists
+      local vC, bB = tH[sK][1], tH[sK][2]
+      tO[2], tO[3], tO[4], tO[5] = vC:Unpack()
+      tO[6] = tostring(bB or "false") -- Bold
+      fO:Write(table.concat(tO, sD)); fO:Write("\n")
+    end
+  end; fO:Flush(); fO:Close()
 end
 
 function PANEL:RequestFocus()
@@ -505,8 +538,10 @@ function PANEL:SyntaxColorLine(row)
   local lastlib = {}
   local g_synt = TOKEN_CLASSIFY.G
   local g_type = TOKEN_CLASSIFY.T
-  local g_mapS = TOKEN_CLASSIFY.M.S
-  local g_mapC = TOKEN_CLASSIFY.M.C
+  local g_mstr = TOKEN_CLASSIFY.S
+  local g_mcom = TOKEN_CLASSIFY.C
+  local g_mmul = TOKEN_CLASSIFY.M
+
   self:InitColorLine(row)
 
   local char, last = self:NextChar()
@@ -524,10 +559,10 @@ function PANEL:SyntaxColorLine(row)
     local multy, mtoken = self:MultiLineBlock()
 
     if(multy) then
-      if(char == "]") then
+      if(char == g_mmul[3]) then
         local multy, open = multy, char
         char, last = self:NextChar()
-        while(char and char == "=") do
+        while(char and char == g_mmul[2]) do
           multy = multy - 1
           char, last = self:NextChar()
         end
@@ -594,11 +629,11 @@ function PANEL:SyntaxColorLine(row)
         token = "code.none"
       end
 
-    elseif (char == g_mapS[1]) then
+    elseif (char == g_mstr[1]) then
 
       char, last = self:NextChar()
-      while(char and char ~= g_mapS[1]) do
-        if (char == g_mapS.Esc) then
+      while(char and char ~= g_mstr[1]) do
+        if (char == g_mstr.Esc) then
           char, last = self:NextChar()
         end
         char, last = self:NextChar()
@@ -606,10 +641,10 @@ function PANEL:SyntaxColorLine(row)
       char, last = self:NextChar()
 
       token = "code.string"
-    elseif (char == g_mapS[2]) then
+    elseif (char == g_mstr[2]) then
       char, last = self:NextChar()
-      while(char and char ~= g_mapS[2]) do
-        if (char == g_mapS.Esc) then
+      while(char and char ~= g_mstr[2]) do
+        if (char == g_mstr.Esc) then
           char, last = self:NextChar()
         end
         char, last = self:NextChar()
@@ -617,7 +652,7 @@ function PANEL:SyntaxColorLine(row)
       char, last = self:NextChar()
 
       token = "code.string2"
-    elseif (char == g_mapC[1] or char == g_mapC[2]) then
+    elseif (char == g_mcom[1] or char == g_mcom[2]) then
       char, last = self:NextChar()
 
       if (char == last) then
@@ -630,10 +665,10 @@ function PANEL:SyntaxColorLine(row)
         token = "code.none"
         self:MultiLineBlock(nil, false)
       end
-    elseif (char == "[") then
+    elseif (char == g_mmul[1]) then
       local multy, open = 0, char
       char, last = self:NextChar()
-      while(char and char == "=") do
+      while(char and char == g_mmul[2]) do
         char, last = self:NextChar()
         multy = multy + 1
       end
@@ -714,7 +749,7 @@ function PANEL:PaintLine(row)
     end
   end
 
-  draw.SimpleText(tostring(row), "LuapadEditor", width * 3, (row - scstr) * height, self:GetTheme("gui.rownumbers"), TEXT_ALIGN_RIGHT)
+  draw.SimpleText(tostring(row), self:GetFontName(), width * 3, (row - scstr) * height, self:GetTheme("gui.rownumbers"), TEXT_ALIGN_RIGHT)
 
   local offset = -scend + 1
   for i, cell in ipairs(self.PaintRows[row]) do
@@ -724,22 +759,12 @@ function PANEL:PaintLine(row)
       if (string.len(ccon) > -offset) then
         line = string.sub(ccon, -offset + 1)
         offset = string.len(line)
-
-        if (cen) then
-          draw.SimpleText(line, "LuapadEditorBold", width * 3 + 6, (row - scstr) * height, csr)
-        else
-          draw.SimpleText(line, "LuapadEditor", width * 3 + 6, (row - scstr) * height, csr)
-        end
+        draw.SimpleText(line, self:GetFontName(cen), width * 3 + 6, (row - scstr) * height, csr)
       else
         offset = offset + string.len(ccon)
       end
     else
-      if (cen) then
-        draw.SimpleText(ccon, "LuapadEditorBold", offset * width + width * 3 + 6, (row - scstr) * height, csr)
-      else
-        draw.SimpleText(ccon, "LuapadEditor", offset * width + width * 3 + 6, (row - scstr) * height, csr)
-      end
-
+      draw.SimpleText(ccon, self:GetFontName(cen), offset * width + width * 3 + 6, (row - scstr) * height, csr)
       offset = offset + string.len(ccon)
     end
   end
