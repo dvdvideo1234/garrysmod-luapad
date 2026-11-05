@@ -222,15 +222,6 @@ function luapad.ToColor(vA, nD)
 end
 
 --[[
- * Returns a default value when argument is missing
-]]
-function luapad.ToBool(vA, vD)
-  local sA = tostring(vA or ""):Trim()
-  if(luapad.IsHere(sA)) then return tobool(vA) end
-  return (vD ~= nil and vD or false)
-end
-
---[[
  * Checks if the path has disabled folder names
 ]]
 function luapad.IsPath(sP)
@@ -853,8 +844,8 @@ function luapad.CheckGlobal(func, last)
     return luapad._sG[func]
   end
   if(last and istable(last)) then
-    local tL, sN = last.T, last.N
-      if(tL and istable(tL) and tL[func]) then
+    local tL, sN = last.Src, last.Nam
+    if(tL and istable(tL) and tL[func]) then
       if (luapad.debugmode) then
         print(GLOB_CONFIG.SRCHFM:format(func, tostring(sN or "_LAST_")))
       end
@@ -902,51 +893,6 @@ function luapad.EqualizeThemeTab(vTre)
       end
     end
   end
-end
-
-function luapad.SetFontEntry(vTre)
-  if(SERVER) then return end
-  local pS = luapad.PropertySheet
-  if(not IsValid(pS)) then return end
-  local pT = pS:GetTabSwitch(vTre)
-  if(not IsValid(pT)) then return end
-  pT:GetTextArea():SetFontName()
-end
-
-function luapad.OpenFontMenu(vTre)
-  local pMenu = DermaMenu()
-  if(not IsValid(pMenu)) then return end
-  pMenu:SetPos(gui.MousePos())
-  luapad.AttachFontMenu(pMenu, vTre)
-  pMenu:Open()
-end
-
-function luapad.SetThemeEntry(vTre)
-  if(SERVER) then return end
-  local pS = luapad.PropertySheet
-  if(not IsValid(pS)) then return end
-  local pT = pS:GetTabSwitch(vTre)
-  if(not IsValid(pT)) then return end
-  local sV = VAR_THM:GetString()
-  local sI = sV:sub(1,1)
-  if(sI == "#") then
-    local sT = string.sub(sV, 2, -1)
-    local tS = derma.GetNamedSkin(sT)
-    if(not istable(tS)) then return end
-    pT:GetTextArea():SetThemeSkin(tS, sT)
-  elseif(sI == "@") then
-    local sT = string.sub(sV, 2, -1)
-    pT:GetTextArea():SetThemeFile(sT)
-  end
-  luapad.EqualizeThemeTab(pT)
-end
-
-function luapad.OpenThemeMenu(vTre)
-  local pMenu = DermaMenu()
-  if(not IsValid(pMenu)) then return end
-  pMenu:SetPos(gui.MousePos())
-  luapad.AttachThemeMenu(pMenu, vTre)
-  pMenu:Open()
 end
 
 function luapad.SaveTabs()
@@ -1118,9 +1064,9 @@ function luapad.Toggle()
     else return nil end
   end
 
-  function luapad.PropertySheet:GetTabSwitch(vTre)
+  function luapad.PropertySheet:GetTabSwitch(vTre, ...)
     if(luapad.IsHere(vTre)) then -- There is an argument
-      local iT, pT = self:GetTabIndex(vTre)
+      local iT, pT = self:GetTabIndex(vTre, ...)
       if(not iT) then return nil end
       return pT -- The argument is validated
     else
@@ -1407,7 +1353,7 @@ end
 --[[
  * Adjusts the font size for the tabs
 ]]
-function luapad.AttachFontMenu(pMenu, vTre)
+local function luapadAttachFontMenu(pMenu, vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1433,17 +1379,18 @@ end
 --[[
  * Attaches a theme files list to a menu
 ]]
-function luapad.AttachThemeMenu(pMenu, vTre)
+local function luapadAttachThemeMenu(pMenu, vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
   if(not IsValid(pMenu)) then return end
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
+  local tT = GLOB_CONFIG.THMDEF
   pMenu:AddOption("Export", function()
     luapad.ShowConfirmDialog(
-      "You are about to save a theme under ["..GLOB_CONFIG.THMDEF[1].."], please enter the desired name.",
-      GLOB_CONFIG.THMDEF[2],
+      "You are about to save a theme under ["..tT[1].."], please enter the desired name.",
+      tT[2],
       function(sName)
         -- Configure parameters
         local tV = GLOB_CONFIG.VALDFS
@@ -1457,12 +1404,12 @@ function luapad.AttachThemeMenu(pMenu, vTre)
           luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
           return
         end
-        if(luapad.IsPath(sN)) then
+        if(not luapad.IsPath(sN)) then
           luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
           return
         end
         -- Everything is valid so write the theme
-        pT:GetTextArea():SaveThemeFile(sN)
+        luapad.SaveThemeFile(pT, sN)
       end, nil, "Save", "Cancel"
     )
   end):SetImage(luapad.ToIcon("picture_save"))
@@ -1470,46 +1417,47 @@ function luapad.AttachThemeMenu(pMenu, vTre)
   local pIn, pOp = pMenu:AddSubMenu("Default")
   if(not IsValid(pIn)) then return end
   pOp:SetIcon(luapad.ToIcon("report_picture"))
-  pIn:AddOption("Light", function()
-    local sT = "Default|false|false"
-    pT:GetTextArea():SetThemeDefault(false, false)
-    luapad.EqualizeThemeTab(pT)
-    pT:GetStreamInfo().Teme = sT
-    RunConsoleCommand(VAR_THM:GetName(), sT)
-  end):SetImage(luapad.ToIcon("picture"))
-  pIn:AddOption("Dark", function()
-    local sT = "Default|true|false"
-    pT:GetTextArea():SetThemeDefault(true, false)
-    luapad.EqualizeThemeTab(pT)
-    pT:GetStreamInfo().Teme = sT
-    RunConsoleCommand(VAR_THM:GetName(), sT)
-  end):SetImage(luapad.ToIcon("picture"))
-  pIn:AddOption("Light bold", function()
-    local sT = "Default|false|true"
-    pT:GetTextArea():SetThemeDefault(false, true)
-    luapad.EqualizeThemeTab(pT)
-    pT:GetStreamInfo().Teme = sT
-    RunConsoleCommand(VAR_THM:GetName(), sT)
-  end):SetImage(luapad.ToIcon("photo"))
-  pIn:AddOption("Dark bold", function()
-    local sT = "Default|true|true"
-    pT:GetTextArea():SetThemeDefault(true, true)
-    luapad.EqualizeThemeTab(pT)
-    pT:GetStreamInfo().Teme = sT
-    RunConsoleCommand(VAR_THM:GetName(), sT)
-  end):SetImage(luapad.ToIcon("photo"))
+  pIn:AddOption("Light",
+    function() local sT = "XX"
+      pT:GetTextArea():SetThemeDefault(false, false)
+      luapad.EqualizeThemeTab(pT)
+      pT:GetStreamInfo().Teme = sT
+      RunConsoleCommand(VAR_THM:GetName(), sT)
+    end):SetImage(luapad.ToIcon("picture"))
+  pIn:AddOption("Dark",
+    function() local sT = "VX"
+      pT:GetTextArea():SetThemeDefault(true, false)
+      luapad.EqualizeThemeTab(pT)
+      pT:GetStreamInfo().Teme = sT
+      RunConsoleCommand(VAR_THM:GetName(), sT)
+    end):SetImage(luapad.ToIcon("picture"))
+  pIn:AddOption("Light bold",
+    function() local sT = "XV"
+      pT:GetTextArea():SetThemeDefault(false, true)
+      luapad.EqualizeThemeTab(pT)
+      pT:GetStreamInfo().Teme = sT
+      RunConsoleCommand(VAR_THM:GetName(), sT)
+    end):SetImage(luapad.ToIcon("photo"))
+  pIn:AddOption("Dark bold",
+    function() local sT = "VV"
+      pT:GetTextArea():SetThemeDefault(true, true)
+      luapad.EqualizeThemeTab(pT)
+      pT:GetStreamInfo().Teme = sT
+      RunConsoleCommand(VAR_THM:GetName(), sT)
+    end):SetImage(luapad.ToIcon("photo"))
   -- Update the theme via a skin
   local pIn, pOp = pMenu:AddSubMenu("Skin")
   if(not IsValid(pIn)) then return end
   pOp:SetIcon(luapad.ToIcon("picture_key"))
   local tS = derma.GetSkinTable()
   for sS, vS in pairs(tS) do
-    pIn:AddOption(tostring(sS), function()
-      pT:GetTextArea():SetThemeSkin(vS, sS)
-      luapad.EqualizeThemeTab(pT)
-      pT:GetStreamInfo().Teme = "#"..sS
-      RunConsoleCommand(VAR_THM:GetName(), "#"..sS)
-    end):SetImage(luapad.ToIcon("palette"))
+    pIn:AddOption(tostring(sS),
+      function() local sT = "#"..sS
+        luapad.SetThemeSkin(pT, vS, sS)
+        luapad.EqualizeThemeTab(pT)
+        pT:GetStreamInfo().Teme = sT
+        RunConsoleCommand(VAR_THM:GetName(), sT)
+      end):SetImage(luapad.ToIcon("palette"))
   end
   -- Update the theme via a file luapad/theme/*.txt
   local tF = file.Find(GLOB_CONFIG.THMDEF[1].."*.txt", "DATA")
@@ -1521,12 +1469,13 @@ function luapad.AttachThemeMenu(pMenu, vTre)
   for iF = 1, #tF do -- Loop and add al files to the menu
     local vF = tF[iF]:gsub("%..*$", "")
     if(luapad.IsHere(vF)) then
-      pIn:AddOption(vF, function()
-        pT:GetTextArea():SetThemeFile(vF)
-        luapad.EqualizeThemeTab(pT)
-        pT:GetStreamInfo().Teme = "@"..vF
-        RunConsoleCommand(VAR_THM:GetName(), "@"..vF)
-      end):SetImage(luapad.ToIcon("palette"))
+      pIn:AddOption(vF,
+        function() local sT = "@"..vF
+          luapad.SetThemeFile(pT, vF)
+          luapad.EqualizeThemeTab(pT)
+          pT:GetStreamInfo().Teme = sT
+          RunConsoleCommand(VAR_THM:GetName(), sT)
+        end):SetImage(luapad.ToIcon("palette"))
     end
   end
 end
@@ -1536,7 +1485,7 @@ end
  * Nothing will change the active tab
  * vTre > The tab index to copy
 ]]
-function luapad.AttachCopyMenu(pMenu, vTre)
+local function luapadAttachCopyMenu(pMenu, vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1572,7 +1521,7 @@ end
  * Nothing will change the active tab
  * vTre > The tab index to manipulate
 ]]
-function luapad.AttachFileMenu(pMenu, vTre)
+local function luapadAttachFileMenu(pMenu, vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1603,7 +1552,7 @@ end
  * Nothing will change the active tab
  * vTre > The tab index to refresh
 ]]
-function luapad.AttachRefreshMenu(pMenu, vTre)
+local function luapadAttachRefreshMenu(pMenu, vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1638,7 +1587,7 @@ end
  * Nothing will change the active tab
  * vTre > The tab index to run
 ]]
-function luapad.AttachExecuteMenu(pMenu, vTre)
+local function luapadAttachExecuteMenu(pMenu, vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1664,7 +1613,7 @@ end
  * Attaches a close menu to context
  * vTre > The tab index to close
 ]]
-function luapad.AttachCloseMenu(pMenu, vTre)
+local function luapadAttachCloseMenu(pMenu, vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -2026,26 +1975,6 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   pText:RequestFocus()
   pText:SizeToContents()
 
-  local sI = sTem:sub(1, 1)
-  if(sI == "#") then
-    local sT = string.sub(sTem, 2, -1)
-    local tS = derma.GetNamedSkin(sT)
-    if(istable(tS)) then
-      pText:SetThemeSkin(tS, sT)
-    else
-      pText:SetThemeDefault()
-      luapad.SetStatus("Theme from skin [%s] is unavailable! (apply default theme)", "STAT_WR", sT)
-    end
-  elseif(sI == "@") then
-    local sT = string.sub(sTem, 2, -1)
-    pText:SetThemeFile(sT)
-  else
-    local tI = GLOB_CONFIG.DELIMS:Explode(sTem)
-    tI[1], tI[2], tI[3] = getString(tI[1], tI[2], tI[3])
-    pText:SetThemeDefault(tobool(tI[2]), tobool(tI[3]))
-    sTem = table.concat(tI, GLOB_CONFIG.DELIMS)
-  end
-
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
   local pTab  = tInfo.Tab; pTab[GLOB_CONFIG.STORKY] = {}
   local tSor  = pTab[GLOB_CONFIG.STORKY]
@@ -2057,6 +1986,26 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   tSor.Teme = sTem -- The theme being used for the tab text area
 
   pTab:SetTooltip(sPth .. sNam)
+
+  local sI = sTem:sub(1, 1)
+  if(sI == "#") then
+    local sT = string.sub(sTem, 2, -1)
+    local tS = derma.GetNamedSkin(sT)
+    if(istable(tS)) then
+      luapad.SetThemeSkin(pTab, tS, sT)
+    else
+      pText:SetThemeDefault()
+      luapad.SetStatus("Theme from skin [%s] is unavailable! (apply default theme)", "STAT_WR", sT)
+    end
+  elseif(sI == "@") then
+    local sT = string.sub(sTem, 2, -1)
+    luapad.SetThemeFile(pTab, sT)
+  else
+    local tI = GLOB_CONFIG.DELIMS:Explode(sTem)
+    tI[1], tI[2], tI[3] = getString(tI[1], tI[2], tI[3])
+    pText:SetThemeDefault(tobool(tI[2]), tobool(tI[3]))
+    sTem = table.concat(tI, GLOB_CONFIG.DELIMS)
+  end
 
   --[[
    * Retrieves the storage info from the tab
@@ -2134,27 +2083,27 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
     -- Copy tab internals
     local pIn, pOp = pMenu:AddSubMenu("Copy")
     pOp:SetIcon(luapad.ToIcon("table_multiple"))
-    luapad.AttachCopyMenu(pIn, self)
+    luapadAttachCopyMenu(pIn, self)
     -- File operations
     local pIn, pOp = pMenu:AddSubMenu("File")
     pOp:SetIcon(luapad.ToIcon("table_lightning"))
-    luapad.AttachFileMenu(pIn, self)
+    luapadAttachFileMenu(pIn, self)
     -- Change tab theme
     local pIn, pOp = pMenu:AddSubMenu("Theme")
     pOp:SetIcon(luapad.ToIcon("folder_palette"))
-    luapad.AttachThemeMenu(pIn, self)
+    luapadAttachThemeMenu(pIn, self)
     -- Refresh a tab
     local pIn, pOp = pMenu:AddSubMenu("Refresh")
     pOp:SetIcon(luapad.ToIcon("table_refresh"))
-    luapad.AttachRefreshMenu(pIn, self)
+    luapadAttachRefreshMenu(pIn, self)
     -- Execute a script
     local pIn, pOp = pMenu:AddSubMenu("Execute")
     pOp:SetIcon(luapad.ToIcon("table_go"))
-    luapad.AttachExecuteMenu(pIn, self)
+    luapadAttachExecuteMenu(pIn, self)
     -- Close tabs
     local pIn, pOp = pMenu:AddSubMenu("Close")
     pOp:SetIcon(luapad.ToIcon("table_delete"))
-    luapad.AttachCloseMenu(pIn, self)
+    luapadAttachCloseMenu(pIn, self)
     -- Open menu
     pMenu:Open()
   end
@@ -2169,7 +2118,7 @@ function luapad.OpenExecuteMenu()
   local pMenu = DermaMenu()
   if(not IsValid(pMenu)) then return end
   pMenu:SetPos(gui.MousePos())
-  luapad.AttachExecuteMenu(pMenu)
+  luapadAttachExecuteMenu(pMenu)
   pMenu:Open()
 end
 
@@ -2177,7 +2126,7 @@ function luapad.OpenRefreshMenu()
   local pMenu = DermaMenu()
   if(not IsValid(pMenu)) then return end
   pMenu:SetPos(gui.MousePos())
-  luapad.AttachRefreshMenu(pMenu)
+  luapadAttachRefreshMenu(pMenu)
   pMenu:Open()
 end
 
@@ -2185,8 +2134,237 @@ function luapad.OpenCloseMenu()
   local pMenu = DermaMenu()
   if(not IsValid(pMenu)) then return end
   pMenu:SetPos(gui.MousePos())
-  luapad.AttachCloseMenu(pMenu)
+  luapadAttachCloseMenu(pMenu)
   pMenu:Open()
+end
+
+function luapad.SetFontEntry(vTre)
+  if(SERVER) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  local pT = pS:GetTabSwitch(vTre)
+  if(not IsValid(pT)) then return end
+  pT:GetTextArea():SetFontName()
+end
+
+function luapad.OpenFontMenu(vTre)
+  local pMenu = DermaMenu()
+  if(not IsValid(pMenu)) then return end
+  pMenu:SetPos(gui.MousePos())
+  luapadAttachFontMenu(pMenu, vTre)
+  pMenu:Open()
+end
+
+--[[
+ * Apply a theme on a tab via the console variable
+]]
+function luapad.SetThemeEntry(vTre)
+  if(SERVER) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  local pT = pS:GetTabSwitch(vTre)
+  if(not IsValid(pT)) then return end
+  local sV = VAR_THM:GetString()
+  local sI = sV:sub(1,1)
+  if(sI == "#") then
+    local sT = string.sub(sV, 2, -1)
+    local tD = derma.GetNamedSkin(sT)
+    if(not istable(tD)) then return end
+    luapad.SetThemeSkin(sT, tD, sT)
+    pT:GetStreamInfo().Teme = sV
+  elseif(sI == "@") then
+    local sT = string.sub(sV, 2, -1)
+    luapad.SetThemeFile(pT, sT)
+    pT:GetStreamInfo().Teme = sV
+  else
+    local bD = (sV:sub(1, 1) == "V")
+    local bB = (sV:sub(2, 2) == "V")
+    pT:GetTextArea():SetThemeDefault(bD, bB)
+    pT:GetStreamInfo().Teme = sV
+  end
+  luapad.EqualizeThemeTab(pT)
+end
+
+--[[
+ * Opens the theme selection context menu
+]]
+function luapad.OpenThemeMenu(vTre)
+  local pMenu = DermaMenu()
+  if(not IsValid(pMenu)) then return end
+  pMenu:SetPos(gui.MousePos())
+  luapadAttachThemeMenu(pMenu, vTre)
+  pMenu:Open()
+end
+
+--[[
+ * Saves the current tab theme to a file
+]]
+function luapad.SaveThemeFile(vTre, sN)
+  if(SERVER) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  local pT = pS:GetTabSwitch(vTre)
+  if(not IsValid(pT)) then return end
+  local tD = GLOB_CONFIG.THMDEF
+  local tV = GLOB_CONFIG.VALDFS
+  local sN, bN = tostring(sN or tD[2]), true
+  if(not luapad.IsHere(sN)) then
+    luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
+    return
+  end
+  if(not luapad.IsPath(sN)) then
+    luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+    return
+  end
+  if(sN:match(tV[1])) then
+    luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
+    return
+  end
+  local oB, sB, sF = "data/"..tD[1], tD[1], sN..".txt"
+  if (table.HasValue(RESTRICTED_FILES, oB..sF)) then
+    luapad.SetStatus("File [%s%s] save failed! (file is restricted)", "STAT_ER", oB, sF)
+    return
+  end
+  -- If the theme directory is missing, create it
+  if(not file.IsDir(sB, "DATA")) then file.CreateDir(tD[1]) end
+  -- If the file already exists prompt to replace while validating user input
+  if(file.Exists(sB..sF, "DATA")) then bN = false -- Name is not yet validate
+    luapad.ShowConfirmDialog(
+      "The theme already exists. Keep the same name to replace it or choose a different name.",
+      sN, -- Fill the textbox with the current name
+      function(sName)
+        local sN = string.StripExtension(sName)
+        if(not luapad.IsHere(sN)) then
+          luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER")
+          return
+        end
+        if(not luapad.IsPath(sN)) then
+          luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+          return
+        end
+        if(sN:match(tV[1])) then
+          luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
+          return
+        end
+        local sF = sN..".txt" -- New file name in the local scope
+        if (table.HasValue(RESTRICTED_FILES, oB..sF)) then
+          luapad.SetStatus("File [%s%s] save failed! (file is restricted)", "STAT_ER", oB, sF)
+          return
+        end
+        bN = true -- The name has been validated
+      end, nil, "Save", "Cancel"
+    )
+  end
+  if(not bN) then return end
+  -- Open the file so the theme can be extracted
+  local fO = file.Open(sB..sF, "wb", "DATA")
+  if(not fO) then -- The file open attempt has failed
+    luapad.SetStatus("File [%s%s] open failed (check file status)!", "STAT_WR", oB, sF)
+    return -- Exit the routine end report the status
+  end
+  local pA = pT:GetTextArea()
+  if(not IsValid(pA)) then
+    fO:Flush(); fO:Close()
+    return -- Close the file and exit
+  end
+  local tK, tO = pA:GetThemeKeys(), {}
+  local tH = pA:GetTable().Highlight
+  local sD = GLOB_CONFIG.DELIMS
+  for iK = 1, #tK do -- Highlight keys
+    local sK = tK[iK] -- Process a key
+    if(tH[sK]) then tO[1] = sK -- Exists
+      local vC, bB = tH[sK][1], tH[sK][2]
+      tO[2], tO[3], tO[4], tO[5] = vC:Unpack()
+      tO[6] = (bB and "V" or "X") -- Bold
+      fO:Write(table.concat(tO, sD)); fO:Write("\n")
+    end
+  end; fO:Flush(); fO:Close()
+end
+
+--[[
+ * Apply a theme on a tab via a theme file
+]]
+function luapad.SetThemeFile(vTre, sN)
+  if(SERVER) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  local pT = pS:GetTabSwitch(vTre)
+  if(not IsValid(pT)) then return end
+  local tD = GLOB_CONFIG.THMDEF
+  local tV = GLOB_CONFIG.VALDFS
+  local sN = tostring(sN or tD[2])
+  if(not luapad.IsHere(sN)) then
+    luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
+    return
+  end
+  if(sN:match(tV[1])) then
+    luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
+    return
+  end
+  local oB, sB, sF = "data/"..tD[1], tD[1], sN..".txt"
+  if(not file.IsDir(sB, "DATA")) then file.CreateDir(tD[1]) end
+  -- Open the file so the theme can be extracted
+  local sF = file.Read(sB..sF, "rb", "DATA")
+  if(not sF) then
+    luapad.SetStatus("File [%s%s] highlight missing! (apply default theme)", "STAT_WR", oB, sF)
+    return -- Exit the routine end report the status
+  end
+  local pA = pT:GetTextArea()
+  if(not IsValid(pA)) then return end
+  local tW = GLOB_CONFIG.PATNLN:Explode(sF, true)
+  local tH = pA:GetTable().Highlight
+  local sD = GLOB_CONFIG.DELIMS
+  for iD = 1, #tW do -- Every line contains token and color
+    local tT = sD:Explode(tW[iD]) -- Empty lines
+    local sT = tT[1]:Trim() -- Color token to search for
+    if(tH[sT]) then
+      local nR = luapad.ToColor(tT[2]:Trim(), 0)
+      local nG = luapad.ToColor(tT[3]:Trim(), 0)
+      local nB = luapad.ToColor(tT[4]:Trim(), 0)
+      local nA = luapad.ToColor(tT[5]:Trim(), 255)
+      tH[sT][1] = Color(nR, nG, nB, nA)
+      tH[sT][2] = (tT[6]:Trim():sub(1, 1) == "V")
+    end
+  end; pA:RefreshView()
+end
+
+--[[
+ * Apply a theme on a tab via a derma skin
+]]
+function luapad.SetThemeSkin(vTre, tS, sS)
+  if(SERVER) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  local pT = pS:GetTabSwitch(vTre)
+  if(not IsValid(pT)) then return end
+  local pA = pT:GetTextArea()
+  if(not IsValid(pA)) then return end
+  local tS = (tS or derma.GetDefaultSkin())
+  if(not istable(tS)) then return end
+  local tH = pA:GetTable().Highlight
+  local sD = GLOB_CONFIG.DELIMS
+  local tK = pA:GetThemeKeys()
+  local tM = COLOR_HIGHLIGHT["#"]
+  for iK = 1, #tK do
+    local sK = tK[iK]
+    local vM = tM[sK]
+    if(vM and isstring(vM[1])) then
+      local sP, bB = vM[1], tobool(tH[sK][2])
+      local bO = (vM[2] ~= nil) and tobool(vM[2]) or bB
+      local vP, tP = tS, sD:Explode(sP)
+      for iP = 1, #tP do vP = vP[tP[iP]]
+        if(not vP) then
+          luapad.SetStatus("Theme skin [%s] path [%s] is missing!", "STAT_WR", sS, sP)
+          return -- Somewhere along the way a color cannot be obtained
+        end
+      end
+      if(not IsColor(vP)) then
+        luapad.SetStatus("Theme skin [%s] path [%s] is invalid!", "STAT_WR", sS, sP)
+        return -- Somewhere along the way a color cannot be obtained
+      end
+      tH[sK][1], tH[sK][2] = vP, bO
+    end -- Update the string expression
+  end; pA:RefreshView()
 end
 
 function luapad.IsOpen(name, path)
@@ -2488,7 +2666,7 @@ function luapad.SaveScript(vTre)
       luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
       return
     end
-    if(luapad.IsPath(oB..sN)) then
+    if(not luapad.IsPath(oB..sN)) then
       luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
       return
     end
@@ -2556,7 +2734,7 @@ function luapad.SaveAsScript(vTre)
           luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
           return
         end
-        if(luapad.IsPath(oB..sN)) then
+        if(not luapad.IsPath(oB..sN)) then
           luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
           return
         end

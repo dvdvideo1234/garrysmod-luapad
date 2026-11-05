@@ -118,22 +118,25 @@ function PANEL:RefreshView()
   self:InvalidateLayout() -- Refresh panel changes
 end
 
-function PANEL:SetFontInfo(iS)
+function PANEL:SetFontInfo(iD)
   -- Calculate the proper font index
-  local iS = math.floor(math.Clamp((tonumber(iD) or 0), 0, #FONT_SIZE))
-  local iD = (FONT_SIZE.Size[iS] and iS or FONT_SIZE.ID)
-  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, iD, "")
-  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, iD, "Bold")
+  local tS = FONT_SIZE.Size -- The array of font sizes
+  local iD = math.floor(math.Clamp((tonumber(iD) or 0), 0, #tS))
+  local iF = (tS[iD] and iD or FONT_SIZE.ID) -- Font index
+  local iS = tS[iF] -- The actual font size in pixels
+  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, iS, "")
+  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, iS, "Bold")
   -- Pick the actual bold or regular font
   surface.SetFont(sR) -- Get proper value from text size
   -- Update the current text size in pixels
   self.FontWidth, self.FontHeight = surface.GetTextSize(" ")
-  self.FontName = {R = sR, B = sB}
+  self.FontName = {ID = iF, R = sR, B = sB}
   self:RefreshView()
 end
 
 function PANEL:GetFontInfo()
-  return FONT_SIZE.ID, table.Copy(FONT_SIZE.Size)
+  local tN = self:GetTable().FontName
+  return tN.ID, table.Copy(FONT_SIZE.Size)
 end
 
 function PANEL:GetFontName(bB)
@@ -209,13 +212,11 @@ function PANEL:SetThemeArea(pD, bR)
   local tD = pD:GetTable().Highlight
   if(not istable(tD)) then return nil end
   for sT, vT in pairs(tS) do
-    local vS, vD = vT, tD[sT]
-    if(vS and vD) then
-      if(bR) then
-        vD[1] = vS[1]
-      else
-        vS[1] = vD[1]
-      end
+    local vD = tD[sT]
+    if(bR) then
+      vD[1] = vT[1]
+    else
+      vT[1] = vD[1]
     end
   end
   self:RefreshView()
@@ -232,101 +233,6 @@ function PANEL:SetThemeDefault(bD, bB)
   end -- Update the string expression
   tH["code.string2"] = tH["code.string"]
   self:RefreshView()
-end
-
-function PANEL:SetThemeSkin(tS, sS, ...)
-  self:SetThemeDefault(...) -- Ignore missing gaps
-  local tS = (tS or derma.GetDefaultSkin())
-  if(not istable(tS)) then return end
-  local tH = self:GetTable().Highlight
-  local sD = luapad.GetConfig("DELIMS")
-  local tK = self:GetThemeKeys()
-  local tM = COLOR_HIGHLIGHT["#"]
-  for iK = 1, #tK do
-    local sK = tK[iK]
-    local vM = tM[sK]
-    if(vM and isstring(vM[1])) then
-      local sP, bB = vM[1], tobool(tH[sK][2])
-      local bO = (vM[2] ~= nil) and tobool(vM[2]) or bB
-      local vP, tP = tS, sD:Explode(sP)
-      for iP = 1, #tP do vP = vP[tP[iP]]
-        if(not vP) then
-          luapad.SetStatus("Theme skin [%s] path [%s] is missing!", "STAT_WR", sS, sP)
-          return -- Somewhere along the way a color cannot be obtained
-        end
-      end
-      if(not IsColor(vP)) then
-        luapad.SetStatus("Theme skin [%s] path [%s] is invalid!", "STAT_WR", sS, sP)
-        return -- Somewhere along the way a color cannot be obtained
-      end
-      tH[sK][1], tH[sK][2] = vP, bO
-    end
-  end -- Update the string expression
-  self:RefreshView()
-end
-
-function PANEL:SetThemeFile(sN, ...)
-  if(not isstring(sN)) then return end
-  local bN = luapad.IsHere(sN)
-  local tC = luapad.GetConfig("THMDEF")
-  local sE = luapad.GetConfig("PATNLN")
-  local tV = luapad.GetConfig("VALDFS")
-  local sN = (bN and sN or tC[2])
-  self:SetThemeDefault(...) -- Ignore missing gaps
-  if(sN:find(tV[1])) then local sP, sN = ("data/"..tC[1]), (sN..".txt") -- The file open failed
-    luapad.SetStatus("File [%s%s] highlight invalid! (apply default theme)", "STAT_WR", sP, sN)
-    return
-  end
-  if(sN == tC[2]) then return end
-  if(not file.IsDir(tC[1], "DATA")) then file.CreateDir(tC[1]) end
-  -- Open the file so the theme can be extracted
-  local sF = file.Read(tC[1]..sN..".txt", "rb", "DATA")
-  if(not sF) then local sP, sN = ("data/"..tC[1]), (sN..".txt") -- The file open failed
-    luapad.SetStatus("File [%s%s] highlight missing! (apply default theme)", "STAT_WR", sP, sN)
-    return -- Exit the routine end report the status
-  end
-  local tW = sE:Explode(sF, true)
-  local tH = self:GetTable().Highlight
-  local sD = luapad.GetConfig("DELIMS")
-  for iD = 1, #tW do -- Every line contains token and color
-    local tT = sD:Explode(tW[iD]) -- Empty lines
-    local sT = tT[1]:Trim() -- Color token to search for
-    if(tH[sT]) then
-      local nR = luapad.ToColor(tT[2]:Trim(), 0)
-      local nG = luapad.ToColor(tT[3]:Trim(), 0)
-      local nB = luapad.ToColor(tT[4]:Trim(), 0)
-      local nA = luapad.ToColor(tT[5]:Trim(), 255)
-      tH[sT][1] = Color(nR, nG, nB, nA)
-      tH[sT][2] = luapad.ToBool(tT[6], false)
-    end
-  end
-  self:RefreshView()
-end
-
-function PANEL:SaveThemeFile(sN)
-  if(not isstring(sN)) then return end
-  local bN = luapad.IsHere(sN)
-  local tC = luapad.GetConfig("THMDEF")
-  local sN = (bN and sN or tC[2]):lower()..".txt"
-  if(not file.IsDir(tC[1], "DATA")) then file.CreateDir(tC[1]) end
-  -- Open the file so the theme can be extracted
-  local fO = file.Open(tC[1]..sN, "wb", "DATA")
-  if(not fO) then -- The file open attempt has failed
-    luapad.SetConsole("Failed opening highlight: %s%s", "STAT_WR", tC[1], sN)
-    return -- Exit the routine end report the status
-  end
-  local tK, tO = self:GetThemeKeys(), {}
-  local tH = self:GetTable().Highlight
-  local sD = luapad.GetConfig("DELIMS")
-  for iK = 1, #tK do -- Highlight keys
-    local sK = tK[iK] -- Process a key
-    if(tH[sK]) then tO[1] = sK -- Exists
-      local vC, bB = tH[sK][1], tH[sK][2]
-      tO[2], tO[3], tO[4], tO[5] = vC:Unpack()
-      tO[6] = tostring(bB or "false") -- Bold
-      fO:Write(table.concat(tO, sD)); fO:Write("\n")
-    end
-  end; fO:Flush(); fO:Close()
 end
 
 function PANEL:RequestFocus()
@@ -603,15 +509,15 @@ function PANEL:SyntaxColorLine(row)
         token = "code.construct"
 
       elseif ((gstr and (g_type[tgstr] or g_synt[gstr])) or
-              (sstr and lastlib.T and lastlib.T[sstr])) then
+              (sstr and lastlib.Src and lastlib.Src[sstr])) then
       -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
-          lastlib.T = gstr
+          lastlib.Src = gstr
 
-          if(lastlib.N) then
-            lastlib.N = lastlib.N.."."..sstr
+          if(lastlib.Nam) then
+            lastlib.Nam = lastlib.Nam.."."..sstr
           else
-            lastlib.N = sstr
+            lastlib.Nam = sstr
           end
         end
 
@@ -624,8 +530,8 @@ function PANEL:SyntaxColorLine(row)
         end
 
       else
-        lastlib.T = nil
-        lastlib.N = nil
+        lastlib.Src = nil
+        lastlib.Nam = nil
         token = "code.none"
       end
 
