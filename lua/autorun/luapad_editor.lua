@@ -112,10 +112,17 @@ end
 
 local PANEL = {}
 
+function PANEL:GetRownum()
+  return #self.Rows
+end
+
+function PANEL:GetFontSize()
+  return self.FontWidth, self.FontHeight
+end
+
 function PANEL:RefreshView()
   local tR = self:GetTable().PaintRows -- Clear row cache
   if(istable(tR)) then table.Empty(tR) else self.PaintRows = {} end
-  self:InvalidateLayout() -- Refresh panel changes
 end
 
 function PANEL:SetFontInfo(iD)
@@ -132,6 +139,7 @@ function PANEL:SetFontInfo(iD)
   self.FontWidth, self.FontHeight = surface.GetTextSize(" ")
   self.FontName = {ID = iF, R = sR, B = sB}
   self:RefreshView()
+  self:InvalidateLayout()
 end
 
 function PANEL:GetFontInfo()
@@ -155,6 +163,7 @@ function PANEL:Init()
   self.Size = {1, 1}
   self.Undo = {}
   self.Redo = {}
+  self.Token = {} -- Multi-line comment token info
   self.Line = "" -- Reference to current line
   self.Str = "" -- Already processed character set
   self.Pos = 0 -- Current processed line position
@@ -225,6 +234,7 @@ function PANEL:SetThemeArea(pD, bR)
     end
   end
   self:RefreshView()
+  self:InvalidateLayout()
 end
 
 function PANEL:SetThemeDefault(bD, bB)
@@ -238,6 +248,7 @@ function PANEL:SetThemeDefault(bD, bB)
   end -- Update the string expression
   tH["code.string2"] = tH["code.string"]
   self:RefreshView()
+  self:InvalidateLayout()
 end
 
 function PANEL:RequestFocus()
@@ -255,7 +266,7 @@ function PANEL:CursorToCaret()
   x = ((x < 0) and 0 or x)
   y = ((y < 0) and 0 or y)
 
-  local last = #self.Rows
+  local last = self:GetRownum()
   local line = math.floor(y / self.FontHeight)
   local char = math.floor(x / self.FontWidth + 0.5)
 
@@ -387,7 +398,7 @@ end
 
 function PANEL:SetText(text)
   self.Rows = string.Explode("\n", text)
-  local last = #self.Rows
+  local last = self:GetRownum()
 
   if (self.Rows[last] ~= "") then
     last = last + 1
@@ -399,8 +410,8 @@ function PANEL:SetText(text)
   self.Scroll = {1, 1}
   self.Undo = {}
   self.Redo = {}
-  self.PaintRows = {}
 
+  self:RefreshView()
   self.ScrollBar:SetUp(self.Size[1], last - 1)
 end
 
@@ -409,18 +420,21 @@ function PANEL:GetText()
 end
 
 function PANEL:MultiLineBlock(vM, vT)
-  if(vM ~= nil) then self.multy = vM end
-  if(vT ~= nil) then self.token = vT end
-  return self.multy, self.token
+  local tT = self.Token
+  if(vM ~= nil) then tT.M = vM end
+  if(vT ~= nil) then tT.T = vT end
+  return tT.M, tT.T
 end
 
 function PANEL:InitColorLine(row)
+  if(not row) then return end
   self.Line = self.Rows[row]
+
+  self.Pos = 0
+  self.Str = ""
+  self.Char = ""
   self.Buff[1] = ""
   self.Buff[2] = ""
-  self.Pos = 0
-  self.Char = ""
-  self.Str = ""
 
   if(row == 1) then
     self:MultiLineBlock(false, false)
@@ -446,8 +460,10 @@ function PANEL:NextChar()
 end
 
 function PANEL:SyntaxColorLine(row)
-  local cols = {}
-  local lastlib = {}
+  local tRow = self.PaintRows[row]
+  if(tRow) then return tRow end
+
+  local tLib = {}; tRow = {}
   local g_synt = TOKEN_CLASSIFY.G
   local g_type = TOKEN_CLASSIFY.T
   local g_mstr = TOKEN_CLASSIFY.S
@@ -507,7 +523,7 @@ function PANEL:SyntaxColorLine(row)
       end
 
       local sstr = string.Trim(self.Str)
-      local gstr = luapad.CheckGlobal(sstr, lastlib)
+      local gstr = luapad.CheckGlobal(sstr, tLib)
       local tgstr = type(gstr)
 
       if (KEYWORD_TOKENS[sstr]) then
@@ -515,15 +531,15 @@ function PANEL:SyntaxColorLine(row)
         token = "code.construct"
 
       elseif ((gstr and (g_type[tgstr] or g_synt[gstr])) or
-              (sstr and lastlib.Src and lastlib.Src[sstr])) then
+              (sstr and tLib.Src and tLib.Src[sstr])) then
       -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
-          lastlib.Src = gstr
+          tLib.Src = gstr
 
-          if(lastlib.Nam) then
-            lastlib.Nam = lastlib.Nam.."."..sstr
+          if(tLib.Nam) then
+            tLib.Nam = tLib.Nam.."."..sstr
           else
-            lastlib.Nam = sstr
+            tLib.Nam = sstr
           end
         end
 
@@ -536,8 +552,8 @@ function PANEL:SyntaxColorLine(row)
         end
 
       else
-        lastlib.Src = nil
-        lastlib.Nam = nil
+        tLib.Src = nil
+        tLib.Nam = nil
         token = "code.none"
       end
 
@@ -572,10 +588,10 @@ function PANEL:SyntaxColorLine(row)
           char, last = self:NextChar()
         end
         token = "code.comment"
-        self:MultiLineBlock(nil, token)
+        self:MultiLineBlock(false, token)
       else
         token = "code.none"
-        self:MultiLineBlock(nil, false)
+        self:MultiLineBlock(false, false)
       end
     elseif (char == g_mmul[1]) then
       local multy, open = 0, char
@@ -602,33 +618,30 @@ function PANEL:SyntaxColorLine(row)
     end
 
     local tC = self.Highlight[token]
-    local nH = #cols
+    local nH = #tRow
 
-    if (nH > 1 and tC == cols[nH][2]) then
-      cols[nH][1] = cols[nH][1] .. self.Str
+    if (nH > 1 and tC == tRow[nH][2]) then
+      tRow[nH][1] = tRow[nH][1] .. self.Str
     else
-      cols[nH + 1] = {self.Str, tC}
+      tRow[nH + 1] = {self.Str, tC}
     end
   end
-
-  return cols
+  -- Cache the highlight vie
+  self.PaintRows[row] = tRow
+  -- Return the calculated row
+  return tRow
 end
 
-function PANEL:PaintLine(row)
-  if (row > #self.Rows) then
-    return
-  end
+function PANEL:PaintLine(row, guiCB, guiSE, guiRN, guiCL)
+  if (row > self:GetRownum()) then return end
 
-  if (not self.PaintRows[row]) then
-    self.PaintRows[row] = self:SyntaxColorLine(row)
-  end
-
+  local tRow = self:SyntaxColorLine(row)
   local width, height = self.FontWidth, self.FontHeight
   local scstr, scend  = self.Scroll[1], self.Scroll[2]
   local castr, caend  = self.Caret[1] , self.Caret[2]
 
   if (row == castr and self.TextEntry:HasFocus()) then
-    surface.SetDrawColor(self:GetTheme("gui.currentline"):Unpack())
+    surface.SetDrawColor(guiCL:Unpack())
     surface.DrawRect(width * 3 + 5, (row - scstr) * height, self:GetWide() - (width * 3 + 5), height)
   end
 
@@ -637,7 +650,7 @@ function PANEL:PaintLine(row)
     local line, char = start[1], start[2]
     local endline, endchar = stop[1], stop[2]
 
-    surface.SetDrawColor(self:GetTheme("gui.selection"):Unpack())
+    surface.SetDrawColor(guiSE:Unpack())
     local length = string.len(self.Rows[row]) - scend + 1
 
     char = char - scend
@@ -661,10 +674,10 @@ function PANEL:PaintLine(row)
     end
   end
 
-  draw.SimpleText(tostring(row), self:GetFontName(), width * 3, (row - scstr) * height, self:GetTheme("gui.rownumbers"), TEXT_ALIGN_RIGHT)
+  draw.SimpleText(tostring(row), self:GetFontName(), width * 3, (row - scstr) * height, guiRN, TEXT_ALIGN_RIGHT)
 
   local offset = -scend + 1
-  for i, cell in ipairs(self.PaintRows[row]) do
+  for i, cell in ipairs(tRow) do
     local ccon, csr, cen = cell[1], cell[2][1], cell[2][2]
 
     if (offset < 0) then
@@ -683,7 +696,7 @@ function PANEL:PaintLine(row)
 
   if (row == castr and self.TextEntry:HasFocus()) then
     if ((RealTime() - self.Blink) % 0.8 < 0.4 and caend >= scend) then
-        surface.SetDrawColor(self:GetTheme("gui.caretbase"):Unpack())
+        surface.SetDrawColor(guiCB:Unpack())
         surface.DrawRect((caend - scend) * width + width * 3 + 6,
                          (castr - scstr) * height, 1, height)
     end
@@ -691,13 +704,15 @@ function PANEL:PaintLine(row)
 end
 
 function PANEL:PerformLayout()
-  self.ScrollBar:SetSize(16, self:GetTall())
-  self.ScrollBar:SetPos(self:GetWide() - 16, 0)
+  local nW, nH = self:GetFontSize()
+  local mW, mT = self:GetWide(), self:GetTall()
 
-  self.Size[1] = math.floor(self:GetTall() / self.FontHeight) - 1
-  self.Size[2] = math.floor((self:GetWide() - (self.FontWidth * 3 + 6) - 16) / self.FontWidth) - 1
+  self.ScrollBar:SetSize(16, mT)
+  self.ScrollBar:SetPos(mW - 16, 0)
+  self.Size[1] = math.floor(mT / nH) - 1
+  self.Size[2] = math.floor((mW - (nW * 3 + 6) - 16) / nW) - 1
 
-  self.ScrollBar:SetUp(self.Size[1], #self.Rows - 1)
+  self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
 end
 
 function PANEL:Paint(w, h)
@@ -705,24 +720,29 @@ function PANEL:Paint(w, h)
     self:OnMouseReleased(MOUSE_LEFT)
   end
 
-  if (not self.PaintRows) then
-    self.PaintRows = {}
-  end
+  self:RefreshView()
 
   if (self.MouseDown) then
     self.Caret = self:CursorToCaret()
   end
 
+  local mW, mT = self:GetWide(), self:GetTall()
+
   surface.SetDrawColor(self:GetTheme("gui.rowlinebar"):Unpack())
-  surface.DrawRect(0, 0, self.FontWidth * 3 + 4, self:GetTall())
+  surface.DrawRect(0, 0, self.FontWidth * 3 + 4, mT)
 
   surface.SetDrawColor(self:GetTheme("gui.background"):Unpack())
-  surface.DrawRect(self.FontWidth * 3 + 5, 0, self:GetWide() - (self.FontWidth * 3 + 5), self:GetTall())
+  surface.DrawRect(self.FontWidth * 3 + 5, 0, mW - (self.FontWidth * 3 + 5), mT)
 
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
 
-  for i = self.Scroll[1], self.Scroll[1] + self.Size[1] + 1 do
-    self:PaintLine(i)
+  local guiCB = self:GetTheme("gui.caretbase")
+  local guiSE = self:GetTheme("gui.selection")
+  local guiRN = self:GetTheme("gui.rownumbers")
+  local guiCL = self:GetTheme("gui.currentline")
+
+  for i = self.Scroll[1], (self.Scroll[1] + self.Size[1] + 1) do
+    self:PaintLine(i, guiCB, guiSE, guiRN, guiCL)
   end
 
   return true
@@ -747,7 +767,7 @@ function PANEL:MovePosition(caret, offset)
       if (offset < length) then
         caret[2] = caret[2] + offset
         break
-      elseif (caret[1] == #self.Rows) then
+      elseif (caret[1] == self:GetRownum()) then
         caret[2] = caret[2] + length - 1
         break
       else
@@ -818,41 +838,41 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
 
   if (start[1] ~= stop[1] or start[2] ~= stop[2]) then
     -- clear selection
-    self.Rows[start[1]] = string.sub(self.Rows[start[1]], 1, start[2] - 1) .. string.sub(self.Rows[stop[1]], stop[2])
+    self.Rows[start[1]] = string.sub(self.Rows[start[1]], 1, start[2] - 1)..
+                          string.sub(self.Rows[stop[1]], stop[2])
     self.PaintRows[start[1]] = false
 
     for i = start[1] + 1, stop[1] do
       table.remove(self.Rows, start[1] + 1)
       table.remove(self.PaintRows, start[1] + 1)
-      self.PaintRows = {} -- TODO: fix for cache errors
+      self:RefreshView()
     end
 
     -- Add empty row at end of file
     if (self.Rows[#self.Rows] ~= "") then
-      self.Rows[#self.Rows + 1] = ""
-      self.PaintRows[#self.Rows + 1] = false
+      table.insert(self.Rows, "")
+      table.insert(self.PaintRows, false)
     end
   end
 
   if (not text or text == "") then
-    self.ScrollBar:SetUp(self.Size[1], #self.Rows - 1)
+    self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
 
-    self.PaintRows = {}
-
+    self:RefreshView()
     self:OnTextChanged()
 
     if (isredo) then
       local tU = {self:CopyPosition(start), self:CopyPosition(start)}
-      self.Undo[#self.Undo + 1] = {tU, buffer, after, before}
+      table.insert(self.Undo, {tU, buffer, after, before})
       return before
     elseif (isundo) then
       local tU = {self:CopyPosition(start), self:CopyPosition(start)}
-      self.Redo[#self.Redo + 1] = {tU, buffer, after, before}
+      table.insert(self.Redo, {tU, buffer, after, before})
       return before
     else
       local tU = {self:CopyPosition(start), self:CopyPosition(start)}
-      self.Redo = {}
-      self.Undo[#self.Undo + 1] = {tU, buffer, self:CopyPosition(selection[1]), self:CopyPosition(start)}
+      self.Redo = self.Redo or {}; table.Empty(self.Redo)
+      table.insert(self.Undo, {tU, buffer, self:CopyPosition(selection[1]), self:CopyPosition(start)})
       return start
     end
   end
@@ -867,7 +887,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   for i = 2, #rows do
     table.insert(self.Rows, start[1] + i - 1, rows[i])
     table.insert(self.PaintRows, start[1] + i - 1, false)
-    self.PaintRows = {} -- TODO: fix for cache errors
+    self:RefreshView() -- TODO: fix for cache errors
   end
 
   local stop = {start[1] + #rows - 1, string.len(self.Rows[start[1] + #rows - 1]) + 1}
@@ -877,29 +897,28 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
 
   -- add empty row at end of file (TODO!)
   if (self.Rows[#self.Rows] ~= "") then
-    self.Rows[#self.Rows + 1] = ""
-    self.PaintRows[#self.Rows + 1] = false
-    self.PaintRows = {} -- TODO: fix for cache errors
+    table.insert(self.Rows, "")
+    table.insert(self.PaintRows, false)
+    self:RefreshView() -- TODO: fix for cache errors
   end
 
-  self.ScrollBar:SetUp(self.Size[1], #self.Rows - 1)
+  self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
 
-  self.PaintRows = {}
-
+  self:RefreshView()
   self:OnTextChanged()
 
   if (isredo) then
     local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
-    self.Undo[#self.Undo + 1] = {tU, buffer, after, before}
+    table.insert(self.Undo, {tU, buffer, after, before})
     return before
   elseif (isundo) then
     local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
-    self.Redo[#self.Redo + 1] = {tU, buffer, after, before}
+    table.insert(self.Redo, {tU, buffer, after, before})
     return before
   else
     local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
-    self.Redo = {}
-    self.Undo[#self.Undo + 1] = {tU, buffer, self:CopyPosition(selection[1]), self:CopyPosition(stop)}
+    self.Redo = self.Redo or {}; table.Empty(self.Redo)
+    table.insert(self.Undo, {tU, buffer, self:CopyPosition(selection[1]), self:CopyPosition(stop)})
     return stop
   end
 end
@@ -962,8 +981,8 @@ function PANEL:OnMouseWheeled(delta)
   if (self.Scroll[1] < 1) then
     self.Scroll[1] = 1
   end
-  if (self.Scroll[1] > #self.Rows) then
-    self.Scroll[1] = #self.Rows
+  if (self.Scroll[1] > self:GetRownum()) then
+    self.Scroll[1] = self:GetRownum()
   end
   self.ScrollBar:SetScroll(self.Scroll[1] - 1)
 end
@@ -1033,7 +1052,7 @@ function PANEL:DoRedo()
 end
 
 function PANEL:SelectAll()
-  local nR = #self.Rows
+  local nR = self:GetRownum()
   self.Caret = {nR, string.len(self.Rows[nR]) + 1}
   self.Start = {1, 1}
   self:ScrollCaret()
@@ -1123,7 +1142,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
         self.Start = self:CopyPosition(self.Caret)
       end
     elseif (code == KEY_END) then
-      self.Caret[1] = #self.Rows
+      self.Caret[1] = self:GetRownum()
       self.Caret[2] = 1
 
       self:ScrollCaret()
@@ -1162,7 +1181,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
         self.Start = self:CopyPosition(self.Caret)
       end
     elseif (code == KEY_DOWN) then
-      if (self.Caret[1] < #self.Rows) then
+      if (self.Caret[1] < self:GetRownum()) then
         self.Caret[1] = self.Caret[1] + 1
 
         local length = string.len(self.Rows[self.Caret[1]])
@@ -1223,10 +1242,10 @@ function PANEL:CustomOnKeyCodeTyped(code)
     elseif (code == KEY_PAGEDOWN) then
       self.Caret[1] = self.Caret[1] + math.ceil(self.Size[1] / 2)
       self.Scroll[1] = self.Scroll[1] + math.ceil(self.Size[1] / 2)
-      if (self.Caret[1] > #self.Rows) then
-        self.Caret[1] = #self.Rows
+      if (self.Caret[1] > self:GetRownum()) then
+        self.Caret[1] = self:GetRownum()
       end
-      if (self.Caret[1] == #self.Rows) then
+      if (self.Caret[1] == self:GetRownum()) then
         self.Caret[2] = 1
       end
 

@@ -2310,7 +2310,9 @@ function luapad.SetThemeFile(vTre, sN)
       tH[sT][1] = Color(nR, nG, nB, nA)
       tH[sT][2] = (tT[6]:Trim():sub(1, 1) == "V")
     end
-  end; pA:RefreshView()
+  end
+  pA:RefreshView()
+  self:InvalidateLayout()
 end
 
 --[[
@@ -2349,7 +2351,9 @@ function luapad.SetThemeSkin(vTre, tS, sS)
       end
       tH[sK][1], tH[sK][2] = vP, bO
     end -- Update the string expression
-  end; pA:RefreshView()
+  end
+  pA:RefreshView()
+  self:InvalidateLayout()
 end
 
 function luapad.IsOpen(name, path)
