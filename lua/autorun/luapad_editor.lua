@@ -155,6 +155,11 @@ function PANEL:Init()
   self.Size = {1, 1}
   self.Undo = {}
   self.Redo = {}
+  self.Line = "" -- Reference to current line
+  self.Str = "" -- Already processed character set
+  self.Pos = 0 -- Current processed line position
+  self.Char = "" -- The current read character
+  self.Buff = {"", ""} -- Concatenation for next-char
   self.Blink = RealTime()
 
   self.ScrollBar = vgui.Create("DVScrollBar", self)
@@ -410,11 +415,12 @@ function PANEL:MultiLineBlock(vM, vT)
 end
 
 function PANEL:InitColorLine(row)
-  self.line = self.Rows[row]
-  self.buff = {"", ""}
-  self.pos = 0
-  self.char = ""
-  self.str = ""
+  self.Line = self.Rows[row]
+  self.Buff[1] = ""
+  self.Buff[2] = ""
+  self.Pos = 0
+  self.Char = ""
+  self.Str = ""
 
   if(row == 1) then
     self:MultiLineBlock(false, false)
@@ -422,21 +428,21 @@ function PANEL:InitColorLine(row)
 end
 
 function PANEL:NextChar()
-  local last = self.char
+  local last = self.Char
   if (not last) then return end
 
-  self.buff[1] = self.str
-  self.buff[2] = self.char
-  self.str = table.concat(self.buff)
-  self.pos = self.pos + 1
+  self.Buff[1] = self.Str
+  self.Buff[2] = self.Char
+  self.Str = table.concat(self.Buff)
+  self.Pos = self.Pos + 1
 
-  if (self.pos <= string.len(self.line)) then
-    self.char = string.sub(self.line, self.pos, self.pos)
+  if (self.Pos <= string.len(self.Line)) then
+    self.Char = string.sub(self.Line, self.Pos, self.Pos)
   else
-    self.char = nil
+    self.Char = nil
   end
 
-  return self.char, last
+  return self.Char, last
 end
 
 function PANEL:SyntaxColorLine(row)
@@ -454,7 +460,7 @@ function PANEL:SyntaxColorLine(row)
 
   while char do
     local token = ""
-    self.str = ""
+    self.Str = ""
 
     while(char and char == " ") do
       char, last = self:NextChar()
@@ -500,7 +506,7 @@ function PANEL:SyntaxColorLine(row)
         char, last = self:NextChar()
       end
 
-      local sstr = string.Trim(self.str)
+      local sstr = string.Trim(self.Str)
       local gstr = luapad.CheckGlobal(sstr, lastlib)
       local tgstr = type(gstr)
 
@@ -599,9 +605,9 @@ function PANEL:SyntaxColorLine(row)
     local nH = #cols
 
     if (nH > 1 and tC == cols[nH][2]) then
-      cols[nH][1] = cols[nH][1] .. self.str
+      cols[nH][1] = cols[nH][1] .. self.Str
     else
-      cols[nH + 1] = {self.str, tC}
+      cols[nH + 1] = {self.Str, tC}
     end
   end
 
@@ -676,12 +682,10 @@ function PANEL:PaintLine(row)
   end
 
   if (row == castr and self.TextEntry:HasFocus()) then
-    if ((RealTime() - self.Blink) % 0.8 < 0.4) then
-      if (caend - scend >= 0) then
+    if ((RealTime() - self.Blink) % 0.8 < 0.4 and caend >= scend) then
         surface.SetDrawColor(self:GetTheme("gui.caretbase"):Unpack())
         surface.DrawRect((caend - scend) * width + width * 3 + 6,
                          (castr - scstr) * height, 1, height)
-      end
     end
   end
 end

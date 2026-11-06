@@ -200,25 +200,10 @@ local FMSYNTAX_METATYP = {
 }
 
 --[[
- * Reads a global value. Writing is prohibited
-]]
-function luapad.GetConfig(sK)
-  if(not isstring(sK)) then return nil end
-  return GLOB_CONFIG[sK]
-end
-
---[[
  * Checks whenever the parameter is present
 ]]
-function luapad.IsHere(vA)
+local function isHere(vA)
   return (vA ~= nil and vA ~= "")
-end
-
---[[
- * Checks whenever the parameter is present
-]]
-function luapad.ToColor(vA, nD)
-  return math.floor(math.Clamp(tonumber(vA) or nD, 0, 255))
 end
 
 --[[
@@ -226,7 +211,7 @@ end
 ]]
 function luapad.IsPath(sP)
   local sP = tostring(sP or "")
-  if(not luapad.IsHere(sP)) then return false end
+  if(not isHere(sP)) then return false end
   local tP = PATPATH_CONVERT
   local tD = GLOB_CONFIG.RESNAM
   local sF = GLOB_CONFIG.VALDFS[1]
@@ -387,7 +372,7 @@ function luapad.genSyntaxGlobals()
     for aK, aV in pairs(tK) do
       if(not isstring(aV)) then tK[aK] = nil
         if(luapad.debugmode and sB) then
-          luapad.SetConsole("%s > Syntax: Base {%s} key {%s} is {%s}!", "STAT_WR", sA, sB, aV, type(aV))
+          luapad.SetConsole("%s > Syntax: Base %s key {%s} is {%s}!", "STAT_WR", sA, sB, aV, type(aV))
         end -- In case the debug mode is enabled you can see the dropped keys from processing
       end -- Make sure to get rid of every entry that is not a string
     end -- Process all the strings and pack them up in client/server
@@ -723,7 +708,7 @@ function luapad.ShowConfirmDialog(sMsg, sTxt, fnSuc, fnDsc, sSuc, sDsc)
   pMesg:SetContentAlignment(5)
   pMesg:SetTextColor(color_white)
 
-  if(luapad.IsHere(sTxt)) then
+  if(isHere(sTxt)) then
     pText = vgui.Create("DTextEntry", pSors)
     if(not IsValid(pText)) then return end
 
@@ -1065,7 +1050,7 @@ function luapad.Toggle()
   end
 
   function luapad.PropertySheet:GetTabSwitch(vTre, ...)
-    if(luapad.IsHere(vTre)) then -- There is an argument
+    if(isHere(vTre)) then -- There is an argument
       local iT, pT = self:GetTabIndex(vTre, ...)
       if(not iT) then return nil end
       return pT -- The argument is validated
@@ -1132,7 +1117,7 @@ function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
   if(not IsValid(pBut)) then return end
   -- Configure image and help text
   pBut:SetImage(luapad.ToIcon(sIco or "lightning"))
-  if(luapad.IsHere(vTip)) then pBut:SetTooltip(tostring(vTip)) end
+  if(isHere(vTip)) then pBut:SetTooltip(tostring(vTip)) end
   pBut:SetSize(nS, nS) -- Make the button a square image that runs functions
   -- Do not pass the button reference here unless the button must be changed
   if(actL) then
@@ -1396,7 +1381,7 @@ local function luapadAttachThemeMenu(pMenu, vTre)
         local tV = GLOB_CONFIG.VALDFS
         local sN = string.GetFileFromFilename(sName)
         -- Perform parameter check
-        if(not luapad.IsHere(sN)) then
+        if(not isHere(sN)) then
           luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
           return
         end
@@ -1468,7 +1453,7 @@ local function luapadAttachThemeMenu(pMenu, vTre)
   if(not IsValid(pIn)) then return end
   for iF = 1, #tF do -- Loop and add al files to the menu
     local vF = tF[iF]:gsub("%..*$", "")
-    if(luapad.IsHere(vF)) then
+    if(isHere(vF)) then
       pIn:AddOption(vF,
         function() local sT = "@"..vF
           luapad.SetThemeFile(pT, vF)
@@ -1952,8 +1937,8 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   local sNam = tostring(name or "")
   local sCon = tostring(cont or "")
   local sIco = tostring(icon or "page_white")
-  local sTag = (luapad.IsHere(term) and tostring(term) or nil)
-  local sTem = (luapad.IsHere(teme) and tostring(teme) or VAR_THM:GetString())
+  local sTag = (isHere(term) and tostring(term) or nil)
+  local sTem = (isHere(teme) and tostring(teme) or VAR_THM:GetString())
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -2208,7 +2193,7 @@ function luapad.SaveThemeFile(vTre, sN)
   local tD = GLOB_CONFIG.THMDEF
   local tV = GLOB_CONFIG.VALDFS
   local sN, bN = tostring(sN or tD[2]), true
-  if(not luapad.IsHere(sN)) then
+  if(not isHere(sN)) then
     luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
     return
   end
@@ -2234,7 +2219,7 @@ function luapad.SaveThemeFile(vTre, sN)
       sN, -- Fill the textbox with the current name
       function(sName)
         local sN = string.StripExtension(sName)
-        if(not luapad.IsHere(sN)) then
+        if(not isHere(sN)) then
           luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER")
           return
         end
@@ -2293,7 +2278,7 @@ function luapad.SetThemeFile(vTre, sN)
   local tD = GLOB_CONFIG.THMDEF
   local tV = GLOB_CONFIG.VALDFS
   local sN = tostring(sN or tD[2])
-  if(not luapad.IsHere(sN)) then
+  if(not isHere(sN)) then
     luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
     return
   end
@@ -2318,10 +2303,10 @@ function luapad.SetThemeFile(vTre, sN)
     local tT = sD:Explode(tW[iD]) -- Empty lines
     local sT = tT[1]:Trim() -- Color token to search for
     if(tH[sT]) then
-      local nR = luapad.ToColor(tT[2]:Trim(), 0)
-      local nG = luapad.ToColor(tT[3]:Trim(), 0)
-      local nB = luapad.ToColor(tT[4]:Trim(), 0)
-      local nA = luapad.ToColor(tT[5]:Trim(), 255)
+      local nR = getColor(tT[2]:Trim(), 0)
+      local nG = getColor(tT[3]:Trim(), 0)
+      local nB = getColor(tT[4]:Trim(), 0)
+      local nA = getColor(tT[5]:Trim(), 255)
       tH[sT][1] = Color(nR, nG, nB, nA)
       tH[sT][2] = (tT[6]:Trim():sub(1, 1) == "V")
     end
@@ -2662,7 +2647,7 @@ function luapad.SaveScript(vTre)
       luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
       return
     end
-    if(not luapad.IsHere(sN)) then
+    if(not isHere(sN)) then
       luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
       return
     end
@@ -2730,7 +2715,7 @@ function luapad.SaveAsScript(vTre)
           luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
           return
         end
-        if(not luapad.IsHere(sN)) then
+        if(not isHere(sN)) then
           luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
           return
         end
