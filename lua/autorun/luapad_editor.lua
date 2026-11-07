@@ -43,10 +43,10 @@ local KEYWORD_TOKENS = {
 local COLOR_HIGHLIGHT = {
   ["#"] = { -- Current skin
     ["gui.currentline"] = {"colTextEntryTextPlaceholder"},
-    ["gui.selection"  ] = {"colTextEntryBorder"         },
+    ["gui.selection"  ] = {"colTextEntryTextHighlight"  },
     ["gui.caretbase"  ] = {"colTextEntryTextCursor"     },
     ["gui.rownumbers" ] = {"colTextEntryTextPlaceholder"},
-    ["gui.rowlinebar" ] = {"colTextEntryTextHighlight"  },
+    ["gui.rowlinebar" ] = {"colTextEntryBorder"         },
     ["gui.background" ] = {"colTextEntryBG"             },
     ["code.none"      ] = {"colTextEntryText"           }
   },
@@ -104,8 +104,8 @@ local FONT_SIZE = {
 
 for iF = 1, #FONT_SIZE.Size do
   local iS = FONT_SIZE.Size[iF]
-  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, iS, "")
-  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, iS, "Bold")
+  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, "", iS)
+  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, "Bold", iS)
   surface.CreateFont(sR, {font = "Courier New", size = iS, weight = 400})
   surface.CreateFont(sB, {font = "Courier New", size = iS, weight = 800})
 end
@@ -131,8 +131,8 @@ function PANEL:SetFontInfo(iD)
   local iD = math.floor(math.Clamp((tonumber(iD) or 0), 0, #tS))
   local iF = (tS[iD] and iD or FONT_SIZE.ID) -- Font index
   local iS = tS[iF] -- The actual font size in pixels
-  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, iS, "")
-  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, iS, "Bold")
+  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, "", iS)
+  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, "Bold", iS)
   -- Pick the actual bold or regular font
   surface.SetFont(sR) -- Get proper value from text size
   -- Update the current text size in pixels
@@ -144,7 +144,7 @@ end
 
 function PANEL:GetFontInfo()
   local tN = self:GetTable().FontName
-  return tN.ID, table.Copy(FONT_SIZE.Size)
+  return tN.ID, table.Copy(FONT_SIZE.Size), FONT_SIZE.ID
 end
 
 function PANEL:GetFontName(bB)
@@ -200,8 +200,9 @@ function PANEL:GetThemeKeys()
   local tT = self:GetTable().Highlight
   if(not tT) then return nil end
   local tK = table.GetKeys(tT)
+  local tM = table.Copy(COLOR_HIGHLIGHT["#"])
   table.sort(tK, function(u, v) return u < v end)
-  return tK -- Array with palette keys
+  return tK, tM -- Array with palette keys
 end
 
 function PANEL:GetTheme(sT)
@@ -514,7 +515,7 @@ function PANEL:SyntaxColorLine(row)
       end
 
       token = "code.number"
-    elseif (char >= "a" and char <= "z" or char >= "A" and char <= "Z") then
+    elseif (char >= "a" and char <= "z" or char >= "A" and char <= "Z" or char == "_") then
 
       while char and (char >= "a" and char <= "z" or
                       char >= "A" and char <= "Z" or
@@ -720,7 +721,9 @@ function PANEL:Paint(w, h)
     self:OnMouseReleased(MOUSE_LEFT)
   end
 
-  self:RefreshView()
+  if (not self.PaintRows) then
+    self:RefreshView()
+  end
 
   if (self.MouseDown) then
     self.Caret = self:CursorToCaret()
@@ -741,7 +744,10 @@ function PANEL:Paint(w, h)
   local guiRN = self:GetTheme("gui.rownumbers")
   local guiCL = self:GetTheme("gui.currentline")
 
-  for i = self.Scroll[1], (self.Scroll[1] + self.Size[1] + 1) do
+  -- Dvdvideo1234
+  -- Render from the first line otherwise the multiline coments are not triggered correctly
+  -- It is possible the beginning of the screen to be in the middle of a multiline comment
+  for i = 1, (self.Scroll[1] + self.Size[1] + 1) do
     self:PaintLine(i, guiCB, guiSE, guiRN, guiCL)
   end
 
@@ -977,14 +983,22 @@ function PANEL:CustomOnTextChanged()
 end
 
 function PANEL:OnMouseWheeled(delta)
-  self.Scroll[1] = self.Scroll[1] - 4 * delta
-  if (self.Scroll[1] < 1) then
-    self.Scroll[1] = 1
+  local control = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
+
+  if(control) then
+    local iF = self:GetFontInfo() + delta
+    local iS = ((iF == 0) and 1 or iF)
+    self:SetFontInfo(iS)
+  else
+    self.Scroll[1] = self.Scroll[1] - 4 * delta
+    if (self.Scroll[1] < 1) then
+      self.Scroll[1] = 1
+    end
+    if (self.Scroll[1] > self:GetRownum()) then
+      self.Scroll[1] = self:GetRownum()
+    end
+    self.ScrollBar:SetScroll(self.Scroll[1] - 1)
   end
-  if (self.Scroll[1] > self:GetRownum()) then
-    self.Scroll[1] = self:GetRownum()
-  end
-  self.ScrollBar:SetScroll(self.Scroll[1] - 1)
 end
 
 function PANEL:ScrollCaret()

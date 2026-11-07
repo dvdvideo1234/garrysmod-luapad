@@ -16,6 +16,7 @@ local GLOB_CONFIG = {
   MAXMSL = 60000, -- As the maximum write string limit is 65532
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
   PATNLN = "[\r\n]+", -- Pattern for reading configuration files
+  SAVTAB = {"data/luapad/", "saved_tabs.txt"}, -- Saved tabs configuration
   THMDEF = {"luapad/theme/", "default"}, -- Default theme configuration
   VALDFS = {"[%/\\:%*%?\"<>|]", "^([^%.]+)"}, -- File system name validation
   RESNAM = {CON = true, PRN = true, AUX = true, NUL = true}, -- Disabled folder names
@@ -36,13 +37,15 @@ local GLOB_CONFIG = {
 }
 
 -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
-local VAR_STM = CreateConVar(GLOB_CONFIG.LOWADN.."_statmsgtm",  1, GLOB_CONFIG.RFLAGS, "Status messages time visible fraction delta", 0, 100)
 local VAR_ARN = CreateConVar(GLOB_CONFIG.LOWADN.."_autorenew", 14, GLOB_CONFIG.RFLAGS, "File grace period for auto renew in days", 0, 1000)
 local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.RFLAGS, "Makes the luapad addon admin usable only", 0, 1)
-local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.RFLAGS, "Maximum number of new files in the folder", 0, 100)
 local VAR_MXR = CreateConVar(GLOB_CONFIG.LOWADN.."_maxrecurs", 20, GLOB_CONFIG.RFLAGS, "Recurse depth when opening a file system", 0, 100)
 local VAR_EDT = CreateConVar(GLOB_CONFIG.LOWADN.."_endataorg",  1, GLOB_CONFIG.RFLAGS, "File operation in the whole data folder", 0, 1)
-local VAR_THM = CreateConVar(GLOB_CONFIG.LOWADN.."_themename", "default", GLOB_CONFIG.CFLAGS, "Syntax highlighting theme being used")
+
+-- These are the client specifc configurations
+local VAR_MXF = CreateConVar(GLOB_CONFIG.LOWADN.."_maxunamed", 10, GLOB_CONFIG.CFLAGS, "Maximum number of new files in the folder", 0, 100)
+local VAR_STM = CreateConVar(GLOB_CONFIG.LOWADN.."_statmsgtm",  1, GLOB_CONFIG.CFLAGS, "Status messages time visible fraction delta", 0, 100)
+local VAR_THM = CreateConVar(GLOB_CONFIG.LOWADN.."_themename", "XX", GLOB_CONFIG.CFLAGS, "Syntax highlighting theme being used")
 
 local COLOR_STATUS = {
   ["#TEMCO#"] = Color(  0,   0,   0,   0),
@@ -105,11 +108,11 @@ local ENABLE_FOLDER = {
 
 local RESTRICTED_FILES = {
   "data/"..GLOB_CONFIG.FOLDER.."welcome.txt",
-  "data/"..GLOB_CONFIG.FOLDER.."saved_tabs.txt",
+  GLOB_CONFIG.SAVTAB[1]..GLOB_CONFIG.SAVTAB[2],
   "data/"..GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt",
   "data/"..GLOB_CONFIG.FOLDER.."cl_syntax_globals.txt",
   "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."welcome.txt",
-  "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."saved_tabs.txt",
+  "addons/luapad/"..GLOB_CONFIG.SAVTAB[1]..GLOB_CONFIG.SAVTAB[2],
   "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."sv_syntax_globals.txt",
   "addons/luapad/data/"..GLOB_CONFIG.FOLDER.."cl_syntax_globals.txt"
 }
@@ -202,7 +205,7 @@ local FMSYNTAX_METATYP = {
 --[[
  * Checks whenever the parameter is present
 ]]
-local function isHere(vA)
+function luapad.IsHere(vA)
   return (vA ~= nil and vA ~= "")
 end
 
@@ -211,10 +214,9 @@ end
 ]]
 function luapad.IsPath(sP)
   local sP = tostring(sP or "")
-  if(not isHere(sP)) then return false end
+  if(not luapad.IsHere(sP)) then return false end
   local tP = PATPATH_CONVERT
   local tD = GLOB_CONFIG.RESNAM
-  local sF = GLOB_CONFIG.VALDFS[1]
   for iP = 1, #tP do
     sP = string.gsub(sP, unpack(tP[iP]))
   end
@@ -222,7 +224,6 @@ function luapad.IsPath(sP)
   for iN = 1, #tN do
     local sN = tN[iN]:upper()
     if(tD[sN]) then return false end
-    if(sN:find(sF)) then return false end
   end
   return true, sP
 end
@@ -708,7 +709,7 @@ function luapad.ShowConfirmDialog(sMsg, sTxt, fnSuc, fnDsc, sSuc, sDsc)
   pMesg:SetContentAlignment(5)
   pMesg:SetTextColor(color_white)
 
-  if(isHere(sTxt)) then
+  if(luapad.IsHere(sTxt)) then
     pText = vgui.Create("DTextEntry", pSors)
     if(not IsValid(pText)) then return end
 
@@ -868,6 +869,7 @@ function luapad.EqualizeThemeTab(vTre)
   local tI = pS:GetItems()
   local pA = pT:GetTextArea()
   local tK = pA:GetThemeKeys()
+  local sN = pT:GetStreamInfo().Teme
   for iD = 1, #tI do
     if(iD ~= iT) then -- Our tab is updated
       local tP = tI[iD] -- Index the tab
@@ -878,6 +880,7 @@ function luapad.EqualizeThemeTab(vTre)
       end
     end
   end
+  luapad.SetStatus("Theme [%s] has been applied on all tabs!", "STAT_OK", sN)
 end
 
 function luapad.SaveTabs()
@@ -885,7 +888,7 @@ function luapad.SaveTabs()
 
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-  local tO, tW = {"", "", "", ""}, {}
+  local tO, tW = {1,2,3,4,5,6}, {}
   local tI = pS:GetItems()
   local aT = pS:GetActiveTab()
   for iD = 1, #tI do
@@ -893,16 +896,24 @@ function luapad.SaveTabs()
     local pT = tP.Tab
     if(IsValid(pT)) then
       local tS = pT:GetStreamInfo()
-      tO[1] = tS.Name         -- File name
-      tO[2] = tS.Path         -- Path in game FS
-      tO[3] = (tS.Term or "") -- Custom tab name
-      tO[4] = tS.Icon         -- Custom tab icon
-      tO[5] = (tS.Teme or "") -- Custom tab palette
+      tO[1] = tostring(tS.Name or "") -- File name
+      tO[2] = tostring(tS.Path or "") -- Path in game FS
+      tO[3] = tostring(tS.Term or "") -- Custom tab name
+      tO[4] = tostring(tS.Icon or "") -- Custom tab icon
+      tO[5] = tostring(tS.Teme or "") -- Custom tab palette
+      tO[6] = tostring(tS.Font or "") -- Font size
       if(pT == aT) then tO[1] = "*" .. tO[1] end
       table.insert(tW, table.concat(tO, GLOB_CONFIG.DELIMS))
     end
   end
-  file.Write(GLOB_CONFIG.FOLDER.."saved_tabs.txt", table.concat(tW, "\n"))
+  local sP, sN = unpack(GLOB_CONFIG.SAVTAB)
+  local bB, sB, oB = luapad.GetPath(sP)
+  if(not bB) then  -- File not found then bail out
+    luapad.SetStatus("File [%s%s] import not supported! (change origin folder)", "STAT_WR", oB, sN)
+    return -- No need to process everything else when there is no file
+  end
+  file.Write(sB..sN, table.concat(tW, "\n"))
+  luapad.SetStatus("File [%s%s] export successful as tab list!", "STAT_OK", oB, sN)
 end
 
 function luapad.LoadTabs()
@@ -911,8 +922,17 @@ function luapad.LoadTabs()
   if(not IsValid(pS)) then return end
   pS:Clear() -- The * symbol is invalid for a file name
   -- Read the saved tabs file and load the related files
-  local sF = file.Read(GLOB_CONFIG.FOLDER.."saved_tabs.txt", "DATA")
-  if(not sF) then return end -- File not found then bail out
+  local sP, sN = unpack(GLOB_CONFIG.SAVTAB)
+  local bB, sB, oB = luapad.GetPath(sP)
+  if(not bB) then  -- File not found then bail out
+    luapad.SetStatus("File [%s%s] import not supported! (change origin folder)", "STAT_WR", oB, sN)
+    return -- No need to process everything else when there is no file
+  end
+  local sF = file.Read(sB..sN, "DATA")
+  if(not sF) then  -- File not found then bail out
+    luapad.SetStatus("File [%s%s] import has failed! (the file is missing)", "STAT_OK", oB, sN)
+    return -- No need to process everything else when there is no file
+  end
   local tW, aT = GLOB_CONFIG.PATNLN:Explode(sF, true), nil
   for iD = 1, #tW do -- Basically we have one tab on one line
     local tO = GLOB_CONFIG.DELIMS:Explode(tW[iD]) -- Empty lines are excluded
@@ -921,15 +941,16 @@ function luapad.LoadTabs()
     local bB, sB, oB, pT = luapad.GetPath(tO[2])
     if(tO[1] ~= "" and tO[2] ~= "") then -- No name to identify the file
       if(bB) then -- Load a tab relative to the data folder
-        pT = luapad.AddTab(tO[1], file.Read(sB..tO[1], "DATA"), oB, tO[3], tO[4], tO[5])
+        pT = luapad.AddTab(tO[1], file.Read(sB..tO[1], "DATA"), oB, unpack(tO, 3))
       else -- Load a tab relative to the game folder
-        pT = luapad.AddTab(tO[1], file.Read(oB..tO[1], "GAME"), oB, tO[3], tO[4], tO[5])
+        pT = luapad.AddTab(tO[1], file.Read(oB..tO[1], "GAME"), oB, unpack(tO, 3))
       end -- Store the last tab found as active tab reference
       aT = ((bA and IsValid(pT)) and pT or aT)
     end
   end
   -- If a tab is marked as active set the last one marked
   if(aT and IsValid(aT)) then pS:SetActiveTab(aT) end
+  luapad.SetStatus("File [%s%s] import successful as tab list!", "STAT_OK", oB, sN)
 end
 
 function luapad.Toggle()
@@ -993,17 +1014,17 @@ function luapad.Toggle()
   function luapad.PropertySheet:OnActiveTabChanged(pO, pN)
     local sN = GLOB_CONFIG.ADDONN
     if(IsValid(pN)) then
-      local tS = pN:GetStreamInfo()
+      local tS = pN:GetPanel():GetStreamInfo()
       local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
       luapad.Frame:SetTitle(sN .. " - " .. sA)
     elseif(IsValid(pO)) then
-      local tS = pO:GetStreamInfo()
+      local tS = pO:GetPanel():GetStreamInfo()
       local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
       luapad.Frame:SetTitle(sN .. " - " .. sA)
     else
       local pA = self:GetTabSwitch()
       if(not IsValid(pA)) then return end
-      local tS = pA:GetStreamInfo()
+      local tS = pA:GetPanel():GetStreamInfo()
       local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
       luapad.Frame:SetTitle(sN .. " - " .. sA)
     end
@@ -1050,7 +1071,7 @@ function luapad.Toggle()
   end
 
   function luapad.PropertySheet:GetTabSwitch(vTre, ...)
-    if(isHere(vTre)) then -- There is an argument
+    if(luapad.IsHere(vTre)) then -- There is an argument
       local iT, pT = self:GetTabIndex(vTre, ...)
       if(not iT) then return nil end
       return pT -- The argument is validated
@@ -1086,7 +1107,7 @@ function luapad.Toggle()
   luapad.AddToolbarItem("Close / Close menu"    , "page_delete"     , luapad.CloseTabActive  , luapad.OpenCloseMenu)
   luapad.AddToolbarSpacer()
   luapad.AddToolbarItem("Change font / Font menu", "style", luapad.SetFontEntry, luapad.OpenFontMenu)
-  luapad.AddToolbarItem("Apply theme / Theme menu", "images", luapad.SetThemeEntry, luapad.OpenThemeMenu)
+  luapad.AddToolbarItem("Apply theme / Theme menu", "folder_palette", luapad.SetThemeEntry, luapad.OpenThemeMenu)
   luapad.AddToolbarItem("Load tabs / Save tabs"   , "briefcase" , luapad.LoadTabs, luapad.SaveTabs)
 
   if (file.Exists(GLOB_CONFIG.FOLDER.."saved_tabs.txt", "DATA")) then
@@ -1117,7 +1138,7 @@ function luapad.AddToolbarItem(vTip, sIco, actL, actR, actM, actD)
   if(not IsValid(pBut)) then return end
   -- Configure image and help text
   pBut:SetImage(luapad.ToIcon(sIco or "lightning"))
-  if(isHere(vTip)) then pBut:SetTooltip(tostring(vTip)) end
+  if(luapad.IsHere(vTip)) then pBut:SetTooltip(tostring(vTip)) end
   pBut:SetSize(nS, nS) -- Make the button a square image that runs functions
   -- Do not pass the button reference here unless the button must be changed
   if(actL) then
@@ -1345,19 +1366,24 @@ local function luapadAttachFontMenu(pMenu, vTre)
   if(not IsValid(pMenu)) then return end
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
-  local pC = pT:GetTextArea()
-  local iF, tF = pC:GetFontSize()
+  local pA = pT:GetTextArea()
+  if(not IsValid(pA)) then return end
+  local iF, tF, iD = pA:GetFontInfo()
   pMenu:AddOption("Default", function()
-    pC:SetFontName(iF)
+    pA:SetFontInfo(iD)
+    pT:GetStreamInfo().Font = iD
   end):SetImage(luapad.ToIcon("shape_square_key"))
   -- Add font size options
+  if(iF <= 0 or #tF == 0) then return end
   local pIn, pOp = pMenu:AddSubMenu("Sizes")
   if(not IsValid(pIn)) then return end
   pOp:SetIcon(luapad.ToIcon("text_uppercase"))
   for iS = 1, #tF do -- List all available sizes
     local sI = (iS ~= iF) and "shape_square" or "shape_square_go"
-    pIn:AddOption(tostring(sS), -- Current size will have an arrow
-      function() pC:SetFontName(iS) end):SetImage(luapad.ToIcon(sI))
+    pIn:AddOption(tostring(tF[iS]), function()
+        pA:SetFontInfo(iS) -- Current size will have an arrow
+        pT:GetStreamInfo().Font = iS
+      end):SetImage(luapad.ToIcon(sI))
   end
 end
 
@@ -1381,16 +1407,16 @@ local function luapadAttachThemeMenu(pMenu, vTre)
         local tV = GLOB_CONFIG.VALDFS
         local sN = string.GetFileFromFilename(sName)
         -- Perform parameter check
-        if(not isHere(sN)) then
+        if(not luapad.IsHere(sN)) then
           luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
-          return
-        end
-        if(sN:match(tV[1])) then
-          luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
           return
         end
         if(not luapad.IsPath(sN)) then
           luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+          return
+        end
+        if(sN:match(tV[1])) then
+          luapad.SetStatus("File name [%s] contains invalid characters!", "STAT_ER", sN)
           return
         end
         -- Everything is valid so write the theme
@@ -1405,29 +1431,29 @@ local function luapadAttachThemeMenu(pMenu, vTre)
   pIn:AddOption("Light",
     function() local sT = "XX"
       pT:GetTextArea():SetThemeDefault(false, false)
-      luapad.EqualizeThemeTab(pT)
       pT:GetStreamInfo().Teme = sT
+      luapad.EqualizeThemeTab(pT)
       RunConsoleCommand(VAR_THM:GetName(), sT)
     end):SetImage(luapad.ToIcon("picture"))
   pIn:AddOption("Dark",
     function() local sT = "VX"
       pT:GetTextArea():SetThemeDefault(true, false)
-      luapad.EqualizeThemeTab(pT)
       pT:GetStreamInfo().Teme = sT
+      luapad.EqualizeThemeTab(pT)
       RunConsoleCommand(VAR_THM:GetName(), sT)
     end):SetImage(luapad.ToIcon("picture"))
   pIn:AddOption("Light bold",
     function() local sT = "XV"
       pT:GetTextArea():SetThemeDefault(false, true)
-      luapad.EqualizeThemeTab(pT)
       pT:GetStreamInfo().Teme = sT
+      luapad.EqualizeThemeTab(pT)
       RunConsoleCommand(VAR_THM:GetName(), sT)
     end):SetImage(luapad.ToIcon("photo"))
   pIn:AddOption("Dark bold",
     function() local sT = "VV"
       pT:GetTextArea():SetThemeDefault(true, true)
-      luapad.EqualizeThemeTab(pT)
       pT:GetStreamInfo().Teme = sT
+      luapad.EqualizeThemeTab(pT)
       RunConsoleCommand(VAR_THM:GetName(), sT)
     end):SetImage(luapad.ToIcon("photo"))
   -- Update the theme via a skin
@@ -1439,8 +1465,8 @@ local function luapadAttachThemeMenu(pMenu, vTre)
     pIn:AddOption(tostring(sS),
       function() local sT = "#"..sS
         luapad.SetThemeSkin(pT, vS, sS)
-        luapad.EqualizeThemeTab(pT)
         pT:GetStreamInfo().Teme = sT
+        luapad.EqualizeThemeTab(pT)
         RunConsoleCommand(VAR_THM:GetName(), sT)
       end):SetImage(luapad.ToIcon("palette"))
   end
@@ -1453,7 +1479,7 @@ local function luapadAttachThemeMenu(pMenu, vTre)
   if(not IsValid(pIn)) then return end
   for iF = 1, #tF do -- Loop and add al files to the menu
     local vF = tF[iF]:gsub("%..*$", "")
-    if(isHere(vF)) then
+    if(luapad.IsHere(vF)) then
       pIn:AddOption(vF,
         function() local sT = "@"..vF
           luapad.SetThemeFile(pT, vF)
@@ -1544,6 +1570,9 @@ local function luapadAttachRefreshMenu(pMenu, vTre)
   if(not IsValid(pMenu)) then return end
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
+  pMenu:AddOption("This", function()
+    luapad.RefreshTabView(vTre)
+  end):SetImage(luapad.ToIcon("arrow_down"))
   pMenu:AddOption("Active", function()
     luapad.RefreshTabActive()
   end):SetImage(luapad.ToIcon("arrow_refresh"))
@@ -1701,9 +1730,9 @@ function luapad.RefreshTabView(vTre)
     local sF = (sB .. sN)
     local sCon = file.Read(sF, "DATA")
     if(sCon) then pT:SetContents(sCon)
-      luapad.SetStatus("File [%s%s] refreshed!", "STAT_OK", oB, sN)
+      luapad.SetStatus("File [%s%s] refreshed successfully!", "STAT_OK", oB, sN)
     else
-      luapad.SetStatus("File [%s%s] not found!", "STAT_ER", oB, sN)
+      luapad.SetStatus("File [%s%s] not found! (make sure the path is correct)", "STAT_ER", oB, sN)
     end
   else
     luapad.SetStatus("File [%s%s] refresh not supported!", "STAT_WR", oB, sN)
@@ -1930,15 +1959,16 @@ end
  * icon > The icon being displayed on the tab node
  * them > The theme being used for this specific tab
 ]]
-function luapad.AddTab(name, cont, path, term, icon, teme)
+function luapad.AddTab(name, cont, path, term, icon, teme, font)
   if(SERVER) then return end
 
   local sPth = tostring(path or "")
   local sNam = tostring(name or "")
   local sCon = tostring(cont or "")
   local sIco = tostring(icon or "page_white")
-  local sTag = (isHere(term) and tostring(term) or nil)
-  local sTem = (isHere(teme) and tostring(teme) or VAR_THM:GetString())
+  local sTag = (luapad.IsHere(term) and tostring(term) or nil)
+  local sTem = (luapad.IsHere(teme) and tostring(teme) or VAR_THM:GetString())
+  local iFon = (tonumber(font) or 0)
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -1949,6 +1979,22 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   local nW, nH = pSheet:GetSize()
   pPan:SetSize(nW, nH - 22)
   pPan:Dock(FILL)
+  pPan[GLOB_CONFIG.STORKY] = {}
+
+ --[[
+   * Retrieves the storage info from the tab
+  ]]
+  function pPan:GetStreamInfo()
+    local tP = self:GetTable()
+    return tP[GLOB_CONFIG.STORKY]
+  end
+
+  local tSor  = pPan[GLOB_CONFIG.STORKY]
+  tSor.Name = sNam -- The actual file name associated with the tab
+  tSor.Path = sPth -- File path always relative to the game folder
+  tSor.Term = sTag -- Tab term in case provided is displayed instead of name
+  tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
+  tSor.Teme = sTem -- The theme being used for the tab text area
 
   local nW, nH = pPan:GetSize()
   local pText = vgui.Create("LuapadEditor", pPan)
@@ -1959,44 +2005,19 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   pText:Dock(FILL)
   pText:RequestFocus()
   pText:SizeToContents()
+  pText:SetFontInfo(iFon)
 
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
-  local pTab  = tInfo.Tab; pTab[GLOB_CONFIG.STORKY] = {}
-  local tSor  = pTab[GLOB_CONFIG.STORKY]
-
-  tSor.Name = sNam -- The actual file name associated with the tab
-  tSor.Path = sPth -- File path always relative to the game folder
-  tSor.Term = sTag -- Tab term in case provided is displayed instead of name
-  tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
-  tSor.Teme = sTem -- The theme being used for the tab text area
+  local pTab  = tInfo.Tab; tSor.Font = pText:GetFontInfo() -- The font being applied on the text area
 
   pTab:SetTooltip(sPth .. sNam)
 
-  local sI = sTem:sub(1, 1)
-  if(sI == "#") then
-    local sT = string.sub(sTem, 2, -1)
-    local tS = derma.GetNamedSkin(sT)
-    if(istable(tS)) then
-      luapad.SetThemeSkin(pTab, tS, sT)
-    else
-      pText:SetThemeDefault()
-      luapad.SetStatus("Theme from skin [%s] is unavailable! (apply default theme)", "STAT_WR", sT)
-    end
-  elseif(sI == "@") then
-    local sT = string.sub(sTem, 2, -1)
-    luapad.SetThemeFile(pTab, sT)
-  else
-    local tI = GLOB_CONFIG.DELIMS:Explode(sTem)
-    tI[1], tI[2], tI[3] = getString(tI[1], tI[2], tI[3])
-    pText:SetThemeDefault(tobool(tI[2]), tobool(tI[3]))
-    sTem = table.concat(tI, GLOB_CONFIG.DELIMS)
-  end
-
-  --[[
+ --[[
    * Retrieves the storage info from the tab
   ]]
   function pTab:GetStreamInfo()
-    return self[GLOB_CONFIG.STORKY]
+    local tP = self:GetPanel():GetTable()
+    return tP[GLOB_CONFIG.STORKY]
   end
 
   --[[
@@ -2096,6 +2117,25 @@ function luapad.AddTab(name, cont, path, term, icon, teme)
   pSheet:SetActiveTab(pTab)
   pSheet:InvalidateLayout()
 
+  local sI = sTem:sub(1, 1)
+  if(sI == "#") then
+    local sT = string.sub(sTem, 2, -1)
+    local tS = derma.GetNamedSkin(sT)
+    if(istable(tS)) then
+      luapad.SetThemeSkin(pTab, tS, sT)
+    else
+      pText:SetThemeDefault()
+      luapad.SetStatus("Theme from skin [%s] is unavailable! (apply default theme)", "STAT_WR", sT)
+    end
+  elseif(sI == "@") then
+    local sT = string.sub(sTem, 2, -1)
+    luapad.SetThemeFile(pTab, sT)
+  else
+    local bD = (sTem:sub(1, 1) == "V")
+    local bB = (sTem:sub(2, 2) == "V")
+    pText:SetThemeDefault(bD, bB)
+  end
+
   return pTab
 end
 
@@ -2129,7 +2169,7 @@ function luapad.SetFontEntry(vTre)
   if(not IsValid(pS)) then return end
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
-  pT:GetTextArea():SetFontName()
+  pT:GetTextArea():SetFontInfo()
 end
 
 function luapad.OpenFontMenu(vTre)
@@ -2193,7 +2233,7 @@ function luapad.SaveThemeFile(vTre, sN)
   local tD = GLOB_CONFIG.THMDEF
   local tV = GLOB_CONFIG.VALDFS
   local sN, bN = tostring(sN or tD[2]), true
-  if(not isHere(sN)) then
+  if(not luapad.IsHere(sN)) then
     luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
     return
   end
@@ -2219,7 +2259,7 @@ function luapad.SaveThemeFile(vTre, sN)
       sN, -- Fill the textbox with the current name
       function(sName)
         local sN = string.StripExtension(sName)
-        if(not isHere(sN)) then
+        if(not luapad.IsHere(sN)) then
           luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER")
           return
         end
@@ -2278,7 +2318,7 @@ function luapad.SetThemeFile(vTre, sN)
   local tD = GLOB_CONFIG.THMDEF
   local tV = GLOB_CONFIG.VALDFS
   local sN = tostring(sN or tD[2])
-  if(not isHere(sN)) then
+  if(not luapad.IsHere(sN)) then
     luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
     return
   end
@@ -2330,8 +2370,7 @@ function luapad.SetThemeSkin(vTre, tS, sS)
   if(not istable(tS)) then return end
   local tH = pA:GetTable().Highlight
   local sD = GLOB_CONFIG.DELIMS
-  local tK = pA:GetThemeKeys()
-  local tM = COLOR_HIGHLIGHT["#"]
+  local tK, tM = pA:GetThemeKeys()
   for iK = 1, #tK do
     local sK = tK[iK]
     local vM = tM[sK]
@@ -2353,7 +2392,7 @@ function luapad.SetThemeSkin(vTre, tS, sS)
     end -- Update the string expression
   end
   pA:RefreshView()
-  self:InvalidateLayout()
+  pA:InvalidateLayout()
 end
 
 function luapad.IsOpen(name, path)
@@ -2398,10 +2437,13 @@ function luapad.NewTab(cont, path)
 
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
+  local pA = pS:GetActiveTab()
+  if(not IsValid(pA)) then return end
 
   local bB, sB, oB = luapad.GetPath(path)
 
   if(bB) then
+    local tS = pA:GetStreamInfo()
     local nF = VAR_MXF:GetInt()
     local sF = GLOB_CONFIG.FMNAME
     local sO = sB .. sF
@@ -2419,8 +2461,8 @@ function luapad.NewTab(cont, path)
     end
 
     if(iF) then -- Index is present open the file
-      luapad.AddTab(sF:format(iF), sCon, oB)
-      luapad.SetStatus("Open the next name available!", "STAT_OK")
+      luapad.AddTab(sF:format(iF), sCon, oB, nil, nil, tS.Teme, tS.Font)
+      luapad.SetStatus("Open in [%s] the next name available!", "STAT_OK", oB)
     else -- Rise a status bar message
       luapad.SetStatus("There are more than [%s] files in [%s] origin! (clean the folder)", "STAT_ER", nF, oB)
     end
@@ -2651,12 +2693,12 @@ function luapad.SaveScript(vTre)
       luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
       return
     end
-    if(not isHere(sN)) then
+    if(not luapad.IsHere(sN)) then
       luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
       return
     end
     if(not luapad.IsPath(oB..sN)) then
-      luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+      luapad.SetStatus("File name [%s%s] is a reserved entry device!", "STAT_ER", oB, sN)
       return
     end
     if(sN:match(tV[1])) then
@@ -2719,12 +2761,12 @@ function luapad.SaveAsScript(vTre)
           luapad.SetStatus("File [%s%s] save failed! (origin is restricted)", "STAT_ER", oB, sN)
           return
         end
-        if(not isHere(sN)) then
+        if(not luapad.IsHere(sN)) then
           luapad.SetStatus("File name is missing! (provide a non-zero string)", "STAT_ER", sN)
           return
         end
         if(not luapad.IsPath(oB..sN)) then
-          luapad.SetStatus("File name [%s] is a reserved entry device!", "STAT_ER", sN)
+          luapad.SetStatus("File name [%s%s] is a reserved entry device!", "STAT_ER", oB, sN)
           return
         end
         if(sN:match(tV[1])) then
