@@ -323,6 +323,7 @@ function PANEL:OnMousePressed(code)
     end
   elseif (code == MOUSE_RIGHT) then
     local pMenu = DermaMenu()
+    pMenu:SetPos(gui.MousePos())
 
     if (self:CanUndo()) then
       pMenu:AddOption(
@@ -635,7 +636,7 @@ function PANEL:SyntaxColorLine(row)
       table.insert(tRow, {self.Str, tC, (multy ~= nil)})
     end
   end
-  -- Cache the highlight vie
+  -- Cache the highlight view
   self.PaintRows[row] = tRow
   -- Return the calculated row
   return tRow
@@ -1015,13 +1016,8 @@ function PANEL:OnMouseWheeled(delta)
     local iS = ((iF == 0) and 1 or iF)
     self:SetFontInfo(iS)
   else
-    m_Scroll[1] = m_Scroll[1] - 4 * delta
-    if (m_Scroll[1] < 1) then
-      m_Scroll[1] = 1
-    end
-    if (m_Scroll[1] > self:GetRownum()) then
-      m_Scroll[1] = self:GetRownum()
-    end
+    m_Scroll[1] = math.max(m_Scroll[1] - 4 * delta, 1)
+    m_Scroll[1] = math.min(m_Scroll[1], self:GetRownum())
     self.ScrollBar:SetScroll(m_Scroll[1] - 1)
   end
 end
