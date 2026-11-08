@@ -99,7 +99,7 @@ local FONT_SIZE = {
   ID = 2, -- Default font index
   Form = "%s%s%d", -- Name pattern
   Name = "LuapadCodeFont", -- Base name
-  Size = {12, 16, 20, 24, 28}
+  Size = {12, 16, 20, 24, 28, 32}
 }
 
 for iF = 1, #FONT_SIZE.Size do
@@ -111,6 +111,51 @@ for iF = 1, #FONT_SIZE.Size do
 end
 
 local PANEL = {}
+
+function PANEL:Init()
+  self:SetCursor("beam")
+  self:SetFontInfo()
+
+  self.Rows = {""}
+  self.Caret = {1, 1}
+  self.Start = {1, 1}
+  self.Scroll = {1, 1}
+  self.Size = {1, 1}
+  self.Undo = {}
+  self.Redo = {}
+  self.Token = {} -- Multi-line comment token info
+  self.Line = "" -- Reference to current line
+  self.Str = "" -- Already processed character set
+  self.Pos = 0 -- Current processed line position
+  self.Char = "" -- The current read character
+  self.Buff = {"", ""} -- General concatenation
+  self.Clips = nil -- Holds the current clipboard
+  self.Blink = RealTime()
+
+  self.ScrollBar = vgui.Create("DVScrollBar", self)
+  self.ScrollBar:SetUp(1, 1)
+
+  self.TextEntry = vgui.Create("TextEntry", self)
+  self.TextEntry:SetMultiline(true)
+  self.TextEntry:SetAllowNonAsciiCharacters(true)
+  self.TextEntry:SetSize(0, 0)
+
+  self.TextEntry.OnLoseFocus = function(self)
+    self.Parent:CustomOnLoseFocus()
+  end
+  self.TextEntry.OnTextChanged = function(self)
+    self.Parent:CustomOnTextChanged()
+  end
+  self.TextEntry.OnKeyCodeTyped = function(self, code)
+    self.Parent:CustomOnKeyCodeTyped(code)
+  end
+
+  self:SetThemeDefault()
+
+  self.TextEntry.Parent = self
+
+  self.LastClick = 0
+end
 
 function PANEL:GetRownum()
   return #self.Rows
@@ -152,48 +197,19 @@ function PANEL:GetFontName(bB)
   return (bB and tN.B or tN.R)
 end
 
-function PANEL:Init()
-  self:SetCursor("beam")
-  self:SetFontInfo()
-
-  self.Rows = {""}
-  self.Caret = {1, 1}
-  self.Start = {1, 1}
-  self.Scroll = {1, 1}
-  self.Size = {1, 1}
-  self.Undo = {}
-  self.Redo = {}
-  self.Token = {} -- Multi-line comment token info
-  self.Line = "" -- Reference to current line
-  self.Str = "" -- Already processed character set
-  self.Pos = 0 -- Current processed line position
-  self.Char = "" -- The current read character
-  self.Buff = {"", ""} -- Concatenation for next-char
-  self.Blink = RealTime()
-
-  self.ScrollBar = vgui.Create("DVScrollBar", self)
-  self.ScrollBar:SetUp(1, 1)
-
-  self.TextEntry = vgui.Create("TextEntry", self)
-  self.TextEntry:SetMultiline(true)
-  self.TextEntry:SetAllowNonAsciiCharacters(true)
-  self.TextEntry:SetSize(0, 0)
-
-  self.TextEntry.OnLoseFocus = function(self)
-    self.Parent:CustomOnLoseFocus()
+function PANEL:SetEmptyRow()
+  local m_Tab = self:GetTable()
+  local m_Cn = self:GetRownum()
+  local m_Rw = m_Tab.Rows
+  local m_Pn = m_Tab.PaintRows
+  if(not m_Rw) then return end
+  if(not m_Pn) then return end
+  if (m_Rw[m_Cn] ~= "") then
+    table.insert(m_Rw, "")
+    table.insert(m_Pn, false)
+    m_Cn = m_Cn + 1
   end
-  self.TextEntry.OnTextChanged = function(self)
-    self.Parent:CustomOnTextChanged()
-  end
-  self.TextEntry.OnKeyCodeTyped = function(self, code)
-    self.Parent:CustomOnKeyCodeTyped(code)
-  end
-
-  self:SetThemeDefault()
-
-  self.TextEntry.Parent = self
-
-  self.LastClick = 0
+  return m_Cn
 end
 
 function PANEL:GetThemeKeys()
@@ -267,18 +283,15 @@ function PANEL:CursorToCaret()
   x = ((x < 0) and 0 or x)
   y = ((y < 0) and 0 or y)
 
-  local last = self:GetRownum()
+  local last, leng = self:GetRownum(), 0
   local line = math.floor(y / self.FontHeight)
   local char = math.floor(x / self.FontWidth + 0.5)
 
   line = line + self.Scroll[1]
   char = char + self.Scroll[2]
   line = ((line > last) and last or line)
-
-  local length = string.len(self.Rows[line])
-  if (char > length + 1) then
-    char = length + 1
-  end
+  leng = string.len(self.Rows[line])
+  char = math.min(char, leng + 1)
 
   return {line, char}
 end
@@ -299,7 +312,6 @@ function PANEL:OnMousePressed(code)
     end
 
     self.Temp = true
-
     self.LastClick = CurTime()
     self:RequestFocus()
     self.Blink = RealTime()
@@ -311,20 +323,20 @@ function PANEL:OnMousePressed(code)
     end
   elseif (code == MOUSE_RIGHT) then
     local pMenu = DermaMenu()
+    if(not IsValid(pMenu)) then return end
+    pMenu:SetParent(self)
 
     if (self:CanUndo()) then
       pMenu:AddOption(
         "Undo", function()
           self:DoUndo()
-        end
-      )
+        end):SetImage(luapad.ToIcon("arrow_undo"))
     end
     if (self:CanRedo()) then
       pMenu:AddOption(
         "Redo", function()
           self:DoRedo()
-        end
-      )
+        end):SetImage(luapad.ToIcon("arrow_redo"))
     end
 
     if (self:CanUndo() or self:CanRedo()) then
@@ -335,40 +347,32 @@ function PANEL:OnMousePressed(code)
       pMenu:AddOption(
         "Cut", function()
           if (self:HasSelection()) then
-            self.clipboard = self:GetSelection()
-            self.clipboard = string.Replace(self.clipboard, "\n", "\r\n")
-            SetClipboardText(self.clipboard)
+            self:ToSelection()
             self:SetSelection()
           end
-        end
-      )
+        end):SetImage(luapad.ToIcon("cut"))
       pMenu:AddOption(
         "Copy", function()
           if (self:HasSelection()) then
-            self.clipboard = self:GetSelection()
-            self.clipboard = string.Replace(self.clipboard, "\n", "\r\n")
-            SetClipboardText(self.clipboard)
+            self:ToSelection()
           end
-        end
-      )
+        end):SetImage(luapad.ToIcon("page_copy"))
     end
 
     pMenu:AddOption(
       "Paste", function()
-        if (self.clipboard) then
-          self:SetSelection(self.clipboard)
+        if (self.Clips) then
+          self:SetSelection(self.Clips)
         else
           self:SetSelection()
         end
-      end
-    )
+      end):SetImage(luapad.ToIcon("page_paste"))
 
     if (self:HasSelection()) then
       pMenu:AddOption(
         "Delete", function()
           self:SetSelection()
-        end
-      )
+        end):SetImage(luapad.ToIcon("page_delete"))
     end
 
     pMenu:AddSpacer()
@@ -376,10 +380,10 @@ function PANEL:OnMousePressed(code)
     pMenu:AddOption(
       "Select all", function()
         self:SelectAll()
-      end
-    )
+      end):SetImage(luapad.ToIcon("pencil"))
 
     pMenu:Open()
+    pMenu:MakePopup()
   end
 end
 
@@ -399,12 +403,8 @@ end
 
 function PANEL:SetText(text)
   self.Rows = string.Explode("\n", text)
-  local last = self:GetRownum()
 
-  if (self.Rows[last] ~= "") then
-    last = last + 1
-    self.Rows[last] = ""
-  end
+  local last = self:SetEmptyRow()
 
   self.Caret = {1, 1}
   self.Start = {1, 1}
@@ -442,13 +442,17 @@ function PANEL:InitColorLine(row)
   end
 end
 
+function PANEL:Concat(sA, sB, sC)
+  self.Buff[1] = sA
+  self.Buff[2] = sB
+  return table.concat(self.Buff, sC)
+end
+
 function PANEL:NextChar()
   local last = self.Char
   if (not last) then return end
 
-  self.Buff[1] = self.Str
-  self.Buff[2] = self.Char
-  self.Str = table.concat(self.Buff)
+  self.Str = self:Concat(self.Str, self.Char)
   self.Pos = self.Pos + 1
 
   if (self.Pos <= string.len(self.Line)) then
@@ -465,11 +469,11 @@ function PANEL:SyntaxColorLine(row)
   if(tRow) then return tRow end
 
   local tLib = {}; tRow = {}
-  local g_synt = TOKEN_CLASSIFY.G
-  local g_type = TOKEN_CLASSIFY.T
-  local g_mstr = TOKEN_CLASSIFY.S
-  local g_mcom = TOKEN_CLASSIFY.C
-  local g_mmul = TOKEN_CLASSIFY.M
+  local m_Glob = TOKEN_CLASSIFY.G
+  local m_Type = TOKEN_CLASSIFY.T
+  local m_Strm = TOKEN_CLASSIFY.S
+  local m_Coms = TOKEN_CLASSIFY.C
+  local m_Muln = TOKEN_CLASSIFY.M
 
   self:InitColorLine(row)
 
@@ -488,10 +492,10 @@ function PANEL:SyntaxColorLine(row)
     local multy, mtoken = self:MultiLineBlock()
 
     if(multy) then
-      if(char == g_mmul[3]) then
+      if(char == m_Muln[3]) then
         local multy, open = multy, char
         char, last = self:NextChar()
-        while(char and char == g_mmul[2]) do
+        while(char and char == m_Muln[2]) do
           multy = multy - 1
           char, last = self:NextChar()
         end
@@ -531,14 +535,14 @@ function PANEL:SyntaxColorLine(row)
 
         token = "code.construct"
 
-      elseif ((gstr and (g_type[tgstr] or g_synt[gstr])) or
+      elseif ((gstr and (m_Type[tgstr] or m_Glob[gstr])) or
               (sstr and tLib.Src and tLib.Src[sstr])) then
       -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
           tLib.Src = gstr
 
           if(tLib.Nam) then
-            tLib.Nam = tLib.Nam.."."..sstr
+            tLib.Nam = self:Concat(tLib.Nam, sstr, ".")
           else
             tLib.Nam = sstr
           end
@@ -558,11 +562,11 @@ function PANEL:SyntaxColorLine(row)
         token = "code.none"
       end
 
-    elseif (char == g_mstr[1]) then
+    elseif (char == m_Strm[1]) then
 
       char, last = self:NextChar()
-      while(char and char ~= g_mstr[1]) do
-        if (char == g_mstr.Esc) then
+      while(char and char ~= m_Strm[1]) do
+        if (char == m_Strm.Esc) then
           char, last = self:NextChar()
         end
         char, last = self:NextChar()
@@ -570,10 +574,10 @@ function PANEL:SyntaxColorLine(row)
       char, last = self:NextChar()
 
       token = "code.string"
-    elseif (char == g_mstr[2]) then
+    elseif (char == m_Strm[2]) then
       char, last = self:NextChar()
-      while(char and char ~= g_mstr[2]) do
-        if (char == g_mstr.Esc) then
+      while(char and char ~= m_Strm[2]) do
+        if (char == m_Strm.Esc) then
           char, last = self:NextChar()
         end
         char, last = self:NextChar()
@@ -581,7 +585,7 @@ function PANEL:SyntaxColorLine(row)
       char, last = self:NextChar()
 
       token = "code.string2"
-    elseif (char == g_mcom[1] or char == g_mcom[2]) then
+    elseif (char == m_Coms[1] or char == m_Coms[2]) then
       char, last = self:NextChar()
 
       if (char == last) then
@@ -594,10 +598,10 @@ function PANEL:SyntaxColorLine(row)
         token = "code.none"
         self:MultiLineBlock(false, false)
       end
-    elseif (char == g_mmul[1]) then
+    elseif (char == m_Muln[1]) then
       local multy, open = 0, char
       char, last = self:NextChar()
-      while(char and char == g_mmul[2]) do
+      while(char and char == m_Muln[2]) do
         char, last = self:NextChar()
         multy = multy + 1
       end
@@ -622,12 +626,12 @@ function PANEL:SyntaxColorLine(row)
     local nH = #tRow
 
     if (nH > 1 and tC == tRow[nH][2]) then
-      tRow[nH][1] = tRow[nH][1] .. self.Str
+      tRow[nH][1] = self:Concat(tRow[nH][1], self.Str)
     else
-      tRow[nH + 1] = {self.Str, tC}
+      table.insert(tRow, {self.Str, tC, (multy ~= nil)})
     end
   end
-  -- Cache the highlight vie
+  -- Cache the highlight view
   self.PaintRows[row] = tRow
   -- Return the calculated row
   return tRow
@@ -716,6 +720,25 @@ function PANEL:PerformLayout()
   self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
 end
 
+--[[
+ * Render from the first line otherwise the multiline coments are not triggered correctly
+ * It is possible the beginning of the screen to be in the middle of a multiline comment
+ * Because of that the rendering should start from the last row that is not a multiline entry
+]]
+function PANEL:GetRenderBounds()
+  local m_Tab = self:GetTable()
+  local m_Par = m_Tab.PaintRows
+  local m_S = m_Tab.Scroll[1]
+  local m_E = (m_S + m_Tab.Size[1] + 1)
+  if(not m_Par) then return 1, m_E end
+  if(table.IsEmpty(m_Par)) then return 1, m_E end
+  while(m_S > 1 and m_Par[m_S]) do
+    if(not m_Par[m_S][3]) then break end
+    m_S = m_S - 1 -- Get the previos row
+  end -- Find the first not multiline row
+  return m_S, m_E -- Return render bounds
+end
+
 function PANEL:Paint(w, h)
   if (not input.IsMouseDown(MOUSE_LEFT)) then
     self:OnMouseReleased(MOUSE_LEFT)
@@ -744,11 +767,9 @@ function PANEL:Paint(w, h)
   local guiRN = self:GetTheme("gui.rownumbers")
   local guiCL = self:GetTheme("gui.currentline")
 
-  -- Dvdvideo1234
-  -- Render from the first line otherwise the multiline coments are not triggered correctly
-  -- It is possible the beginning of the screen to be in the middle of a multiline comment
-  for i = 1, (self.Scroll[1] + self.Size[1] + 1) do
-    self:PaintLine(i, guiCB, guiSE, guiRN, guiCL)
+  local m_S, m_E = self:GetRenderBounds()
+  for iR = m_S, m_E do
+    self:PaintLine(iR, guiCB, guiSE, guiRN, guiCL)
   end
 
   return true
@@ -804,7 +825,7 @@ function PANEL:MovePosition(caret, offset)
 end
 
 function PANEL:HasSelection()
-  return self.Caret[1] ~= self.Start[1] or self.Caret[2] ~= self.Start[2]
+  return (self.Caret[1] ~= self.Start[1] or self.Caret[2] ~= self.Start[2])
 end
 
 function PANEL:Selection()
@@ -828,9 +849,11 @@ function PANEL:GetArea(selection)
     return string.sub(self.Rows[start[1]], start[2], stop[2] - 1)
   else
     local text = string.sub(self.Rows[start[1]], start[2])
+    local m_S, m_E = (start[1] + 1), (stop[1] - 1)
 
-    for i = start[1] + 1, stop[1] - 1 do
-      text = text .. "\n" .. self.Rows[i]
+    if m_S <= m_E then
+      local chunk = table.concat(self.Rows, "\n", m_S, m_E)
+      text = text .. "\n" .. chunk
     end
 
     return text .. "\n" .. string.sub(self.Rows[stop[1]], 1, stop[2] - 1)
@@ -838,12 +861,12 @@ function PANEL:GetArea(selection)
 end
 
 function PANEL:SetArea(selection, text, isundo, isredo, before, after)
-  local start, stop = self:MakeSelection(selection)
 
+  local start, stop = self:MakeSelection(selection)
   local buffer = self:GetArea(selection)
 
   if (start[1] ~= stop[1] or start[2] ~= stop[2]) then
-    -- clear selection
+    -- Clear selection
     self.Rows[start[1]] = string.sub(self.Rows[start[1]], 1, start[2] - 1)..
                           string.sub(self.Rows[stop[1]], stop[2])
     self.PaintRows[start[1]] = false
@@ -854,11 +877,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
       self:RefreshView()
     end
 
-    -- Add empty row at end of file
-    if (self.Rows[#self.Rows] ~= "") then
-      table.insert(self.Rows, "")
-      table.insert(self.PaintRows, false)
-    end
+    self:SetEmptyRow()
   end
 
   if (not text or text == "") then
@@ -883,7 +902,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     end
   end
 
-  -- insert text
+  -- Insert text
   local rows = string.Explode("\n", text)
 
   local remainder = string.sub(self.Rows[start[1]], start[2])
@@ -901,13 +920,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   self.Rows[stop[1]] = self.Rows[stop[1]] .. remainder
   self.PaintRows[stop[1]] = false
 
-  -- add empty row at end of file (TODO!)
-  if (self.Rows[#self.Rows] ~= "") then
-    table.insert(self.Rows, "")
-    table.insert(self.PaintRows, false)
-    self:RefreshView() -- TODO: fix for cache errors
-  end
-
+  self:SetEmptyRow()
   self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
 
   self:RefreshView()
@@ -935,6 +948,12 @@ end
 
 function PANEL:SetSelection(text)
   self:SetCaret(self:SetArea(self:Selection(), text))
+end
+
+function PANEL:ToSelection()
+  self.Clips = self:GetSelection()
+  self.Clips = string.Replace(self.Clips, "\n", "\r\n")
+  SetClipboardText(self.Clips)
 end
 
 function PANEL:CustomOnLoseFocus()
@@ -983,62 +1002,51 @@ function PANEL:CustomOnTextChanged()
 end
 
 function PANEL:OnMouseWheeled(delta)
+  local m_Scroll = self.Scroll
+  local m_Sign = ((delta > 0 and 1) or (delta < 0 and -1) or 0)
   local control = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
 
-  if(control) then
-    local iF = self:GetFontInfo() + delta
+  if(control and m_Sign ~= 0) then
+    local iF = self:GetFontInfo() + m_Sign
     local iS = ((iF == 0) and 1 or iF)
+    local tS = self:GetParent():GetStreamInfo()
     self:SetFontInfo(iS)
+    tS.Font = self:GetFontInfo()
   else
-    self.Scroll[1] = self.Scroll[1] - 4 * delta
-    if (self.Scroll[1] < 1) then
-      self.Scroll[1] = 1
-    end
-    if (self.Scroll[1] > self:GetRownum()) then
-      self.Scroll[1] = self:GetRownum()
-    end
-    self.ScrollBar:SetScroll(self.Scroll[1] - 1)
+    m_Scroll[1] = math.max(m_Scroll[1] - 4 * delta, 1)
+    m_Scroll[1] = math.min(m_Scroll[1], self:GetRownum())
+    self.ScrollBar:SetScroll(m_Scroll[1] - 1)
   end
 end
 
 function PANEL:ScrollCaret()
-  if (self.Caret[1] - self.Scroll[1] < 2) then
-    self.Scroll[1] = self.Caret[1] - 2
-    if (self.Scroll[1] < 1) then
-      self.Scroll[1] = 1
-    end
+  local m_Size = self.Size
+  local m_Caret = self.Caret
+  local m_Scroll = self.Scroll
+
+  if (m_Caret[1] - m_Scroll[1] < 2) then
+    m_Scroll[1] = math.max(m_Caret[1] - 2, 1)
   end
 
-  if (self.Caret[1] - self.Scroll[1] > self.Size[1] - 2) then
-    self.Scroll[1] = self.Caret[1] - self.Size[1] + 2
-    if (self.Scroll[1] < 1) then
-      self.Scroll[1] = 1
-    end
+  if (m_Caret[1] - m_Scroll[1] > m_Size[1] - 2) then
+    m_Scroll[1] = math.max(m_Caret[1] - m_Size[1] + 2, 1)
   end
 
-  if (self.Caret[2] - self.Scroll[2] < 4) then
-    self.Scroll[2] = self.Caret[2] - 4
-    if (self.Scroll[2] < 1) then
-      self.Scroll[2] = 1
-    end
+  if (m_Caret[2] - m_Scroll[2] < 4) then
+    m_Scroll[2] = math.max(m_Caret[2] - 4, 1)
   end
 
-  if (self.Caret[2] - 1 - self.Scroll[2] > self.Size[2] - 4) then
-    self.Scroll[2] = self.Caret[2] - 1 - self.Size[2] + 4
-    if (self.Scroll[2] < 1) then
-      self.Scroll[2] = 1
-    end
+  if (m_Caret[2] - 1 - m_Scroll[2] > m_Size[2] - 4) then
+    m_Scroll[2] = math.max(m_Caret[2] - 1 - m_Size[2] + 4, 1)
   end
 
-  self.ScrollBar:SetScroll(self.Scroll[1] - 1)
+  self.ScrollBar:SetScroll(m_Scroll[1] - 1)
 end
 
 function PANEL:UnIndent(line)
-  local i = line:find("%S")
-  if (i == nil or i > 5) then
-    i = 5
-  end
-  return line:sub(i)
+  local iF = line:find("%S")
+  local iS = (iF == nil or iF > 5) and 5 or iF
+  return line:sub(iS)
 end
 
 function PANEL:CanUndo()
@@ -1083,9 +1091,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
     luapad.SaveAsScript()
   end
 
-  if (alt) then
-    return
-  end
+  if (alt) then return end
 
   if (control) then
     if (code == KEY_A) then
@@ -1096,16 +1102,12 @@ function PANEL:CustomOnKeyCodeTyped(code)
       self:DoRedo()
     elseif (code == KEY_X) then
       if (self:HasSelection()) then
-        self.clipboard = self:GetSelection()
-        self.clipboard = string.Replace(self.clipboard, "\n", "\r\n")
-        SetClipboardText(self.clipboard)
+        self:ToSelection()
         self:SetSelection()
       end
     elseif (code == KEY_C) then
       if (self:HasSelection()) then
-        self.clipboard = self:GetSelection()
-        self.clipboard = string.Replace(self.clipboard, "\n", "\r\n")
-        SetClipboardText(self.clipboard)
+        self:ToSelection()
       end
     elseif (code == KEY_Q) then
       self:GetParent():Close()
@@ -1116,10 +1118,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
     elseif (code == KEY_N) then
       luapad.NewTab()
     elseif (code == KEY_UP) then
-      self.Scroll[1] = self.Scroll[1] - 1
-      if (self.Scroll[1] < 1) then
-        self.Scroll[1] = 1
-      end
+      self.Scroll[1] = math.max(self.Scroll[1] - 1, 1)
     elseif (code == KEY_DOWN) then
       self.Scroll[1] = self.Scroll[1] + 1
     elseif (code == KEY_LEFT) then
@@ -1169,8 +1168,8 @@ function PANEL:CustomOnKeyCodeTyped(code)
     elseif (code == KEY_G) then
       luapad.RunScriptClient()
     elseif (code == KEY_B) then
-      luapad.RunScriptServer()
       luapad.RunScriptClient()
+      luapad.RunScriptServer(nil, true)
     end
 
   else
@@ -1184,9 +1183,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
         self.Caret[1] = self.Caret[1] - 1
 
         local length = string.len(self.Rows[self.Caret[1]])
-        if (self.Caret[2] > length + 1) then
-          self.Caret[2] = length + 1
-        end
+        self.Caret[2] = math.min(self.Caret[2], length + 1)
       end
 
       self:ScrollCaret()
@@ -1199,9 +1196,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
         self.Caret[1] = self.Caret[1] + 1
 
         local length = string.len(self.Rows[self.Caret[1]])
-        if (self.Caret[2] > length + 1) then
-          self.Caret[2] = length + 1
-        end
+        self.Caret[2] = math.min(self.Caret[2], length + 1)
       end
 
       self:ScrollCaret()
@@ -1236,18 +1231,11 @@ function PANEL:CustomOnKeyCodeTyped(code)
     elseif (code == KEY_PAGEUP) then
       self.Caret[1] = self.Caret[1] - math.ceil(self.Size[1] / 2)
       self.Scroll[1] = self.Scroll[1] - math.ceil(self.Size[1] / 2)
-      if (self.Caret[1] < 1) then
-        self.Caret[1] = 1
-      end
+      self.Caret[1] = math.max(self.Caret[1], 1)
 
       local length = string.len(self.Rows[self.Caret[1]])
-      if (self.Caret[2] > length + 1) then
-        self.Caret[2] = length + 1
-      end
-      if (self.Scroll[1] < 1) then
-        self.Scroll[1] = 1
-      end
-
+      self.Caret[2] = math.min(self.Caret[2], length + 1)
+      self.Scroll[1] = math.max(self.Scroll[1], 1)
       self:ScrollCaret()
 
       if (not shift) then
@@ -1256,18 +1244,15 @@ function PANEL:CustomOnKeyCodeTyped(code)
     elseif (code == KEY_PAGEDOWN) then
       self.Caret[1] = self.Caret[1] + math.ceil(self.Size[1] / 2)
       self.Scroll[1] = self.Scroll[1] + math.ceil(self.Size[1] / 2)
-      if (self.Caret[1] > self:GetRownum()) then
-        self.Caret[1] = self:GetRownum()
-      end
+
+      self.Caret[1] = math.min(self.Caret[1], self:GetRownum())
+
       if (self.Caret[1] == self:GetRownum()) then
         self.Caret[2] = 1
       end
 
       local length = string.len(self.Rows[self.Caret[1]])
-      if (self.Caret[2] > length + 1) then
-        self.Caret[2] = length + 1
-      end
-
+      self.Caret[2] = math.min(self.Caret[2], length + 1)
       self:ScrollCaret()
 
       if (not shift) then
@@ -1332,10 +1317,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
       self:Indent(shift)
     else
       if (shift) then
-        local newpos = self.Caret[2] - 4
-        if (newpos < 1) then
-          newpos = 1
-        end
+        local newpos = math.max(self.Caret[2] - 4, 1)
         self.Start = {self.Caret[1], newpos}
         if (self:GetSelection():find("%S")) then
           self.Start = self:CopyPosition(self.Caret)
@@ -1399,17 +1381,17 @@ function PANEL:GetWordEnd(caret)
 end
 
 function PANEL:Indent(shift)
-  local tab_scroll = self:CopyPosition(self.Scroll)
-  local tab_start, tab_caret = self:MakeSelection(self:Selection())
-  tab_start[2] = 1
+  local m_Scr = self:CopyPosition(self.Scroll)
+  local m_Str, m_Car = self:MakeSelection(self:Selection())
 
-  if (tab_caret[2] ~= 1) then
-    tab_caret[1] = tab_caret[1] + 1
-    tab_caret[2] = 1
+  m_Str[2] = 1
+  if (m_Car[2] ~= 1) then
+    m_Car[1] = m_Car[1] + 1
+    m_Car[2] = 1
   end
 
-  self.Caret = self:CopyPosition(tab_caret)
-  self.Start = self:CopyPosition(tab_start)
+  self.Caret = self:CopyPosition(m_Car)
+  self.Start = self:CopyPosition(m_Str)
 
   if (self.Caret[2] == 1) then
     self.Caret = self:MovePosition(self.Caret, -1)
@@ -1422,9 +1404,9 @@ function PANEL:Indent(shift)
     self:SetSelection("    " .. self:GetSelection():gsub("\n", "\n    "))
   end
 
-  self.Caret = self:CopyPosition(tab_caret)
-  self.Start = self:CopyPosition(tab_start)
-  self.Scroll = self:CopyPosition(tab_scroll)
+  self.Caret = self:CopyPosition(m_Car)
+  self.Start = self:CopyPosition(m_Str)
+  self.Scroll = self:CopyPosition(m_Scr)
   self:ScrollCaret()
 end
 
