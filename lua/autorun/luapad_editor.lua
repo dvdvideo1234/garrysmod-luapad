@@ -99,7 +99,7 @@ local FONT_SIZE = {
   ID = 2, -- Default font index
   Form = "%s%s%d", -- Name pattern
   Name = "LuapadCodeFont", -- Base name
-  Size = {12, 16, 20, 24, 28}
+  Size = {12, 16, 20, 24, 28, 32}
 }
 
 for iF = 1, #FONT_SIZE.Size do
@@ -111,46 +111,6 @@ for iF = 1, #FONT_SIZE.Size do
 end
 
 local PANEL = {}
-
-function PANEL:GetRownum()
-  return #self.Rows
-end
-
-function PANEL:GetFontSize()
-  return self.FontWidth, self.FontHeight
-end
-
-function PANEL:RefreshView()
-  local tR = self:GetTable().PaintRows -- Clear row cache
-  if(istable(tR)) then table.Empty(tR) else self.PaintRows = {} end
-end
-
-function PANEL:SetFontInfo(iD)
-  -- Calculate the proper font index
-  local tS = FONT_SIZE.Size -- The array of font sizes
-  local iD = math.floor(math.Clamp((tonumber(iD) or 0), 0, #tS))
-  local iF = (tS[iD] and iD or FONT_SIZE.ID) -- Font index
-  local iS = tS[iF] -- The actual font size in pixels
-  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, "", iS)
-  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, "Bold", iS)
-  -- Pick the actual bold or regular font
-  surface.SetFont(sR) -- Get proper value from text size
-  -- Update the current text size in pixels
-  self.FontWidth, self.FontHeight = surface.GetTextSize(" ")
-  self.FontName = {ID = iF, R = sR, B = sB}
-  self:RefreshView()
-  self:InvalidateLayout()
-end
-
-function PANEL:GetFontInfo()
-  local tN = self:GetTable().FontName
-  return tN.ID, table.Copy(FONT_SIZE.Size), FONT_SIZE.ID
-end
-
-function PANEL:GetFontName(bB)
-  local tN = self:GetTable().FontName
-  return (bB and tN.B or tN.R)
-end
 
 function PANEL:Init()
   self:SetCursor("beam")
@@ -195,6 +155,61 @@ function PANEL:Init()
   self.TextEntry.Parent = self
 
   self.LastClick = 0
+end
+
+function PANEL:GetRownum()
+  return #self.Rows
+end
+
+function PANEL:GetFontSize()
+  return self.FontWidth, self.FontHeight
+end
+
+function PANEL:RefreshView()
+  local tR = self:GetTable().PaintRows -- Clear row cache
+  if(istable(tR)) then table.Empty(tR) else self.PaintRows = {} end
+end
+
+function PANEL:SetFontInfo(iD)
+  -- Calculate the proper font index
+  local tS = FONT_SIZE.Size -- The array of font sizes
+  local iD = math.floor(math.Clamp((tonumber(iD) or 0), 0, #tS))
+  local iF = (tS[iD] and iD or FONT_SIZE.ID) -- Font index
+  local iS = tS[iF] -- The actual font size in pixels
+  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, "", iS)
+  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, "Bold", iS)
+  -- Pick the actual bold or regular font
+  surface.SetFont(sR) -- Get proper value from text size
+  -- Update the current text size in pixels
+  self.FontWidth, self.FontHeight = surface.GetTextSize(" ")
+  self.FontName = {ID = iF, R = sR, B = sB}
+  self:RefreshView()
+  self:InvalidateLayout()
+end
+
+function PANEL:GetFontInfo()
+  local tN = self:GetTable().FontName
+  return tN.ID, table.Copy(FONT_SIZE.Size), FONT_SIZE.ID
+end
+
+function PANEL:GetFontName(bB)
+  local tN = self:GetTable().FontName
+  return (bB and tN.B or tN.R)
+end
+
+function PANEL:SetEmptyRow()
+  local m_Tab = self:GetTable()
+  local m_Cn = self:GetRownum()
+  local m_Rw = m_Tab.Rows
+  local m_Pn = m_Tab.PaintRows
+  if(not m_Rw) then return end
+  if(not m_Pn) then return end
+  if (m_Rw[m_Cn] ~= "") then
+    table.insert(m_Rw, "")
+    table.insert(m_Pn, false)
+    m_Cn = m_Cn + 1
+  end
+  return m_Cn
 end
 
 function PANEL:GetThemeKeys()
@@ -392,12 +407,8 @@ end
 
 function PANEL:SetText(text)
   self.Rows = string.Explode("\n", text)
-  local last = self:GetRownum()
 
-  if (self.Rows[last] ~= "") then
-    last = last + 1
-    self.Rows[last] = ""
-  end
+  local last = self:SetEmptyRow()
 
   self.Caret = {1, 1}
   self.Start = {1, 1}
@@ -716,15 +727,16 @@ end
 --[[
  * Render from the first line otherwise the multiline coments are not triggered correctly
  * It is possible the beginning of the screen to be in the middle of a multiline comment
+ * Because of that the rendering should start from the last row that is not a multiline entry
 ]]
 function PANEL:GetRenderBounds()
   local m_Tab = self:GetTable()
-  local m_Par = m_Par.PaintRows
+  local m_Par = m_Tab.PaintRows
   local m_S = m_Tab.Scroll[1]
   local m_E = (m_S + m_Tab.Size[1] + 1)
   if(not m_Par) then return 1, m_E end
   if(table.IsEmpty(m_Par)) then return 1, m_E end
-  while(m_Par[m_S] and m_S > 1) do
+  while(m_S > 1 and m_Par[m_S]) do
     if(not m_Par[m_S][3]) then break end
     m_S = m_S - 1 -- Get the previos row
   end -- Find the first not multiline row
@@ -869,10 +881,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
       self:RefreshView()
     end
 
-    if (self.Rows[#self.Rows] ~= "") then
-      table.insert(self.Rows, "")
-      table.insert(self.PaintRows, false)
-    end
+    self:SetEmptyRow()
   end
 
   if (not text or text == "") then
@@ -915,12 +924,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   self.Rows[stop[1]] = self.Rows[stop[1]] .. remainder
   self.PaintRows[stop[1]] = false
 
-  if (self.Rows[#self.Rows] ~= "") then
-    table.insert(self.Rows, "")
-    table.insert(self.PaintRows, false)
-    self:RefreshView() -- TODO: fix for cache errors
-  end
-
+  self:SetEmptyRow()
   self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
 
   self:RefreshView()
