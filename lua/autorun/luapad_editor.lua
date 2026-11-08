@@ -323,21 +323,20 @@ function PANEL:OnMousePressed(code)
     end
   elseif (code == MOUSE_RIGHT) then
     local pMenu = DermaMenu()
-    pMenu:SetPos(gui.MousePos())
+    if(not IsValid(pMenu)) then return end
+    pMenu:SetParent(self)
 
     if (self:CanUndo()) then
       pMenu:AddOption(
         "Undo", function()
           self:DoUndo()
-        end
-      )
+        end):SetImage(luapad.ToIcon("arrow_undo"))
     end
     if (self:CanRedo()) then
       pMenu:AddOption(
         "Redo", function()
           self:DoRedo()
-        end
-      )
+        end):SetImage(luapad.ToIcon("arrow_redo"))
     end
 
     if (self:CanUndo() or self:CanRedo()) then
@@ -351,15 +350,13 @@ function PANEL:OnMousePressed(code)
             self:ToSelection()
             self:SetSelection()
           end
-        end
-      )
+        end):SetImage(luapad.ToIcon("cut"))
       pMenu:AddOption(
         "Copy", function()
           if (self:HasSelection()) then
             self:ToSelection()
           end
-        end
-      )
+        end):SetImage(luapad.ToIcon("page_copy"))
     end
 
     pMenu:AddOption(
@@ -369,15 +366,13 @@ function PANEL:OnMousePressed(code)
         else
           self:SetSelection()
         end
-      end
-    )
+      end):SetImage(luapad.ToIcon("page_paste"))
 
     if (self:HasSelection()) then
       pMenu:AddOption(
         "Delete", function()
           self:SetSelection()
-        end
-      )
+        end):SetImage(luapad.ToIcon("page_delete"))
     end
 
     pMenu:AddSpacer()
@@ -385,10 +380,10 @@ function PANEL:OnMousePressed(code)
     pMenu:AddOption(
       "Select all", function()
         self:SelectAll()
-      end
-    )
+      end):SetImage(luapad.ToIcon("pencil"))
 
     pMenu:Open()
+    pMenu:MakePopup()
   end
 end
 
@@ -1014,7 +1009,9 @@ function PANEL:OnMouseWheeled(delta)
   if(control and m_Sign ~= 0) then
     local iF = self:GetFontInfo() + m_Sign
     local iS = ((iF == 0) and 1 or iF)
+    local tS = self:GetParent():GetStreamInfo()
     self:SetFontInfo(iS)
+    tS.Font = self:GetFontInfo()
   else
     m_Scroll[1] = math.max(m_Scroll[1] - 4 * delta, 1)
     m_Scroll[1] = math.min(m_Scroll[1], self:GetRownum())
@@ -1047,11 +1044,9 @@ function PANEL:ScrollCaret()
 end
 
 function PANEL:UnIndent(line)
-  local i = line:find("%S")
-  if (i == nil or i > 5) then
-    i = 5
-  end
-  return line:sub(i)
+  local iF = line:find("%S")
+  local iS = (iF == nil or iF > 5) and 5 or iF
+  return line:sub(iS)
 end
 
 function PANEL:CanUndo()
@@ -1173,8 +1168,8 @@ function PANEL:CustomOnKeyCodeTyped(code)
     elseif (code == KEY_G) then
       luapad.RunScriptClient()
     elseif (code == KEY_B) then
-      luapad.RunScriptServer()
       luapad.RunScriptClient()
+      luapad.RunScriptServer(nil, true)
     end
 
   else
@@ -1386,17 +1381,17 @@ function PANEL:GetWordEnd(caret)
 end
 
 function PANEL:Indent(shift)
-  local tab_scroll = self:CopyPosition(self.Scroll)
-  local tab_start, tab_caret = self:MakeSelection(self:Selection())
-  tab_start[2] = 1
+  local m_Scr = self:CopyPosition(self.Scroll)
+  local m_Str, m_Car = self:MakeSelection(self:Selection())
 
-  if (tab_caret[2] ~= 1) then
-    tab_caret[1] = tab_caret[1] + 1
-    tab_caret[2] = 1
+  m_Str[2] = 1
+  if (m_Car[2] ~= 1) then
+    m_Car[1] = m_Car[1] + 1
+    m_Car[2] = 1
   end
 
-  self.Caret = self:CopyPosition(tab_caret)
-  self.Start = self:CopyPosition(tab_start)
+  self.Caret = self:CopyPosition(m_Car)
+  self.Start = self:CopyPosition(m_Str)
 
   if (self.Caret[2] == 1) then
     self.Caret = self:MovePosition(self.Caret, -1)
@@ -1409,9 +1404,9 @@ function PANEL:Indent(shift)
     self:SetSelection("    " .. self:GetSelection():gsub("\n", "\n    "))
   end
 
-  self.Caret = self:CopyPosition(tab_caret)
-  self.Start = self:CopyPosition(tab_start)
-  self.Scroll = self:CopyPosition(tab_scroll)
+  self.Caret = self:CopyPosition(m_Car)
+  self.Start = self:CopyPosition(m_Str)
+  self.Scroll = self:CopyPosition(m_Scr)
   self:ScrollCaret()
 end
 

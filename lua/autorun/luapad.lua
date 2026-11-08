@@ -210,6 +210,13 @@ function luapad.IsHere(vA)
 end
 
 --[[
+ * Checks whenever the parameter is present
+]]
+function luapad.ToColor(vA, nD)
+  return math.floor(math.Clamp(tonumber(vA) or nD, 0, 255))
+end
+
+--[[
  * Checks if the path has disabled folder names
 ]]
 function luapad.IsPath(sP)
@@ -1098,7 +1105,7 @@ function luapad.Toggle()
   luapad.Statusbar:InvalidateLayout(true)
 
   luapad.AddToolbarItem("New (CTRL + N) / Active tab origin", "page_add"   , luapad.NewTab    , luapad.NewTabActive)
-  luapad.AddToolbarItem("Open (CTRL + O) / Open file menu"  , "folder_page", luapad.OpenTab   , luapad.OpenBrowseMenu)
+  luapad.AddToolbarItem("Open (CTRL + O) / Open file menu"  , "folder_page", luapad.OpenScript, luapad.OpenBrowseMenu)
   luapad.AddToolbarItem("Save (CTRL + S) / Save all tabs"   , "disk"       , luapad.SaveScript, luapad.SaveAll)
   luapad.AddToolbarItem("Save As (CTRL + ALT + S)"          , "page_save"  , luapad.SaveAsScript)
   luapad.AddToolbarSpacer()
@@ -1370,8 +1377,9 @@ local function luapadAttachFontMenu(pMenu, vTre)
   if(not IsValid(pA)) then return end
   local iF, tF, iD = pA:GetFontInfo()
   pMenu:AddOption("Default", function()
+    local tS = pT:GetStreamInfo()
     pA:SetFontInfo(iD)
-    pT:GetStreamInfo().Font = iD
+    tS.Font = pA:GetFontInfo()
   end):SetImage(luapad.ToIcon("shape_square_key"))
   -- Add font size options
   if(iF <= 0 or #tF == 0) then return end
@@ -1381,8 +1389,9 @@ local function luapadAttachFontMenu(pMenu, vTre)
   for iS = 1, #tF do -- List all available sizes
     local sI = (iS ~= iF) and "shape_square" or "shape_square_go"
     pIn:AddOption(tostring(tF[iS]), function()
+        local tS = pT:GetStreamInfo()
         pA:SetFontInfo(iS) -- Current size will have an arrow
-        pT:GetStreamInfo().Font = iS
+        tS.Font = pA:GetFontInfo()
       end):SetImage(luapad.ToIcon(sI))
   end
 end
@@ -1545,7 +1554,7 @@ local function luapadAttachFileMenu(pMenu, vTre)
   end):SetImage(luapad.ToIcon("page_add"))
   pMenu:AddOption("Open", function()
     local tS = pT:GetStreamInfo()
-    luapad.OpenTab(tS.Path)
+    luapad.OpenScript(tS.Path)
   end):SetImage(luapad.ToIcon("folder_page"))
   pMenu:AddOption("Save", function()
     luapad.SaveScript(pT)
@@ -1989,13 +1998,6 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
     return tP[GLOB_CONFIG.STORKY]
   end
 
-  local tSor  = pPan[GLOB_CONFIG.STORKY]
-  tSor.Name = sNam -- The actual file name associated with the tab
-  tSor.Path = sPth -- File path always relative to the game folder
-  tSor.Term = sTag -- Tab term in case provided is displayed instead of name
-  tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
-  tSor.Teme = sTem -- The theme being used for the tab text area
-
   local nW, nH = pPan:GetSize()
   local pText = vgui.Create("LuapadEditor", pPan)
   if(not IsValid(pText)) then return end
@@ -2007,8 +2009,16 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   pText:SizeToContents()
   pText:SetFontInfo(iFon)
 
+  local tSor = pPan[GLOB_CONFIG.STORKY]
+  tSor.Name = sNam -- The actual file name associated with the tab
+  tSor.Path = sPth -- File path always relative to the game folder
+  tSor.Term = sTag -- Tab term in case provided is displayed instead of name
+  tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
+  tSor.Teme = sTem -- The theme being used for the tab text area
+  tSor.Font = pText:GetFontInfo()  -- The font being applied on the text area
+
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
-  local pTab  = tInfo.Tab; tSor.Font = pText:GetFontInfo() -- The font being applied on the text area
+  local pTab  = tInfo.Tab -- A refererence to the current tab
 
   pTab:SetTooltip(sPth .. sNam)
 
@@ -2098,6 +2108,10 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
     local pIn, pOp = pMenu:AddSubMenu("Theme")
     pOp:SetIcon(luapad.ToIcon("folder_palette"))
     luapadAttachThemeMenu(pIn, self)
+    -- Change tab font
+    local pIn, pOp = pMenu:AddSubMenu("Font")
+    pOp:SetIcon(luapad.ToIcon("style"))
+    luapadAttachFontMenu(pIn, self)
     -- Refresh a tab
     local pIn, pOp = pMenu:AddSubMenu("Refresh")
     pOp:SetIcon(luapad.ToIcon("table_refresh"))
@@ -2329,30 +2343,30 @@ function luapad.SetThemeFile(vTre, sN)
   local oB, sB, sF = "data/"..tD[1], tD[1], sN..".txt"
   if(not file.IsDir(sB, "DATA")) then file.CreateDir(tD[1]) end
   -- Open the file so the theme can be extracted
-  local sF = file.Read(sB..sF, "rb", "DATA")
-  if(not sF) then
-    luapad.SetStatus("File [%s%s] highlight missing! (apply default theme)", "STAT_WR", oB, sF)
+  local sR = file.Read(sB..sF, "DATA")
+  if(not sR) then
+    luapad.SetStatus("File [%s%s] highlight missing! (check the file name)", "STAT_WR", oB, sF)
     return -- Exit the routine end report the status
   end
   local pA = pT:GetTextArea()
   if(not IsValid(pA)) then return end
-  local tW = GLOB_CONFIG.PATNLN:Explode(sF, true)
+  local tW = GLOB_CONFIG.PATNLN:Explode(sR, true)
   local tH = pA:GetTable().Highlight
   local sD = GLOB_CONFIG.DELIMS
   for iD = 1, #tW do -- Every line contains token and color
     local tT = sD:Explode(tW[iD]) -- Empty lines
     local sT = tT[1]:Trim() -- Color token to search for
     if(tH[sT]) then
-      local nR = getColor(tT[2]:Trim(), 0)
-      local nG = getColor(tT[3]:Trim(), 0)
-      local nB = getColor(tT[4]:Trim(), 0)
-      local nA = getColor(tT[5]:Trim(), 255)
+      local nR = luapad.ToColor(tT[2]:Trim(), 0)
+      local nG = luapad.ToColor(tT[3]:Trim(), 0)
+      local nB = luapad.ToColor(tT[4]:Trim(), 0)
+      local nA = luapad.ToColor(tT[5]:Trim(), 255)
       tH[sT][1] = Color(nR, nG, nB, nA)
       tH[sT][2] = (tT[6]:Trim():sub(1, 1) == "V")
     end
   end
   pA:RefreshView()
-  self:InvalidateLayout()
+  pA:InvalidateLayout()
 end
 
 --[[
@@ -2620,7 +2634,7 @@ function luapad.OpenTree()
   return luapad.BrowserTree
 end
 
-function luapad.OpenTab(path)
+function luapad.OpenScript(path)
   if(SERVER) then return end
 
   local pS = luapad.PropertySheet
