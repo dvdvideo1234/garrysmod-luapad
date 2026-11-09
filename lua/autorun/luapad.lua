@@ -39,7 +39,6 @@ local GLOB_CONFIG = {
 -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
 local VAR_ARN = CreateConVar(GLOB_CONFIG.LOWADN.."_autorenew", 14, GLOB_CONFIG.RFLAGS, "File grace period for auto renew in days", 0, 1000)
 local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.RFLAGS, "Makes the luapad addon admin usable only", 0, 1)
-local VAR_MXR = CreateConVar(GLOB_CONFIG.LOWADN.."_maxrecurs", 20, GLOB_CONFIG.RFLAGS, "Recurse depth when opening a file system", 0, 100)
 local VAR_EDT = CreateConVar(GLOB_CONFIG.LOWADN.."_endataorg",  1, GLOB_CONFIG.RFLAGS, "File operation in the whole data folder", 0, 1)
 
 -- These are the client specifc configurations
@@ -2029,7 +2028,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   tSor.Font = pText:GetFontInfo()  -- The font being applied on the text area
 
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
-  local pTab  = tInfo.Tab -- A refererence to the current tab
+  local pTab  = tInfo.Tab -- A reference to the current tab
 
   pTab:SetTooltip(sPth .. sNam)
 
@@ -2553,105 +2552,50 @@ function luapad.OpenTree()
   end
 
   -- Tree panel to brows for a file
-  local pTree = vgui.Create("DTree", luapad.BrowserArea)
+  local pTree = vgui.Create("DFileBrowser", luapad.BrowserArea)
   if(not IsValid(pTree)) then return end
+  pTree:Clear()
   pTree:Dock(FILL)
-  pTree:SetPadding(5)
   pTree:SetTooltip("File selection browser")
   luapad.BrowserArea:InvalidateChildren(true)
-
-  -- Dedicated tree methods for browsing
-  function pTree:PopulateNode(pNode, sPath, tConf, iStag)
-    local iStag = math.floor(tonumber(iStag) or 0)
-    if(iStag <= 0) then return end
-    -- Recursion guard has passed. Generate stage
-    local tF, tD = file.Find(sPath .. "*", "GAME", "nameasc")
-    if(not (tF or tD)) then return end
-    -- Folders
-    if(tD) then
-      for iD = 1, #tD do
-        local sD = tD[iD]
-        local pC = pNode:AddNode(sD, luapad.ToIcon("folder"))
-              pC.DirPath = sPath .. sD .. "/"
-              pC:SetTooltip(pC.DirPath)
-        -- Click a folder
-        function pC:DoClick()
-          local bEx = pC:GetExpanded()
-          local bSe = input.IsKeyDown(KEY_LSHIFT)
-          local bSr = input.IsKeyDown(KEY_RSHIFT)
-          if(bSe or bSr) then
-            pC:ExpandRecurse(not bEx)
-          else
-            pC:SetExpanded(not bEx)
-          end
-        end
-        function pC:DoMiddleClick()
-          local bEx = pC:GetExpanded()
-          pC:ExpandRecurse(not bEx)
-        end
-        function pC:DoRightClick()
-          SetClipboardText(pC.DirPath)
-        end
-        -- Expand the folder when clicked wherever
-        pC.Expander.DoClick       = pC.DoClick
-        pC.Expander.DoMiddleClick = pC.DoMiddleClick
-        pC.Expander.DoRightClick  = pC.DoRightClick
-        -- Use this as base and attach the rest
-        self:PopulateNode(pC, pC.DirPath, tConf, iStag - 1)
-      end
-    end
-    -- Files
-    if(tF) then
-      for iF = 1, #tF do
-        local sF = tF[iF]
-        local sE = string.GetExtensionFromFilename(sF)
-        local tE = ENABLE_EXTENS[sE] -- Extension
-        if(tE) then
-          local sI = luapad.ToIcon(tE.Icon or "page")
-          local pC = pNode:AddNode(sF, sI)
-          pC.DirPath, pC.IsFile = sPath, true
-          pC:SetTooltip(sF)
-          -- Click a file
-          function pC:DoClick()
-            if(not self.IsFile) then return end
-            local sD, sF = self.DirPath, self:GetText()
-            if(luapad.IsOpen(sF, sD)) then return end
-            local sE = string.GetExtensionFromFilename(sF)
-            local tE = (sE and ENABLE_EXTENS[sE] or nil)
-            local sI = (tE and tE.Icon or nil)
-            local bB, sB = luapad.GetPath(sD)
-            if(bB) then -- The contents in the data folder are refreshed on write
-              luapad.AddTab(sF, file.Read(sB .. sF, "DATA"), sD, nil, sI)
-            else -- Every other folder could not be refreshed but read
-              luapad.AddTab(sF, file.Read(sD .. sF, "GAME"), sD, nil, sI)
-            end
-          end
-          function pC:DoRightClick()
-            local sD, sF = self.DirPath, self:GetText()
-            SetClipboardText(sD .. sF)
-          end
-          pC.DoDoubleClick = pC.DoClick
-        end
-      end
-    end
-  end
-
-  function pTree:PopulateOrigin(sName, sIco)
+  -- Populate an origin relative to the game folder
+  function pTree:PopulateOrigin(sName)
     local sName = string.Trim(sName, "/")
     local pRoot = self:AddNode(sName)
     if (not IsValid(pRoot)) then return end
-
+    local tE = ENABLE_EXTENS[sE] -- Extension
+    local tK = table.GetKeys(table tabl)
+    local sE = "*."..table.concat(tK, " *.")
     -- Check of the leading folder is enabled
     local sSors = string.match(sName, "^([^/\\]+)", 1)
     local tConf = ENABLE_FOLDER[sSors]
     if(not tConf) then return end
+    local bB, sB, oB = luapad.GetPath(sName)
     self:SetTooltip("File browser: " .. sName)
-
-    pRoot.Icon:SetImage(luapad.ToIcon((sIco or tConf.Icon) or "computer"))
-
-    self:PopulateNode(pRoot, sName .. "/", tConf, VAR_MXR:GetInt())
+    self:SetPath(bB and "DATA" or "GAME")
+    self:SetBaseFolder(bB and sB or oB)
+    self:SetFileTypes(sE)
+    self:SetOpen(true)
   end
-
+  -- Open the file when double clicked
+  function pTree:OnDoubleClick(pF, sF)
+    local sN = string.GetFileFromFilename(sF)
+    local sE = string.GetExtensionFromFilename(sF)
+    local tE = (sE and ENABLE_EXTENS[sE] or nil)
+    local sI = luapad.ToIcon(tE and tE.Icon or "page")
+    local bP = (self:GetBaseFolder() == "DATA")
+    local sD = (bP and "data/"..sF or sF)
+    local bB, sB, oB = luapad.GetPath(sD)
+    if(bB) then -- The contents in the data folder are refreshed on write
+      luapad.AddTab(sN, file.Read(sB .. sN, "DATA"), sD, nil, sI)
+    else -- Every other folder could not be refreshed but read
+      luapad.AddTab(sN, file.Read(oB .. sN, "GAME"), sD, nil, sI)
+    end
+  end
+  -- Copy the full path when right clicked
+  function pTree:OnRightClick(sF, pF)
+    SetClipboardText(sF)
+  end
   return pTree
 end
 
