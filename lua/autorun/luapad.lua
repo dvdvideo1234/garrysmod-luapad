@@ -920,7 +920,7 @@ function luapad.SaveTabs()
     return -- No need to process everything else when there is no file
   end
   file.Write(sB..sN, table.concat(tW, "\n"))
-  luapad.SetStatus("File [%s%s] export successful as tab list!", "STAT_OK", oB, sN)
+  luapad.SetStatus("File [%s%s] tab state successfully exported!", "STAT_OK", oB, sN)
 end
 
 function luapad.LoadTabs()
@@ -956,8 +956,11 @@ function luapad.LoadTabs()
     end
   end
   -- If a tab is marked as active set the last one marked
-  if(aT and IsValid(aT)) then pS:SetActiveTab(aT) end
-  luapad.SetStatus("File [%s%s] import successful as tab list!", "STAT_OK", oB, sN)
+  if(aT and IsValid(aT)) then
+    pS:SetActiveTab(aT)
+    pS:SetActiveTabToTitle()
+  end
+  luapad.SetStatus("File [%s%s] tab state successfully imported!", "STAT_OK", oB, sN)
 end
 
 function luapad.Toggle()
@@ -1001,7 +1004,7 @@ function luapad.Toggle()
   luapad.Toolbar:SetSize(luapad.Frame:GetWide() - 6, 25)
   luapad.Toolbar:GetSpaceX(5)
   luapad.Toolbar:SetSpaceY(5)
-  luapad.Toolbar:SetLayoutDir(LEFT)
+  luapad.Toolbar:SetLayoutDir(TOP)
   luapad.Toolbar:DockPadding(2,2,2,2)
   luapad.Toolbar:Dock(TOP)
   luapad.Toolbar:SetStretchWidth(true)
@@ -1035,6 +1038,14 @@ function luapad.Toggle()
       local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
       luapad.Frame:SetTitle(sN .. " - " .. sA)
     end
+  end
+
+  function luapad.PropertySheet:SetActiveTabToTitle()
+    local pA = self:GetActiveTab()
+    if(not IsValid(pA)) then return end
+    local tS = pA:GetPanel():GetStreamInfo()
+    local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
+    luapad.Frame:SetTitle(sN .. " - " .. sA)
   end
 
   function luapad.PropertySheet:GetTabIndex(vTre, iOrg, bNop)
