@@ -83,7 +83,7 @@ local COLOR_HIGHLIGHT = {
     ["code.construct" ] = {Color(197, 134, 192, 255)},
     ["code.operator"  ] = {Color(  0, 255, 255, 255)},
     ["code.comment"   ] = {Color(  0, 200,   0, 255)}
-  },
+  }
 }
 
 local TOKEN_CLASSIFY = {
@@ -98,14 +98,14 @@ local TOKEN_CLASSIFY = {
 local FONT_SIZE = {
   ID = 2, -- Default font index
   Form = "%s%s%d", -- Name pattern
-  Name = "LuapadCodeFont", -- Base name
+  Name = "LuapadCode", -- Base name
   Size = {12, 16, 20, 24, 28, 32}
 }
 
 for iF = 1, #FONT_SIZE.Size do
   local iS = FONT_SIZE.Size[iF]
-  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, "", iS)
-  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, "Bold", iS)
+  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, "R", iS)
+  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, "B", iS)
   surface.CreateFont(sR, {font = "Courier New", size = iS, weight = 400})
   surface.CreateFont(sB, {font = "Courier New", size = iS, weight = 800})
 end
@@ -135,25 +135,24 @@ function PANEL:Init()
   self.ScrollBar = vgui.Create("DVScrollBar", self)
   self.ScrollBar:SetUp(1, 1)
 
-  self.TextEntry = vgui.Create("TextEntry", self)
+  self.TextEntry = vgui.Create("DTextEntry", self)
   self.TextEntry:SetMultiline(true)
   self.TextEntry:SetAllowNonAsciiCharacters(true)
   self.TextEntry:SetSize(0, 0)
 
-  self.TextEntry.OnLoseFocus = function(self)
-    self.Parent:CustomOnLoseFocus()
+  function self.TextEntry:OnLoseFocus()
+    self:GetParent():CustomOnLoseFocus()
   end
-  self.TextEntry.OnTextChanged = function(self)
-    self.Parent:CustomOnTextChanged()
+
+  function self.TextEntry:OnTextChanged()
+    self:GetParent():CustomOnTextChanged()
   end
-  self.TextEntry.OnKeyCodeTyped = function(self, code)
-    self.Parent:CustomOnKeyCodeTyped(code)
+
+  function self.TextEntry:OnKeyCodeTyped(code)
+    self:GetParent():CustomOnKeyCodeTyped(code)
   end
 
   self:SetThemeDefault()
-
-  self.TextEntry.Parent = self
-
   self.LastClick = 0
 end
 
@@ -176,8 +175,8 @@ function PANEL:SetFontInfo(iD)
   local iD = math.floor(math.Clamp((tonumber(iD) or 0), 0, #tS))
   local iF = (tS[iD] and iD or FONT_SIZE.ID) -- Font index
   local iS = tS[iF] -- The actual font size in pixels
-  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, "", iS)
-  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, "Bold", iS)
+  local sR = FONT_SIZE.Form:format(FONT_SIZE.Name, "R", iS)
+  local sB = FONT_SIZE.Form:format(FONT_SIZE.Name, "B", iS)
   -- Pick the actual bold or regular font
   surface.SetFont(sR) -- Get proper value from text size
   -- Update the current text size in pixels
@@ -1416,4 +1415,4 @@ end
 function PANEL:OnShortcut()
 end
 
-vgui.Register("LuapadEditor", PANEL, "Panel")
+vgui.Register("DLuapadEditor", PANEL, "DPanel")

@@ -39,7 +39,6 @@ local GLOB_CONFIG = {
 -- They can still do cs lua if you don't have 'sv_allowcslua 0'!!!
 local VAR_ARN = CreateConVar(GLOB_CONFIG.LOWADN.."_autorenew", 14, GLOB_CONFIG.RFLAGS, "File grace period for auto renew in days", 0, 1000)
 local VAR_ADM = CreateConVar(GLOB_CONFIG.LOWADN.."_adminonly",  1, GLOB_CONFIG.RFLAGS, "Makes the luapad addon admin usable only", 0, 1)
-local VAR_MXR = CreateConVar(GLOB_CONFIG.LOWADN.."_maxrecurs", 20, GLOB_CONFIG.RFLAGS, "Recurse depth when opening a file system", 0, 100)
 local VAR_EDT = CreateConVar(GLOB_CONFIG.LOWADN.."_endataorg",  1, GLOB_CONFIG.RFLAGS, "File operation in the whole data folder", 0, 1)
 
 -- These are the client specifc configurations
@@ -920,7 +919,7 @@ function luapad.SaveTabs()
     return -- No need to process everything else when there is no file
   end
   file.Write(sB..sN, table.concat(tW, "\n"))
-  luapad.SetStatus("File [%s%s] export successful as tab list!", "STAT_OK", oB, sN)
+  luapad.SetStatus("File [%s%s] tab state successfully exported!", "STAT_OK", oB, sN)
 end
 
 function luapad.LoadTabs()
@@ -956,8 +955,11 @@ function luapad.LoadTabs()
     end
   end
   -- If a tab is marked as active set the last one marked
-  if(aT and IsValid(aT)) then pS:SetActiveTab(aT) end
-  luapad.SetStatus("File [%s%s] import successful as tab list!", "STAT_OK", oB, sN)
+  if(aT and IsValid(aT)) then
+    pS:SetActiveTab(aT)
+    pS:SetActiveTabToTitle()
+  end
+  luapad.SetStatus("File [%s%s] tab state successfully imported!", "STAT_OK", oB, sN)
 end
 
 function luapad.Toggle()
@@ -1001,7 +1003,7 @@ function luapad.Toggle()
   luapad.Toolbar:SetSize(luapad.Frame:GetWide() - 6, 25)
   luapad.Toolbar:GetSpaceX(5)
   luapad.Toolbar:SetSpaceY(5)
-  luapad.Toolbar:SetLayoutDir(LEFT)
+  luapad.Toolbar:SetLayoutDir(TOP)
   luapad.Toolbar:DockPadding(2,2,2,2)
   luapad.Toolbar:Dock(TOP)
   luapad.Toolbar:SetStretchWidth(true)
@@ -1035,6 +1037,14 @@ function luapad.Toggle()
       local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
       luapad.Frame:SetTitle(sN .. " - " .. sA)
     end
+  end
+
+  function luapad.PropertySheet:SetActiveTabToTitle()
+    local pA = self:GetActiveTab()
+    if(not IsValid(pA)) then return end
+    local tS = pA:GetPanel():GetStreamInfo()
+    local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
+    luapad.Frame:SetTitle(sN .. " - " .. sA)
   end
 
   function luapad.PropertySheet:GetTabIndex(vTre, iOrg, bNop)
@@ -1999,7 +2009,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   end
 
   local nW, nH = pPan:GetSize()
-  local pText = vgui.Create("LuapadEditor", pPan)
+  local pText = vgui.Create("DLuapadEditor", pPan)
   if(not IsValid(pText)) then return end
 
   pText:SetSize(nW, nH)
@@ -2018,7 +2028,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   tSor.Font = pText:GetFontInfo()  -- The font being applied on the text area
 
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
-  local pTab  = tInfo.Tab -- A refererence to the current tab
+  local pTab  = tInfo.Tab -- A reference to the current tab
 
   pTab:SetTooltip(sPth .. sNam)
 
@@ -2516,122 +2526,77 @@ function luapad.OpenTree()
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
 
-  if (luapad.BrowserTree) then
-    local pB = luapad.BrowserTree
+  if (luapad.BrowserArea) then
+    local pB = luapad.BrowserArea
     if(IsValid(pB)) then pB:Remove() end
-    luapad.BrowserTree = nil
+    luapad.BrowserArea = nil
   end
 
-  local nX, nY = pSheet:GetPos()
   local nW, nH = pSheet:GetSize()
+  -- Base panel to dock others to
+  luapad.BrowserArea = vgui.Create("DPanel", luapad.Frame)
+  if(not IsValid(luapad.BrowserArea)) then return end
+  luapad.BrowserArea:DockPadding(2,2,2,2)
+  luapad.BrowserArea:SetSize(nW / 4, nH - 23)
 
-  luapad.BrowserTree = vgui.Create("DTree", luapad.Frame)
-  luapad.BrowserTree:SetPadding(5)
-  luapad.BrowserTree:SetPos(nX + (nW - nW / 4), nY + 22)
-  luapad.BrowserTree:SetSize(nW / 4, nH - 23)
-
-  local nW, nH = luapad.BrowserTree:GetSize()
-  local pClose = vgui.Create("DButton", luapad.BrowserTree)
-  pClose:SetPos(nW - 65, 4)
-  pClose:SetSize(45, 22)
-  pClose:SetText(">")
+  -- Close Button with the entire span
+  local pClose = vgui.Create("DButton", luapad.BrowserArea)
+  if(not IsValid(pClose)) then return end
+  pClose:Dock(LEFT)
+  pClose:SetWide(22)
   pClose:SetTooltip("Close")
-
   function pClose:DoClick()
-    luapad.BrowserTree:Remove()
+    local pB = luapad.BrowserArea
+    if(IsValid(pB)) then pB:Remove() end
+    luapad.BrowserArea = nil
   end
 
-  function luapad.BrowserTree:PopulateNode(pNode, sPath, tConf, iStag)
-    local iStag = math.floor(tonumber(iStag) or 0)
-    if(iStag <= 0) then return end
-    -- Recursion guard has passed. Generate stage
-    local tF, tD = file.Find(sPath .. "*", "GAME", "nameasc")
-    if(not (tF or tD)) then return end
-    -- Folders
-    if(tD) then
-      for iD = 1, #tD do
-        local sD = tD[iD]
-        local pC = pNode:AddNode(sD, luapad.ToIcon("folder"))
-              pC.DirPath = sPath .. sD .. "/"
-              pC:SetTooltip(pC.DirPath)
-        -- Click a folder
-        function pC:DoClick()
-          local bEx = pC:GetExpanded()
-          local bSe = input.IsKeyDown(KEY_LSHIFT)
-          local bSr = input.IsKeyDown(KEY_RSHIFT)
-          if(bSe or bSr) then
-            pC:ExpandRecurse(not bEx)
-          else
-            pC:SetExpanded(not bEx)
-          end
-        end
-        function pC:DoMiddleClick()
-          local bEx = pC:GetExpanded()
-          pC:ExpandRecurse(not bEx)
-        end
-        function pC:DoRightClick()
-          SetClipboardText(pC.DirPath)
-        end
-        -- Expand the folder when clicked wherever
-        pC.Expander.DoClick       = pC.DoClick
-        pC.Expander.DoMiddleClick = pC.DoMiddleClick
-        pC.Expander.DoRightClick  = pC.DoRightClick
-        -- Use this as base and attach the rest
-        self:PopulateNode(pC, pC.DirPath, tConf, iStag - 1)
-      end
-    end
-    -- Files
-    if(tF) then
-      for iF = 1, #tF do
-        local sF = tF[iF]
-        local sE = string.GetExtensionFromFilename(sF)
-        local tE = ENABLE_EXTENS[sE] -- Extension
-        if(tE) then
-          local sI = luapad.ToIcon(tE.Icon or "page")
-          local pC = pNode:AddNode(sF, sI)
-          pC.DirPath, pC.IsFile = sPath, true
-          pC:SetTooltip(sF)
-          -- Click a file
-          function pC:DoClick()
-            if(not self.IsFile) then return end
-            local sD, sF = self.DirPath, self:GetText()
-            if(luapad.IsOpen(sF, sD)) then return end
-            local sE = string.GetExtensionFromFilename(sF)
-            local tE = (sE and ENABLE_EXTENS[sE] or nil)
-            local sI = (tE and tE.Icon or nil)
-            local bB, sB = luapad.GetPath(sD)
-            if(bB) then -- The contents in the data folder are refreshed on write
-              luapad.AddTab(sF, file.Read(sB .. sF, "DATA"), sD, nil, sI)
-            else -- Every other folder could not be refreshed but read
-              luapad.AddTab(sF, file.Read(sD .. sF, "GAME"), sD, nil, sI)
-            end
-          end
-          function pC:DoRightClick()
-            local sD, sF = self.DirPath, self:GetText()
-            SetClipboardText(sD .. sF)
-          end
-          pC.DoDoubleClick = pC.DoClick
-        end
-      end
-    end
-  end
-
-  function luapad.BrowserTree:PopulateTree(sName, sIco)
+  -- Tree panel to brows for a file
+  local pTree = vgui.Create("DFileBrowser", luapad.BrowserArea)
+  if(not IsValid(pTree)) then return end
+  pTree:Clear()
+  pTree:Dock(FILL)
+  pTree:SetTooltip("File selection browser")
+  luapad.BrowserArea:InvalidateChildren(true)
+  -- Populate an origin relative to the game folder
+  function pTree:PopulateOrigin(sName)
     local sName = string.Trim(sName, "/")
     local pRoot = self:AddNode(sName)
     if (not IsValid(pRoot)) then return end
-
+    local tE = ENABLE_EXTENS[sE] -- Extension
+    local tK = table.GetKeys(table tabl)
+    local sE = "*."..table.concat(tK, " *.")
     -- Check of the leading folder is enabled
     local sSors = string.match(sName, "^([^/\\]+)", 1)
     local tConf = ENABLE_FOLDER[sSors]
     if(not tConf) then return end
-
-    pRoot.Icon:SetImage(luapad.ToIcon((sIco or tConf.Icon) or "computer"))
-
-    self:PopulateNode(pRoot, sName .. "/", tConf, VAR_MXR:GetInt())
+    local bB, sB, oB = luapad.GetPath(sName)
+    self:SetTooltip("File browser: " .. sName)
+    self:SetPath(bB and "DATA" or "GAME")
+    self:SetBaseFolder(bB and sB or oB)
+    self:SetFileTypes(sE)
+    self:SetOpen(true)
   end
-
-  return luapad.BrowserTree
+  -- Open the file when double clicked
+  function pTree:OnDoubleClick(pF, sF)
+    local sN = string.GetFileFromFilename(sF)
+    local sE = string.GetExtensionFromFilename(sF)
+    local tE = (sE and ENABLE_EXTENS[sE] or nil)
+    local sI = luapad.ToIcon(tE and tE.Icon or "page")
+    local bP = (self:GetBaseFolder() == "DATA")
+    local sD = (bP and "data/"..sF or sF)
+    local bB, sB, oB = luapad.GetPath(sD)
+    if(bB) then -- The contents in the data folder are refreshed on write
+      luapad.AddTab(sN, file.Read(sB .. sN, "DATA"), sD, nil, sI)
+    else -- Every other folder could not be refreshed but read
+      luapad.AddTab(sN, file.Read(oB .. sN, "GAME"), sD, nil, sI)
+    end
+  end
+  -- Copy the full path when right clicked
+  function pTree:OnRightClick(sF, pF)
+    SetClipboardText(sF)
+  end
+  return pTree
 end
 
 function luapad.OpenScript(path)
@@ -2647,16 +2612,16 @@ function luapad.OpenScript(path)
 
   if(path ~= nil) then
     local bB, sB, oB = luapad.GetPath(path)
-    pB:PopulateTree(oB)
+    pB:PopulateOrigin(oB)
     luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "provided", oB)
   elseif(#tI == 0) then -- No active tab is present and path is empty
-    pB:PopulateTree("data")
+    pB:PopulateOrigin("data")
     luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "default", "/data")
   else -- If editor is not empty there will always be an active tab
     local aT = pS:GetActiveTab()
     if(not IsValid(aT)) then return end
     local tS = aT:GetStreamInfo()
-    pB:PopulateTree(tS.Path)
+    pB:PopulateOrigin(tS.Path)
     luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "active tab", tS.Path)
   end
 end
@@ -2681,7 +2646,7 @@ function luapad.OpenBrowseMenu()
     pMenu:AddOption(sU, function()
       local pB = luapad.OpenTree()
       if(not IsValid(pB)) then return end
-      pB:PopulateTree(sD)
+      pB:PopulateOrigin(sD)
     end):SetImage(luapad.ToIcon(sI))
   end; pMenu:Open()
 end
