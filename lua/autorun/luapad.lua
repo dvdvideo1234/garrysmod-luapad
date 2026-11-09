@@ -2549,7 +2549,9 @@ function luapad.OpenTree()
   pClose:SetTooltip("Close")
 
   function pClose:DoClick()
-    luapad.BrowserTree:Remove()
+    local pTree = luapad.BrowserTree
+    if(IsValid(pTree)) then pTree:Remove() end
+    luapad.BrowserTree = nil
   end
 
   function luapad.BrowserTree:PopulateNode(pNode, sPath, tConf, iStag)
