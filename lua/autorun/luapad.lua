@@ -2010,7 +2010,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   end
 
   local nW, nH = pPan:GetSize()
-  local pText = vgui.Create("LuapadEditor", pPan)
+  local pText = vgui.Create("DLuapadEditor", pPan)
   if(not IsValid(pText)) then return end
 
   pText:SetSize(nW, nH)
@@ -2527,34 +2527,41 @@ function luapad.OpenTree()
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
 
-  if (luapad.BrowserTree) then
-    local pB = luapad.BrowserTree
+  if (luapad.BrowserArea) then
+    local pB = luapad.BrowserArea
     if(IsValid(pB)) then pB:Remove() end
-    luapad.BrowserTree = nil
+    luapad.BrowserArea = nil
   end
 
-  local nX, nY = pSheet:GetPos()
   local nW, nH = pSheet:GetSize()
+  -- Base panel to dock others to
+  luapad.BrowserArea = vgui.Create("DPanel", luapad.Frame)
+  if(not IsValid(luapad.BrowserArea)) then return end
+  luapad.BrowserArea:DockPadding(2,2,2,2)
+  luapad.BrowserArea:SetSize(nW / 4, nH - 23)
 
-  luapad.BrowserTree = vgui.Create("DTree", luapad.Frame)
-  luapad.BrowserTree:SetPadding(5)
-  luapad.BrowserTree:SetPos(nX + (nW - nW / 4), nY + 22)
-  luapad.BrowserTree:SetSize(nW / 4, nH - 23)
-
-  local nW, nH = luapad.BrowserTree:GetSize()
-  local pClose = vgui.Create("DButton", luapad.BrowserTree)
-  pClose:SetPos(nW - 65, 4)
-  pClose:SetSize(45, 22)
-  pClose:SetText(">")
+  -- Close Button with the entire span
+  local pClose = vgui.Create("DButton", luapad.BrowserArea)
+  if(not IsValid(pClose)) then return end
+  pClose:Dock(LEFT)
+  pClose:SetWide(22)
   pClose:SetTooltip("Close")
-
   function pClose:DoClick()
-    local pTree = luapad.BrowserTree
-    if(IsValid(pTree)) then pTree:Remove() end
-    luapad.BrowserTree = nil
+    local pB = luapad.BrowserArea
+    if(IsValid(pB)) then pB:Remove() end
+    luapad.BrowserArea = nil
   end
 
-  function luapad.BrowserTree:PopulateNode(pNode, sPath, tConf, iStag)
+  -- Tree panel to brows for a file
+  local pTree = vgui.Create("DTree", luapad.BrowserArea)
+  if(not IsValid(pTree)) then return end
+  pTree:Dock(FILL)
+  pTree:SetPadding(5)
+  pTree:SetTooltip("File selection browser")
+  luapad.BrowserArea:InvalidateChildren(true)
+
+  -- Dedicated tree methods for browsing
+  function pTree:PopulateNode(pNode, sPath, tConf, iStag)
     local iStag = math.floor(tonumber(iStag) or 0)
     if(iStag <= 0) then return end
     -- Recursion guard has passed. Generate stage
@@ -2629,7 +2636,7 @@ function luapad.OpenTree()
     end
   end
 
-  function luapad.BrowserTree:PopulateTree(sName, sIco)
+  function pTree:PopulateOrigin(sName, sIco)
     local sName = string.Trim(sName, "/")
     local pRoot = self:AddNode(sName)
     if (not IsValid(pRoot)) then return end
@@ -2638,13 +2645,14 @@ function luapad.OpenTree()
     local sSors = string.match(sName, "^([^/\\]+)", 1)
     local tConf = ENABLE_FOLDER[sSors]
     if(not tConf) then return end
+    self:SetTooltip("File browser: " .. sName)
 
     pRoot.Icon:SetImage(luapad.ToIcon((sIco or tConf.Icon) or "computer"))
 
     self:PopulateNode(pRoot, sName .. "/", tConf, VAR_MXR:GetInt())
   end
 
-  return luapad.BrowserTree
+  return pTree
 end
 
 function luapad.OpenScript(path)
@@ -2660,16 +2668,16 @@ function luapad.OpenScript(path)
 
   if(path ~= nil) then
     local bB, sB, oB = luapad.GetPath(path)
-    pB:PopulateTree(oB)
+    pB:PopulateOrigin(oB)
     luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "provided", oB)
   elseif(#tI == 0) then -- No active tab is present and path is empty
-    pB:PopulateTree("data")
+    pB:PopulateOrigin("data")
     luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "default", "/data")
   else -- If editor is not empty there will always be an active tab
     local aT = pS:GetActiveTab()
     if(not IsValid(aT)) then return end
     local tS = aT:GetStreamInfo()
-    pB:PopulateTree(tS.Path)
+    pB:PopulateOrigin(tS.Path)
     luapad.SetStatus("Origin is %s. Using [%s] as base folder.", "STAT_OK", "active tab", tS.Path)
   end
 end
@@ -2694,7 +2702,7 @@ function luapad.OpenBrowseMenu()
     pMenu:AddOption(sU, function()
       local pB = luapad.OpenTree()
       if(not IsValid(pB)) then return end
-      pB:PopulateTree(sD)
+      pB:PopulateOrigin(sD)
     end):SetImage(luapad.ToIcon(sI))
   end; pMenu:Open()
 end

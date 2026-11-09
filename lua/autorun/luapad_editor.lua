@@ -1415,4 +1415,4 @@ end
 function PANEL:OnShortcut()
 end
 
-vgui.Register("LuapadEditor", PANEL, "Panel")
+vgui.Register("DLuapadEditor", PANEL, "DPanel")
