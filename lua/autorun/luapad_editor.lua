@@ -725,17 +725,17 @@ end
  * Because of that the rendering should start from the last row that is not a multiline entry
 ]]
 function PANEL:GetRenderBounds()
-  local m_Tab = self:GetTable()
-  local m_Par = m_Tab.PaintRows
-  local m_S = m_Tab.Scroll[1]
-  local m_E = (m_S + m_Tab.Size[1] + 1)
-  if(not m_Par) then return 1, m_E end
-  if(table.IsEmpty(m_Par)) then return 1, m_E end
-  while(m_S > 1 and m_Par[m_S]) do
-    if(not m_Par[m_S][3]) then break end
-    m_S = m_S - 1 -- Get the previos row
+  local tTab = self:GetTable()
+  local tPar = tTab.PaintRows
+  local iS = tTab.Scroll[1]
+  local iE = (iS + tTab.Size[1] + 1)
+  if(not tPar) then return 1, iE end
+  if(table.IsEmpty(tPar)) then return 1, iE end
+  while(iS > 1 and tPar[iS]) do
+    if(not tPar[iS][3]) then break end
+    iS = iS - 1 -- Get the previos row
   end -- Find the first not multiline row
-  return m_S, m_E -- Return render bounds
+  return iS, iE -- Return render bounds
 end
 
 function PANEL:Paint(w, h)

@@ -926,7 +926,7 @@ function luapad.LoadTabs()
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-  pS:Clear() -- The * symbol is invalid for a file name
+  luapad.CloseTabAll() -- The * symbol is invalid for a file name
   -- Read the saved tabs file and load the related files
   local sP, sN = unpack(GLOB_CONFIG.SAVTAB)
   local bB, sB, oB = luapad.GetPath(sP)
@@ -1042,6 +1042,7 @@ function luapad.Toggle()
   function luapad.PropertySheet:SetActiveTabToTitle()
     local pA = self:GetActiveTab()
     if(not IsValid(pA)) then return end
+    local sN = GLOB_CONFIG.ADDONN
     local tS = pA:GetPanel():GetStreamInfo()
     local sA = GLOB_CONFIG.FFDRPT:format(tS.Path, tS.Name)
     luapad.Frame:SetTitle(sN .. " - " .. sA)
@@ -1215,7 +1216,11 @@ function luapad.CloseTabName(name, nopat)
     local sT = tostring(name or "")
     local iT, pT = pS:GetTabIndex(sT, 1, nopat)
     if(not iT) then return end -- No such tab do nothing
-    if(nI > 1) then pS:CloseTab(pT, true) else pS:Clear() end
+    if(nI > 1) then
+      pS:CloseTab(pT, true)
+    else
+      luapad.CloseTabAll()
+    end
     pS:InvalidateLayout()
   end
 end
@@ -1243,7 +1248,7 @@ function luapad.CloseTabView(vTre)
   local tI = pS:GetItems()
 
   if(#tI == 1) then
-    pS:Clear()
+    luapad.CloseTabAll()
   else
     pS:CloseTab(pT, true)
   end
@@ -1269,7 +1274,9 @@ function luapad.CloseTabLeft(vTre, bInc)
   -- Calculated closed tabs count
   local cT, nT = tI[1].Tab, iT
   -- Close all to the left including last
-  if(iT == #tI) then pS:Clear(); return end
+  if(iT == #tI) then
+    luapad.CloseTabAll(); return
+  end
   pS:SetActiveTab(tI[iT + 1].Tab)
   -- Clear all inactive tabs
   while(tI[1] and IsValid(cT)) do
@@ -1298,7 +1305,9 @@ function luapad.CloseTabRight(vTre, bInc)
   -- Calculated closed tabs count
   local nT = (#tI - iT + 1)
   -- Close all to the right including 1-st
-  if(iT == 1) then pS:Clear(); return end
+  if(iT == 1) then
+    luapad.CloseTabAll(); return
+  end
   pS:SetActiveTab(tI[iT - 1].Tab)
   -- Clear all inactive tabs
   local cT = tI[iT].Tab
@@ -1325,7 +1334,7 @@ function luapad.CloseTabActive()
   if(nT == 0) then
     return
   elseif(nT == 1) then
-    pS:Clear()
+    luapad.CloseTabAll()
   else
     local aT = pS:GetActiveTab()
     local iT = pS:GetTabIndex(aT)
@@ -1370,7 +1379,8 @@ function luapad.CloseTabAll()
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
 
-  pS:Clear()
+  pS:Clear() -- Clear title to no file
+  luapad.Frame:SetTitle(GLOB_CONFIG.ADDONN)
 end
 
 --[[
@@ -2081,7 +2091,9 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   function pTab:DoMiddleClick()
     local pS = self:GetPropertySheet()
     local tI = pS:GetItems()
-    if(#tI == 1) then pS:Clear() else
+    if(#tI == 1) then
+      luapad.CloseTabAll()
+    else
       pS:CloseTab(self, true)
     end
   end
@@ -2532,18 +2544,25 @@ function luapad.OpenTree()
     luapad.BrowserArea = nil
   end
 
+  local nX, nY = pSheet:GetPos()
   local nW, nH = pSheet:GetSize()
+  local nM = ((0.61803398875) * nW) / 2
+  -- Browser position and size
+  local xB, yB = (nX + (nW - nM)), (nY + 22)
+  local xS, yS = nM, (nH - 23)
   -- Base panel to dock others to
   luapad.BrowserArea = vgui.Create("DPanel", luapad.Frame)
   if(not IsValid(luapad.BrowserArea)) then return end
   luapad.BrowserArea:DockPadding(2,2,2,2)
-  luapad.BrowserArea:SetSize(nW / 4, nH - 23)
+  luapad.BrowserArea:SetPos(xB, yB)
+  luapad.BrowserArea:SetSize(xS, yS)
 
   -- Close Button with the entire span
   local pClose = vgui.Create("DButton", luapad.BrowserArea)
   if(not IsValid(pClose)) then return end
   pClose:Dock(LEFT)
   pClose:SetWide(22)
+  pClose:SetText(">")
   pClose:SetTooltip("Close")
   function pClose:DoClick()
     local pB = luapad.BrowserArea
@@ -2560,36 +2579,37 @@ function luapad.OpenTree()
   luapad.BrowserArea:InvalidateChildren(true)
   -- Populate an origin relative to the game folder
   function pTree:PopulateOrigin(sName)
-    local sName = string.Trim(sName, "/")
-    local pRoot = self:AddNode(sName)
-    if (not IsValid(pRoot)) then return end
-    local tE = ENABLE_EXTENS[sE] -- Extension
-    local tK = table.GetKeys(table tabl)
-    local sE = "*."..table.concat(tK, " *.")
     -- Check of the leading folder is enabled
+    local sName = string.Trim(sName, "/")
     local sSors = string.match(sName, "^([^/\\]+)", 1)
     local tConf = ENABLE_FOLDER[sSors]
     if(not tConf) then return end
+    local tK = table.GetKeys(ENABLE_EXTENS)
+    local sE = "*."..table.concat(tK, " *.")
     local bB, sB, oB = luapad.GetPath(sName)
-    self:SetTooltip("File browser: " .. sName)
+    self:SetTooltip("Folder structure: " .. oB)
     self:SetPath(bB and "DATA" or "GAME")
-    self:SetBaseFolder(bB and sB or oB)
+    self:SetBaseFolder((bB and sB or oB):sub(1, -2))
     self:SetFileTypes(sE)
     self:SetOpen(true)
   end
   -- Open the file when double clicked
-  function pTree:OnDoubleClick(pF, sF)
+  function pTree:OnDoubleClick(sF, pP)
     local sN = string.GetFileFromFilename(sF)
+    local sD = string.GetPathFromFilename(sF)
     local sE = string.GetExtensionFromFilename(sF)
     local tE = (sE and ENABLE_EXTENS[sE] or nil)
-    local sI = luapad.ToIcon(tE and tE.Icon or "page")
-    local bP = (self:GetBaseFolder() == "DATA")
-    local sD = (bP and "data/"..sF or sF)
-    local bB, sB, oB = luapad.GetPath(sD)
+    local sI = (tE and tE.Icon or "page")
+    local bP, sT = (self:GetPath() == "DATA"), VAR_THM:GetString()
+    local bB, sB, oB = luapad.GetPath(bP and "data/"..sD or sD)
+    if(luapad.IsOpen(sN, oB)) then
+      luapad.SetStatus("File [%s%s] is already opened! (choose another entry)", "STAT_WR", oB, sN)
+      return
+    end
     if(bB) then -- The contents in the data folder are refreshed on write
-      luapad.AddTab(sN, file.Read(sB .. sN, "DATA"), sD, nil, sI)
+      luapad.AddTab(sN, file.Read(sB .. sN, "DATA"), oB, nil, sI, sT)
     else -- Every other folder could not be refreshed but read
-      luapad.AddTab(sN, file.Read(oB .. sN, "GAME"), sD, nil, sI)
+      luapad.AddTab(sN, file.Read(oB .. sN, "GAME"), oB, nil, sI, sT)
     end
   end
   -- Copy the full path when right clicked
