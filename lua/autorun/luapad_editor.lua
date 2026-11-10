@@ -197,18 +197,18 @@ function PANEL:GetFontName(bB)
 end
 
 function PANEL:SetEmptyRow()
-  local m_Tab = self:GetTable()
-  local m_Cn = self:GetRownum()
-  local m_Rw = m_Tab.Rows
-  local m_Pn = m_Tab.PaintRows
-  if(not m_Rw) then return end
-  if(not m_Pn) then return end
-  if (m_Rw[m_Cn] ~= "") then
-    table.insert(m_Rw, "")
-    table.insert(m_Pn, false)
-    m_Cn = m_Cn + 1
+  local tTab = self:GetTable()
+  local iCn = self:GetRownum()
+  local tRw = tTab.Rows
+  if(not tRw) then return end
+  local tPn = tTab.PaintRows
+  if(not tPn) then return end
+  if (tRw[iCn] ~= "") then
+    table.insert(tRw, "")
+    table.insert(tPn, false)
+    iCn = iCn + 1
   end
-  return m_Cn
+  return iCn
 end
 
 function PANEL:GetThemeKeys()
@@ -468,11 +468,11 @@ function PANEL:SyntaxColorLine(row)
   if(tRow) then return tRow end
 
   local tLib = {}; tRow = {}
-  local m_Glob = TOKEN_CLASSIFY.G
-  local m_Type = TOKEN_CLASSIFY.T
-  local m_Strm = TOKEN_CLASSIFY.S
-  local m_Coms = TOKEN_CLASSIFY.C
-  local m_Muln = TOKEN_CLASSIFY.M
+  local g_Glob = TOKEN_CLASSIFY.G
+  local g_Type = TOKEN_CLASSIFY.T
+  local g_Strm = TOKEN_CLASSIFY.S
+  local g_Coms = TOKEN_CLASSIFY.C
+  local g_Muln = TOKEN_CLASSIFY.M
 
   self:InitColorLine(row)
 
@@ -491,10 +491,10 @@ function PANEL:SyntaxColorLine(row)
     local multy, mtoken = self:MultiLineBlock()
 
     if(multy) then
-      if(char == m_Muln[3]) then
+      if(char == g_Muln[3]) then
         local multy, open = multy, char
         char, last = self:NextChar()
-        while(char and char == m_Muln[2]) do
+        while(char and char == g_Muln[2]) do
           multy = multy - 1
           char, last = self:NextChar()
         end
@@ -534,7 +534,7 @@ function PANEL:SyntaxColorLine(row)
 
         token = "code.construct"
 
-      elseif ((gstr and (m_Type[tgstr] or m_Glob[gstr])) or
+      elseif ((gstr and (g_Type[tgstr] or g_Glob[gstr])) or
               (sstr and tLib.Src and tLib.Src[sstr])) then
       -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
@@ -561,11 +561,11 @@ function PANEL:SyntaxColorLine(row)
         token = "code.none"
       end
 
-    elseif (char == m_Strm[1]) then
+    elseif (char == g_Strm[1]) then
 
       char, last = self:NextChar()
-      while(char and char ~= m_Strm[1]) do
-        if (char == m_Strm.Esc) then
+      while(char and char ~= g_Strm[1]) do
+        if (char == g_Strm.Esc) then
           char, last = self:NextChar()
         end
         char, last = self:NextChar()
@@ -573,10 +573,10 @@ function PANEL:SyntaxColorLine(row)
       char, last = self:NextChar()
 
       token = "code.string"
-    elseif (char == m_Strm[2]) then
+    elseif (char == g_Strm[2]) then
       char, last = self:NextChar()
-      while(char and char ~= m_Strm[2]) do
-        if (char == m_Strm.Esc) then
+      while(char and char ~= g_Strm[2]) do
+        if (char == g_Strm.Esc) then
           char, last = self:NextChar()
         end
         char, last = self:NextChar()
@@ -584,7 +584,7 @@ function PANEL:SyntaxColorLine(row)
       char, last = self:NextChar()
 
       token = "code.string2"
-    elseif (char == m_Coms[1] or char == m_Coms[2]) then
+    elseif (char == g_Coms[1] or char == g_Coms[2]) then
       char, last = self:NextChar()
 
       if (char == last) then
@@ -597,10 +597,10 @@ function PANEL:SyntaxColorLine(row)
         token = "code.none"
         self:MultiLineBlock(false, false)
       end
-    elseif (char == m_Muln[1]) then
+    elseif (char == g_Muln[1]) then
       local multy, open = 0, char
       char, last = self:NextChar()
-      while(char and char == m_Muln[2]) do
+      while(char and char == g_Muln[2]) do
         char, last = self:NextChar()
         multy = multy + 1
       end
@@ -766,8 +766,8 @@ function PANEL:Paint(w, h)
   local guiRN = self:GetTheme("gui.rownumbers")
   local guiCL = self:GetTheme("gui.currentline")
 
-  local m_S, m_E = self:GetRenderBounds()
-  for iR = m_S, m_E do
+  local iS, iE = self:GetRenderBounds()
+  for iR = iS, iE do
     self:PaintLine(iR, guiCB, guiSE, guiRN, guiCL)
   end
 
@@ -848,10 +848,10 @@ function PANEL:GetArea(selection)
     return string.sub(self.Rows[start[1]], start[2], stop[2] - 1)
   else
     local text = string.sub(self.Rows[start[1]], start[2])
-    local m_S, m_E = (start[1] + 1), (stop[1] - 1)
+    local iS, iE = (start[1] + 1), (stop[1] - 1)
 
-    if m_S <= m_E then
-      local chunk = table.concat(self.Rows, "\n", m_S, m_E)
+    if iS <= iE then
+      local chunk = table.concat(self.Rows, "\n", iS, iE)
       text = text .. "\n" .. chunk
     end
 
@@ -901,8 +901,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     end
   end
 
-  -- Insert text
-  local rows = string.Explode("\n", text)
+  local rows = string.Explode("\n", text) -- Insert text
 
   local remainder = string.sub(self.Rows[start[1]], start[2])
   self.Rows[start[1]] = string.sub(self.Rows[start[1]], 1, start[2] - 1) .. rows[1]
@@ -1002,11 +1001,11 @@ end
 
 function PANEL:OnMouseWheeled(delta)
   local m_Scroll = self.Scroll
-  local m_Sign = ((delta > 0 and 1) or (delta < 0 and -1) or 0)
+  local sign = ((delta > 0 and 1) or (delta < 0 and -1) or 0)
   local control = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
 
-  if(control and m_Sign ~= 0) then
-    local iF = self:GetFontInfo() + m_Sign
+  if(control and sign ~= 0) then
+    local iF = self:GetFontInfo() + sign
     local iS = ((iF == 0) and 1 or iF)
     local tS = self:GetParent():GetStreamInfo()
     self:SetFontInfo(iS)
@@ -1380,17 +1379,17 @@ function PANEL:GetWordEnd(caret)
 end
 
 function PANEL:Indent(shift)
-  local m_Scr = self:CopyPosition(self.Scroll)
-  local m_Str, m_Car = self:MakeSelection(self:Selection())
+  local tScr = self:CopyPosition(self.Scroll)
+  local tStr, tCar = self:MakeSelection(self:Selection())
 
-  m_Str[2] = 1
-  if (m_Car[2] ~= 1) then
-    m_Car[1] = m_Car[1] + 1
-    m_Car[2] = 1
+  tStr[2] = 1
+  if (tCar[2] ~= 1) then
+    tCar[1] = tCar[1] + 1
+    tCar[2] = 1
   end
 
-  self.Caret = self:CopyPosition(m_Car)
-  self.Start = self:CopyPosition(m_Str)
+  self.Caret = self:CopyPosition(tCar)
+  self.Start = self:CopyPosition(tStr)
 
   if (self.Caret[2] == 1) then
     self.Caret = self:MovePosition(self.Caret, -1)
@@ -1403,9 +1402,9 @@ function PANEL:Indent(shift)
     self:SetSelection("    " .. self:GetSelection():gsub("\n", "\n    "))
   end
 
-  self.Caret = self:CopyPosition(m_Car)
-  self.Start = self:CopyPosition(m_Str)
-  self.Scroll = self:CopyPosition(m_Scr)
+  self.Caret = self:CopyPosition(tCar)
+  self.Start = self:CopyPosition(tStr)
+  self.Scroll = self:CopyPosition(tScr)
   self:ScrollCaret()
 end
 
