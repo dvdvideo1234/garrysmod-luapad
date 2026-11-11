@@ -43,7 +43,7 @@ local KEYWORD_TOKENS = {
 ]]
 local COLOR_HIGHLIGHT = {
   ["#"] = { -- Current skin
-    ["gui.currentline"] = {"colTextEntryTextPlaceholder"},
+    ["gui.currentline"] = {"colTextEntryBorder"         },
     ["gui.selection"  ] = {"colTextEntryTextHighlight"  },
     ["gui.caretbase"  ] = {"colTextEntryTextCursor"     },
     ["gui.rownumbers" ] = {"colTextEntryTextPlaceholder"},
@@ -396,6 +396,14 @@ function PANEL:OnMousePressed(code)
         self:SelectAll()
       end):SetImage(luapad.ToIcon("pencil"))
 
+    if (self:HasSelection()) then
+      pMenu:AddSpacer()
+      pMenu:AddOption(
+        "Follow", function()
+          gui.OpenURL(self:GetSelection())
+        end):SetImage(luapad.ToIcon("world_link"))
+    end
+
     pMenu:Open()
     pMenu:MakePopup()
   end
@@ -457,9 +465,9 @@ function PANEL:InitColorLine(row)
 end
 
 function PANEL:Concat(sA, sB, sC)
-  self.Buff[1] = sA
-  self.Buff[2] = sB
-  return table.concat(self.Buff, sC)
+  local tB = self.Buff
+  tB[1], tB[2] = sA, sB
+  return table.concat(tB, sC)
 end
 
 function PANEL:NextChar()
@@ -734,9 +742,9 @@ function PANEL:PerformLayout()
 end
 
 --[[
- * Render from the first line otherwise the multiline coments are not triggered correctly
- * It is possible the beginning of the screen to be in the middle of a multiline comment
- * Because of that the rendering should start from the last row that is not a multiline entry
+ * Render from the first line otherwise the multi-line comments are not triggered correctly
+ * It is possible the beginning of the screen to be in the middle of a multi-line comment
+ * Because of that the rendering should start from the last row that is not a multi-line entry
 ]]
 function PANEL:GetRenderBounds()
   local tTab = self:GetTable()
@@ -747,8 +755,8 @@ function PANEL:GetRenderBounds()
   if(table.IsEmpty(tPar)) then return 1, iE end
   while(iS > 1 and tPar[iS]) do
     if(not tPar[iS][3]) then break end
-    iS = iS - 1 -- Get the previos row
-  end -- Find the first not multiline row
+    iS = iS - 1 -- Get the previous row
+  end -- Find the first not multi-line row
   return iS, iE -- Return render bounds
 end
 
