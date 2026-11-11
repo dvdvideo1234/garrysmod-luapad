@@ -10,13 +10,12 @@ luapad.forcedownload = true
 luapad.ignoreconsoleopen = true
 
 local GLOB_CONFIG = {
-  DELIMS = "|", -- General symbol used for separator
   PANLSZ = 2 / 3, -- The ratio panel will use according to the screen size
   DAYINS = 86400, -- The amount of second present in one day
   MAXMSL = 60000, -- As the maximum write string limit is 65532
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
-  PATNLN = "[\r\n]+", -- Pattern for reading configuration files
   PATENM = "[A-Z_]+", -- General pattern matching a enumeration key
+  DELIMS = {V = "|", I = "\t", N = "[\r\n]+"}, -- Symbols used for separator and exports
   ADDONN = {"Luapad", "luapad"}, -- Generic addon name used for messages and hashes
   DATADR = {"data/", "luapad/"}, -- General data directory used in the entire application
   SAVTAB = {"settings/", "saved_tabs.txt"}, -- Saved tabs configuration
@@ -150,8 +149,11 @@ local FMSYNTAX_HILIGHT = {
 }
 
 local PATPATH_CONVERT = {
+  {GLOB_CONFIG.DELIMS.V.."+", ""},
+  {GLOB_CONFIG.DELIMS.I.."+", ""},
   {"[\\/]+", "/"}, {"%.%./", ""},
   {"^[/]+" , "" }, {"[/]+$", ""}, Divr = "/",
+  Save = {GLOB_CONFIG.DELIMS.I.."+", ""},
   Sors = {"^"..GLOB_CONFIG.DATADR[1], "", 1},
   Base = {"^"..GLOB_CONFIG.DATADR[2], "", 1},
 }
@@ -237,14 +239,18 @@ end
 
 --[[
  * Calculates an inverted color
+ * vC > Color to be inverted
+ * bP > Revert in place flag
 ]]
-function luapad.GetInvertColor(vC, vO)
+function luapad.GetInvertColor(vC, bP)
   if(not IsColor(vC)) then return nil end
   local nR, nG, nB, nA = vC:Unpack()
-  nR, nG, nB = 255 - nR, 255 - nG, 255 - nB
-  if(IsColor(vO)) then
-    vO:SetUnpacked(nR, nG, nB, nA)
-    return vO
+  nR = luapad.ToColor(255 - nR, 0)
+  nG = luapad.ToColor(255 - nG, 0)
+  nB = luapad.ToColor(255 - nB, 0)
+  if(bP) then
+    vC:SetUnpacked(nR, nG, nB, nA)
+    return vC
   else
     return Color(nR, nG, nB, nA)
   end
@@ -393,7 +399,7 @@ function luapad.genSyntaxGlobals()
     local iD, nU = math.max((tonumber(iD) or 0), 0), 0
     if(iD > 5) then return end -- Recursion depth
     if(tPass[tS]) then return end -- Already registered
-    local sD, sT = GLOB_CONFIG.DELIMS, GLOB_CONFIG.VALDFS[1]
+    local sD, sT = GLOB_CONFIG.DELIMS.V, GLOB_CONFIG.VALDFS[1]
     local sP, sK = GLOB_CONFIG.PATENM, tostring(sK or "")
     local sU, rU = sB:gsub("^.-%[\"", ""):gsub("\"%]$", "")
     local tK, sC = extractStringKeys(tS, sB), ("\"][\"")
@@ -864,7 +870,7 @@ function luapad.Clear()
   end
 end
 
-function luapad.EqualizeThemeTab(vTre)
+function luapad.EqualizeThemeTab(vTre, sT)
   if(SERVER) then return end
   local bSe = input.IsKeyDown(KEY_LSHIFT)
   local bSr = input.IsKeyDown(KEY_RSHIFT)
@@ -874,6 +880,7 @@ function luapad.EqualizeThemeTab(vTre)
   local iT, pT = pS:GetTabIndex(vTre)
   if(not iT) then return end
   if(not IsValid(pT)) then return end
+  -- Global theme is provided and updated
   local tI = pS:GetItems()
   local pA = pT:GetTextArea()
   local tK = pA:GetThemeKeys()
@@ -888,7 +895,12 @@ function luapad.EqualizeThemeTab(vTre)
       end
     end
   end
-  luapad.SetStatus("Theme [%s] has been applied on all tabs!", "STAT_OK", sN)
+  if(isstring(sT) and luapad.IsHere(sT)) then
+    RunConsoleCommand(VAR_THM:GetName(), sT)
+    luapad.SetStatus("Theme [%s] has been applied globally!", "STAT_OK", sN)
+  else
+    luapad.SetStatus("Theme [%s] has been applied on all tabs!", "STAT_OK", sN)
+  end
 end
 
 function luapad.SaveTabs()
@@ -898,6 +910,7 @@ function luapad.SaveTabs()
   local tO, tW = {1,2,3,4,5,6}, {}
   local tI = pS:GetItems()
   local aT = pS:GetActiveTab()
+  local sEx = GLOB_CONFIG.DELIMS.I
   for iD = 1, #tI do
     local tP = tI[iD]
     local pT = tP.Tab
@@ -910,7 +923,7 @@ function luapad.SaveTabs()
       tO[5] = tostring(tS.Teme or "") -- Custom tab palette
       tO[6] = tostring(tS.Font or "") -- Entry font size
       if(pT == aT) then tO[1] = "*" .. tO[1] end
-      table.insert(tW, table.concat(tO, GLOB_CONFIG.DELIMS))
+      table.insert(tW, table.concat(tO, sEx))
     end
   end
   -- Generate a tabs save configuration file
@@ -945,9 +958,10 @@ function luapad.LoadTabs()
     luapad.SetStatus("File [%s%s] import has failed! (the file is missing)", "STAT_OK", oB, sN)
     return -- No need to process everything else when there is no file
   end
-  local tW, aT = GLOB_CONFIG.PATNLN:Explode(sF, true), nil
+  local tD = GLOB_CONFIG.DELIMS
+  local tW, aT = tD.N:Explode(sF, true), nil
   for iD = 1, #tW do -- Basically we have one tab on one line
-    local tO = GLOB_CONFIG.DELIMS:Explode(tW[iD]) -- Empty lines are excluded
+    local tO = tD.I:Explode(tW[iD]) -- Empty lines are excluded
     local bA = (string.sub(tO[1], 1, 1) == "*") -- File name starts with * when active
     if(bA) then tO[1] = string.sub(tO[1], 2, -1) end
     local bB, sB, oB, pT = luapad.GetPath(tO[2])
@@ -1199,7 +1213,7 @@ function luapad.AddToolbarSpacer()
   local pLab = luapad.Toolbar:Add("DLabel")
   if(not IsValid(pLab)) then return end
 
-  pLab:SetText(" "..GLOB_CONFIG.DELIMS.." ")
+  pLab:SetText(" "..GLOB_CONFIG.DELIMS.V.." ")
   pLab:SizeToContents()
 
   return pLab
@@ -1435,6 +1449,7 @@ local function luapadAttachThemeMenu(pMenu, vTre)
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
   local tT = GLOB_CONFIG.THMDEF
+  -- Export the current theme to a file
   pMenu:AddOption("Export", function()
     luapad.ShowConfirmDialog(
       "You are about to save a theme under ["..tT[1].."], please enter the desired name.",
@@ -1461,6 +1476,21 @@ local function luapadAttachThemeMenu(pMenu, vTre)
       end, nil, "Save", "Cancel"
     )
   end):SetImage(luapad.ToIcon("picture_save"))
+  -- Invert theme custom colors
+  pMenu:AddOption("Invert", function()
+    local sB = pT:GetStreamInfo().Teme
+    local bI = (sB:sub(1, 1) == "!")
+    local sT = (bI and sB:sub(2,-1) or "!"..sB)
+    pT:GetTextArea():SetThemeInvert()
+    pT:GetStreamInfo().Teme = sT
+    luapad.EqualizeThemeTab(pT, sT)
+  end):SetImage(luapad.ToIcon("contrast"))
+  -- Update theme global variable
+  pMenu:AddOption("Update", function()
+    local sT = pT:GetStreamInfo().Teme
+    RunConsoleCommand(VAR_THM:GetName(), sT)
+    luapad.SetStatus("Theme [%s] has been applied globally!", "STAT_OK", sT)
+  end):SetImage(luapad.ToIcon("paintbrush"))
   -- Attach default theme control options
   local pIn, pOp = pMenu:AddSubMenu("Default")
   if(not IsValid(pIn)) then return end
@@ -1469,29 +1499,25 @@ local function luapadAttachThemeMenu(pMenu, vTre)
     function() local sT = "XX"
       pT:GetTextArea():SetThemeDefault(false, false)
       pT:GetStreamInfo().Teme = sT
-      luapad.EqualizeThemeTab(pT)
-      RunConsoleCommand(VAR_THM:GetName(), sT)
+      luapad.EqualizeThemeTab(pT, sT)
     end):SetImage(luapad.ToIcon("picture"))
   pIn:AddOption("Dark",
     function() local sT = "VX"
       pT:GetTextArea():SetThemeDefault(true, false)
       pT:GetStreamInfo().Teme = sT
-      luapad.EqualizeThemeTab(pT)
-      RunConsoleCommand(VAR_THM:GetName(), sT)
+      luapad.EqualizeThemeTab(pT, sT)
     end):SetImage(luapad.ToIcon("picture"))
   pIn:AddOption("Light bold",
     function() local sT = "XV"
       pT:GetTextArea():SetThemeDefault(false, true)
       pT:GetStreamInfo().Teme = sT
-      luapad.EqualizeThemeTab(pT)
-      RunConsoleCommand(VAR_THM:GetName(), sT)
+      luapad.EqualizeThemeTab(pT, sT)
     end):SetImage(luapad.ToIcon("photo"))
   pIn:AddOption("Dark bold",
     function() local sT = "VV"
       pT:GetTextArea():SetThemeDefault(true, true)
       pT:GetStreamInfo().Teme = sT
-      luapad.EqualizeThemeTab(pT)
-      RunConsoleCommand(VAR_THM:GetName(), sT)
+      luapad.EqualizeThemeTab(pT, sT)
     end):SetImage(luapad.ToIcon("photo"))
   -- Update the theme via a skin
   local pIn, pOp = pMenu:AddSubMenu("Skin")
@@ -1503,8 +1529,7 @@ local function luapadAttachThemeMenu(pMenu, vTre)
       function() local sT = "#"..sS
         luapad.SetThemeSkin(pT, vS, sS)
         pT:GetStreamInfo().Teme = sT
-        luapad.EqualizeThemeTab(pT)
-        RunConsoleCommand(VAR_THM:GetName(), sT)
+        luapad.EqualizeThemeTab(pT, sT)
       end):SetImage(luapad.ToIcon("palette"))
   end
   -- Update the theme via a file luapad/theme/*.txt
@@ -1520,9 +1545,8 @@ local function luapadAttachThemeMenu(pMenu, vTre)
       pIn:AddOption(vF,
         function() local sT = "@"..vF
           luapad.SetThemeFile(pT, vF)
-          luapad.EqualizeThemeTab(pT)
+          luapad.EqualizeThemeTab(pT, sT)
           pT:GetStreamInfo().Teme = sT
-          RunConsoleCommand(VAR_THM:GetName(), sT)
         end):SetImage(luapad.ToIcon("palette"))
     end
   end
@@ -1999,10 +2023,10 @@ end
 function luapad.AddTab(name, cont, path, term, icon, teme, font)
   if(SERVER) then return end
 
-  local sPth = tostring(path or "")
-  local sNam = tostring(name or "")
-  local sCon = tostring(cont or "")
-  local sIco = tostring(icon or "page_white")
+  local sNam = (luapad.IsHere(name) and tostring(name or "") or GLOB_CONFIG.FMNAME:format(0))
+  local sCon = tostring(cont or "") -- The contents are not exported so it does not default
+  local sPth = (luapad.IsHere(path) and tostring(path or "") or table.concat(GLOB_CONFIG.DATADR))
+  local sIco = (luapad.IsHere(icon) and tostring(icon) or "page_white")
   local sTag = (luapad.IsHere(term) and tostring(term) or nil)
   local sTem = (luapad.IsHere(teme) and tostring(teme) or VAR_THM:GetString())
   local iFon = math.floor(tonumber(font) or VAR_FSZ:GetFloat())
@@ -2030,6 +2054,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   local pText = vgui.Create("DLuapadEditor", pPan)
   if(not IsValid(pText)) then return end
 
+  -- Configure the tab text area
   pText:SetSize(nW, nH)
   pText:SetText(sCon)
   pText:Dock(FILL)
@@ -2037,6 +2062,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   pText:SizeToContents()
   pText:SetFontInfo(iFon)
 
+  -- Configure stream info
   local tSor = pPan[GLOB_CONFIG.STORKY]
   tSor.Name = sNam -- The actual file name associated with the tab
   tSor.Path = sPth -- File path always relative to the game folder
@@ -2044,15 +2070,21 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
   tSor.Teme = sTem -- The theme being used for the tab text area
   tSor.Font = pText:GetFontInfo()  -- The font being applied on the text area
-  if(sTag) then tSor.Term = sTag:gsub(GLOB_CONFIG.DELIMS, "!") end
 
+  -- Configure the export values. Remove storage delimiter
+  for sN, sS in pairs(tSor) do
+    if(isstring(sS) and luapad.IsHere(sS)) then
+      tSor[sN] = tSor[sN]:gsub(unpack(PATPATH_CONVERT.Save))
+    end -- Make sure in the entries the delimiter is removed
+  end
+
+  -- A reference to the current
   local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
-  local pTab  = tInfo.Tab -- A reference to the current tab
-
-  pTab:SetTooltip(sPth .. sNam)
+  local pTab  = tInfo.Tab; pTab:SetTooltip(sPth .. sNam)
 
  --[[
    * Retrieves the storage info from the tab
+   * An alias for the panel stream info
   ]]
   function pTab:GetStreamInfo()
     local tP = self:GetPanel():GetTable()
@@ -2162,7 +2194,13 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   pSheet:SetActiveTab(pTab)
   pSheet:InvalidateLayout()
 
-  local sI = sTem:sub(1, 1)
+  -- Check for inversion and register
+  local sI, bI = sTem:sub(1, 1), false
+  if(sI == "!") then
+    sTem = sTem:sub(2, -1)
+    sI, bI = sTem:sub(1, 1), true
+  end
+  -- Process the non-inverted meme
   if(sI == "#") then
     local sT = string.sub(sTem, 2, -1)
     local tS = derma.GetNamedSkin(sT)
@@ -2179,6 +2217,11 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
     local bD = (sTem:sub(1, 1) == "V")
     local bB = (sTem:sub(2, 2) == "V")
     pText:SetThemeDefault(bD, bB)
+  end
+  -- Apply theme inversion
+  if(bI) then
+    tSor.Teme = "!"..sTem
+    pText:SetThemeInvert()
   end
 
   return pTab
@@ -2300,7 +2343,7 @@ function luapad.SaveThemeFile(vTre, sN)
   -- If the file already exists prompt to replace while validating user input
   if(file.Exists(sB..sF, "DATA")) then bN = false -- Name is not yet validate
     luapad.ShowConfirmDialog(
-      "The theme already exists. Keep the same name to replace it or choose a different name.",
+      "The theme already exists. Keep the same name to replace or choose a different name.",
       sN, -- Fill the textbox with the current name
       function(sName)
         local sN = string.StripExtension(sName)
@@ -2337,16 +2380,16 @@ function luapad.SaveThemeFile(vTre, sN)
     fO:Flush(); fO:Close()
     return -- Close the file and exit
   end
+  local sEx = GLOB_CONFIG.DELIMS.I
   local tK, tO = pA:GetThemeKeys(), {}
   local tH = pA:GetTable().Highlight
-  local sD = GLOB_CONFIG.DELIMS
   for iK = 1, #tK do -- Highlight keys
     local sK = tK[iK] -- Process a key
     if(tH[sK]) then tO[1] = sK -- Exists
       local vC, bB = tH[sK][1], tH[sK][2]
       tO[2], tO[3], tO[4], tO[5] = vC:Unpack()
       tO[6] = (bB and "V" or "X") -- Bold
-      fO:Write(table.concat(tO, sD)); fO:Write("\n")
+      fO:Write(table.concat(tO, sEx)); fO:Write("\n")
     end
   end; fO:Flush(); fO:Close()
 end
@@ -2381,11 +2424,12 @@ function luapad.SetThemeFile(vTre, sN)
   end
   local pA = pT:GetTextArea()
   if(not IsValid(pA)) then return end
-  local tW = GLOB_CONFIG.PATNLN:Explode(sR, true)
+  local sEx = GLOB_CONFIG.DELIMS.I
+  local sRw = GLOB_CONFIG.DELIMS.N
+  local tW = sRw:Explode(sR, true)
   local tH = pA:GetTable().Highlight
-  local sD = GLOB_CONFIG.DELIMS
   for iD = 1, #tW do -- Every line contains token and color
-    local tT = sD:Explode(tW[iD]) -- Empty lines
+    local tT = sEx:Explode(tW[iD]) -- Empty lines
     local sT = tT[1]:Trim() -- Color token to search for
     if(tH[sT]) then
       local nR = luapad.ToColor(tT[2]:Trim(), 0)
@@ -2414,7 +2458,7 @@ function luapad.SetThemeSkin(vTre, tS, sS)
   local tS = (tS or derma.GetDefaultSkin())
   if(not istable(tS)) then return end
   local tH = pA:GetTable().Highlight
-  local sD = GLOB_CONFIG.DELIMS
+  local sD = GLOB_CONFIG.DELIMS.V
   local tK, tM = pA:GetThemeKeys()
   for iK = 1, #tK do
     local sK = tK[iK]

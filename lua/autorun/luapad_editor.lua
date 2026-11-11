@@ -39,6 +39,7 @@ local KEYWORD_TOKENS = {
 
 --[[
  * Default theme customization
+ * https://www.w3schools.com/colors/colors_converter.asp
 ]]
 local COLOR_HIGHLIGHT = {
   ["#"] = { -- Current skin
@@ -59,6 +60,7 @@ local COLOR_HIGHLIGHT = {
     ["gui.background" ] = {Color(250, 250, 250, 255)},
     ["code.none"      ] = {Color(  0,   0,   0, 255)},
     ["code.number"    ] = {Color(218, 165,  32, 255)},
+    ["code.library"   ] = {Color(215, 100, 255, 255)},
     ["code.function"  ] = {Color(100, 100, 255, 255)},
     ["code.enumerator"] = {Color(184, 134,  11, 255)},
     ["code.metatable" ] = {Color(140, 100,  90, 255)},
@@ -76,7 +78,8 @@ local COLOR_HIGHLIGHT = {
     ["gui.background" ] = {Color( 50,  50,  50, 255)},
     ["code.none"      ] = {Color(255, 255, 255, 255)},
     ["code.number"    ] = {Color(218, 165,  32, 255)},
-    ["code.function"  ] = {Color(220, 220, 170, 255)},
+    ["code.library"   ] = {Color(220, 220, 170, 255)},
+    ["code.function"  ] = {Color(215, 100, 170, 255)},
     ["code.enumerator"] = {Color(184, 134,  11, 255)},
     ["code.metatable" ] = {Color(  0, 255, 125, 255)},
     ["code.string"    ] = {Color(206, 145, 120, 255)},
@@ -196,21 +199,6 @@ function PANEL:GetFontName(bB)
   return (bB and tN.B or tN.R)
 end
 
-function PANEL:SetEmptyRow()
-  local tTab = self:GetTable()
-  local iCn = self:GetRownum()
-  local tRw = tTab.Rows
-  if(not tRw) then return end
-  local tPn = tTab.PaintRows
-  if(not tPn) then return end
-  if (tRw[iCn] ~= "") then
-    table.insert(tRw, "")
-    table.insert(tPn, false)
-    iCn = iCn + 1
-  end
-  return iCn
-end
-
 function PANEL:GetThemeKeys()
   local tT = self:GetTable().Highlight
   if(not tT) then return nil end
@@ -258,13 +246,25 @@ function PANEL:SetThemeDefault(bD, bB)
   self.Highlight = tH; table.Empty(tH)
   local sK = (tobool(bD) and "Dark" or "Light")
   local tT, bB = COLOR_HIGHLIGHT[sK], tobool(bB)
-  for sT, vC in pairs(tT) do -- Default theme
-    local bO = (vC[2] ~= nil) and tobool(vC[2]) or bB
-    tH[sT] = {vC[1], bO} -- Reference copy
+  for sT, tC in pairs(tT) do -- Default theme
+    local bO = (tC[2] ~= nil) and tobool(tC[2]) or bB
+    tH[sT] = {tC[1], bO} -- Reference copy
   end -- Update the string expression
   tH["code.string2"] = tH["code.string"]
   self:RefreshView()
   self:InvalidateLayout()
+end
+
+function PANEL:SetThemeInvert()
+  local tH = self:GetTable().Highlight
+  if(not tH) then return end
+  if(not istable(tH)) then return end
+  if(table.IsEmpty(tH)) then return end
+  for sT, tC in pairs(tT) do -- Default theme
+    local vC = tC[1]:Copy()
+    luapad.GetInvertColor(vC, true)
+    tH[sT][1] = vC -- Assign new color
+  end
 end
 
 function PANEL:RequestFocus()
@@ -273,6 +273,21 @@ end
 
 function PANEL:OnGetFocus()
   self.TextEntry:RequestFocus()
+end
+
+function PANEL:SetEmptyRow()
+  local tTab = self:GetTable()
+  local iCn = self:GetRownum()
+  local tRw = tTab.Rows
+  if(not tRw) then return end
+  local tPn = tTab.PaintRows
+  if(not tPn) then return end
+  if (tRw[iCn] ~= "") then
+    table.insert(tRw, "")
+    table.insert(tPn, false)
+    iCn = iCn + 1
+  end
+  return iCn
 end
 
 function PANEL:CursorToCaret()
@@ -538,16 +553,15 @@ function PANEL:SyntaxColorLine(row)
               (sstr and tLib.Src and tLib.Src[sstr])) then
       -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
-          tLib.Src = gstr
+          tLib.Src, token = gstr, "code.library"
 
           if(tLib.Nam) then
             tLib.Nam = self:Concat(tLib.Nam, sstr, ".")
           else
             tLib.Nam = sstr
           end
-        end
 
-        if ((gstr == "e") and sstr == string.upper(sstr)) then
+        elseif ((gstr == "e") and sstr == string.upper(sstr)) then
           token = "code.enumerator"
         elseif (gstr == "m") then
           token = "code.metatable"
