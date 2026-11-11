@@ -59,6 +59,7 @@ local COLOR_HIGHLIGHT = {
     ["gui.rowlinebar" ] = {Color(215, 215, 215, 255)},
     ["gui.background" ] = {Color(250, 250, 250, 255)},
     ["code.none"      ] = {Color(  0,   0,   0, 255)},
+    ["code.hyperlink" ] = {Color(  9, 105, 218, 255)},
     ["code.number"    ] = {Color(218, 165,  32, 255)},
     ["code.library"   ] = {Color(215, 100, 255, 255)},
     ["code.function"  ] = {Color(100, 100, 255, 255)},
@@ -77,6 +78,7 @@ local COLOR_HIGHLIGHT = {
     ["gui.rowlinebar" ] = {Color( 15,  15,  15, 255)},
     ["gui.background" ] = {Color( 50,  50,  50, 255)},
     ["code.none"      ] = {Color(255, 255, 255, 255)},
+    ["code.hyperlink" ] = {Color( 88, 166, 255, 255)},
     ["code.number"    ] = {Color(218, 165,  32, 255)},
     ["code.library"   ] = {Color(220, 220, 170, 255)},
     ["code.function"  ] = {Color(215, 100, 170, 255)},
@@ -90,6 +92,7 @@ local COLOR_HIGHLIGHT = {
 }
 
 local TOKEN_CLASSIFY = {
+  U = "https?://%S+%.%S+", -- URL pattern matching
   G = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
   T = {["function"] = true, ["table"] = true}, -- Libraries
   S = {"\"", "'", Esc = "\\"}, -- String and escape character
@@ -397,11 +400,15 @@ function PANEL:OnMousePressed(code)
       end):SetImage(luapad.ToIcon("pencil"))
 
     if (self:HasSelection()) then
-      pMenu:AddSpacer()
-      pMenu:AddOption(
-        "Follow", function()
-          gui.OpenURL(self:GetSelection())
-        end):SetImage(luapad.ToIcon("world_link"))
+      local sS = self:GetSelection()
+      local sU = sS:match(TOKEN_CLASSIFY.U)
+      if(sU) then
+        pMenu:AddSpacer()
+        pMenu:AddOption(
+          "Follow", function()
+            gui.OpenURL(sU)
+          end):SetImage(luapad.ToIcon("world_link"))
+      end
     end
 
     pMenu:Open()
