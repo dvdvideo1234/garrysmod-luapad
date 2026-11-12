@@ -2380,8 +2380,9 @@ function luapad.SaveThemeFile(vTre, sN)
     fO:Flush(); fO:Close()
     return -- Close the file and exit
   end
+  local tK = pA:GetThemeKeys()
+  local tO = {1, 2, 3, 4, 5, 6}
   local sEx = GLOB_CONFIG.DELIMS.I
-  local tK, tO = pA:GetThemeKeys(), {}
   local tH = pA:GetTable().Highlight
   for iK = 1, #tK do -- Highlight keys
     local sK = tK[iK] -- Process a key

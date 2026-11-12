@@ -42,7 +42,7 @@ local KEYWORD_TOKENS = {
  * https://www.w3schools.com/colors/colors_converter.asp
 ]]
 local COLOR_HIGHLIGHT = {
-  ["#"] = { -- Current skin
+  Skin = { -- Current skin
     ["gui.currentline"] = {"colTextEntryBorder"         },
     ["gui.selection"  ] = {"colTextEntryTextHighlight"  },
     ["gui.caretbase"  ] = {"colTextEntryTextCursor"     },
@@ -51,48 +51,71 @@ local COLOR_HIGHLIGHT = {
     ["gui.background" ] = {"colTextEntryBG"             },
     ["code.none"      ] = {"colTextEntryText"           }
   },
-  ["Light"] = {
-    ["gui.currentline"] = {Color(220, 220, 220, 255)},
-    ["gui.selection"  ] = {Color(170, 170, 170, 255)},
-    ["gui.caretbase"  ] = {Color( 72,  61, 139, 255)},
-    ["gui.rownumbers" ] = {Color(128, 128, 128, 255)},
-    ["gui.rowlinebar" ] = {Color(215, 215, 215, 255)},
-    ["gui.background" ] = {Color(250, 250, 250, 255)},
-    ["code.none"      ] = {Color(  0,   0,   0, 255)},
-    ["code.hyperlink" ] = {Color(  9, 105, 218, 255)},
-    ["code.number"    ] = {Color(218, 165,  32, 255)},
-    ["code.library"   ] = {Color(215, 100, 255, 255)},
-    ["code.function"  ] = {Color(100, 100, 255, 255)},
-    ["code.enumerator"] = {Color(184, 134,  11, 255)},
-    ["code.metatable" ] = {Color(140, 100,  90, 255)},
-    ["code.string"    ] = {Color(120, 120, 120, 255)},
-    ["code.construct" ] = {Color(  0,   0, 255, 255)},
-    ["code.operator"  ] = {Color(  0,   0, 128, 255)},
-    ["code.comment"   ] = {Color(  0, 120,   0, 255)}
+  Reuse = {
+    ["code.hyperlink" ] = "code.operator" ,
+    ["code.number"    ] = "code.none"     ,
+    ["code.library"   ] = "code.function" ,
+    ["code.function"  ] = "code.none"     ,
+    ["code.enumerator"] = "code.number"   ,
+    ["code.metatable" ] = "code.function" ,
+    ["code.string"    ] = "code.library"  ,
+    ["code.construct" ] = "code.library"  ,
+    ["code.operator"  ] = "code.construct",
+    ["code.comment"   ] = "code.metatable",
+    ["code.string2"   ] = "code.string"
   },
-  ["Dark"] = {
-    ["gui.currentline"] = {Color( 20,  20,  20, 255)},
-    ["gui.selection"  ] = {Color( 70,  70,  70, 255)},
-    ["gui.caretbase"  ] = {Color(255, 255, 255, 255)},
-    ["gui.rownumbers" ] = {Color(128, 128, 128, 255)},
-    ["gui.rowlinebar" ] = {Color( 15,  15,  15, 255)},
-    ["gui.background" ] = {Color( 50,  50,  50, 255)},
-    ["code.none"      ] = {Color(255, 255, 255, 255)},
-    ["code.hyperlink" ] = {Color( 88, 166, 255, 255)},
-    ["code.number"    ] = {Color(218, 165,  32, 255)},
-    ["code.library"   ] = {Color(220, 220, 170, 255)},
-    ["code.function"  ] = {Color(215, 100, 170, 255)},
-    ["code.enumerator"] = {Color(184, 134,  11, 255)},
-    ["code.metatable" ] = {Color(  0, 255, 125, 255)},
-    ["code.string"    ] = {Color(206, 145, 120, 255)},
-    ["code.construct" ] = {Color(197, 134, 192, 255)},
-    ["code.operator"  ] = {Color(  0, 255, 255, 255)},
-    ["code.comment"   ] = {Color(  0, 200,   0, 255)}
+  Default = {
+    ["Light"] = {
+      ["gui.currentline"] = {Color(220, 220, 220, 255)},
+      ["gui.selection"  ] = {Color(170, 170, 170, 255)},
+      ["gui.caretbase"  ] = {Color( 72,  61, 139, 255)},
+      ["gui.rownumbers" ] = {Color(128, 128, 128, 255)},
+      ["gui.rowlinebar" ] = {Color(215, 215, 215, 255)},
+      ["gui.background" ] = {Color(250, 250, 250, 255)},
+      ["code.none"      ] = {Color(  0,   0,   0, 255)},
+      ["code.hyperlink" ] = {Color(  9, 105, 218, 255)},
+      ["code.number"    ] = {Color(218, 165,  32, 255)},
+      ["code.library"   ] = {Color(215, 100, 255, 255)},
+      ["code.function"  ] = {Color(100, 100, 255, 255)},
+      ["code.enumerator"] = {Color(184, 134,  11, 255)},
+      ["code.metatable" ] = {Color(140, 100,  90, 255)},
+      ["code.string"    ] = {Color(120, 120, 120, 255)},
+      ["code.construct" ] = {Color(  0,   0, 255, 255)},
+      ["code.operator"  ] = {Color(  0,   0, 128, 255)},
+      ["code.comment"   ] = {Color(  0, 120,   0, 255)}
+    },
+    ["Dark"] = {
+      ["gui.currentline"] = {Color( 20,  20,  20, 255)},
+      ["gui.selection"  ] = {Color( 70,  70,  70, 255)},
+      ["gui.caretbase"  ] = {Color(255, 255, 255, 255)},
+      ["gui.rownumbers" ] = {Color(128, 128, 128, 255)},
+      ["gui.rowlinebar" ] = {Color( 15,  15,  15, 255)},
+      ["gui.background" ] = {Color( 50,  50,  50, 255)},
+      ["code.none"      ] = {Color(255, 255, 255, 255)},
+      ["code.hyperlink" ] = {Color( 88, 166, 255, 255)},
+      ["code.number"    ] = {Color(218, 165,  32, 255)},
+      ["code.library"   ] = {Color(220, 220, 170, 255)},
+      ["code.function"  ] = {Color(215, 100, 170, 255)},
+      ["code.enumerator"] = {Color(184, 134,  11, 255)},
+      ["code.metatable" ] = {Color(  0, 255, 125, 255)},
+      ["code.string"    ] = {Color(206, 145, 120, 255)},
+      ["code.construct" ] = {Color(197, 134, 192, 255)},
+      ["code.operator"  ] = {Color(  0, 255, 255, 255)},
+      ["code.comment"   ] = {Color(  0, 200,   0, 255)}
+    }
   }
 }
 
 local TOKEN_CLASSIFY = {
-  U = "https?://%S+%.%S+", -- URL pattern matching
+  URL = "https?://%S+%.%S+", -- URL pattern matching
+  COM = {"--.*$", "//.*$"}, -- One line comment to the end
+  NUM = "[0-9%.]+", -- A number literal matching numbers
+  STR = {
+    E = "\\" -- Escape character. Ignore the end
+    D = {M = "\"", Q = '"[^"]*"', E = '".*$'},
+    S = {M = "\'", Q = "'[^']*'", E = "'.*$"}
+  }, -- String patterns literal matching
+  MUL = {S = "%[=*%[", E = "%]=*%]"},
   G = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
   T = {["function"] = true, ["table"] = true}, -- Libraries
   S = {"\"", "'", Esc = "\\"}, -- String and escape character
@@ -206,7 +229,7 @@ function PANEL:GetThemeKeys()
   local tT = self:GetTable().Highlight
   if(not tT) then return nil end
   local tK = table.GetKeys(tT)
-  local tM = table.Copy(COLOR_HIGHLIGHT["#"])
+  local tM = table.Copy(COLOR_HIGHLIGHT.Skin)
   table.sort(tK, function(u, v) return u < v end)
   return tK, tM -- Array with palette keys
 end
@@ -244,16 +267,37 @@ function PANEL:SetThemeArea(pD, bR)
   self:InvalidateLayout()
 end
 
+function  PANEL:SetThemeReuse(bD)
+  local tR = COLOR_HIGHLIGHT.Reuse
+  local tH = self:GetTable().Highlight
+  for sR, sK in pairs(tR) do
+    local iC = 10 -- Make maximum 10 jumps
+    local sC = sR -- Reuse start index
+    local tC = tH[sC] -- Start data
+    while(iC > 0 and sC and not tC) do iC = iC - 1
+      sC = tR[sC] -- Navigate to the next key
+      tC = tH[sC] -- Navigate to the next data
+    end -- Find a color with 10 jumps max
+    if(tC and istable(tC) and IsColor(tC[1])) then
+      tH[sR] = tC -- Color has been navigated
+    else -- Otherwise
+      local vC = (bD and color_white or color_black)
+      tH[sR] = {vC, false} -- Base color no bold
+    end
+  end
+end
+
 function PANEL:SetThemeDefault(bD, bB)
   local tH = self:GetTable().Highlight or {}
   self.Highlight = tH; table.Empty(tH)
-  local sK = (tobool(bD) and "Dark" or "Light")
-  local tT, bB = COLOR_HIGHLIGHT[sK], tobool(bB)
+  local bD, bB = tobool(bD), tobool(bB)
+  local sK = (bD and "Dark" or "Light")
+  local tT = COLOR_HIGHLIGHT.Default[sK]
   for sT, tC in pairs(tT) do -- Default theme
-    local bO = (tC[2] ~= nil) and tobool(tC[2]) or bB
+    local bO = ((tC[2] ~= nil) and tobool(tC[2]) or bB)
     tH[sT] = {tC[1], bO} -- Reference copy
   end -- Update the string expression
-  tH["code.string2"] = tH["code.string"]
+  self:SetThemeReuse(tobool(bD))
   self:RefreshView()
   self:InvalidateLayout()
 end
@@ -263,7 +307,7 @@ function PANEL:SetThemeInvert()
   if(not tH) then return end
   if(not istable(tH)) then return end
   if(table.IsEmpty(tH)) then return end
-  for sT, tC in pairs(tT) do -- Default theme
+  for sT, tC in pairs(tH) do -- Default theme
     local vC = tC[1]:Copy()
     luapad.GetInvertColor(vC, true)
     tH[sT][1] = vC -- Assign new color
@@ -401,7 +445,7 @@ function PANEL:OnMousePressed(code)
 
     if (self:HasSelection()) then
       local sS = self:GetSelection()
-      local sU = sS:match(TOKEN_CLASSIFY.U)
+      local sU = sS:match(TOKEN_CLASSIFY.URL)
       if(sU) then
         pMenu:AddSpacer()
         pMenu:AddOption(
@@ -478,19 +522,34 @@ function PANEL:Concat(sA, sB, sC)
 end
 
 function PANEL:NextChar()
-  local last = self.Char
-  if (not last) then return end
+  local sLast = self.Char
+  if (not sLast) then return end
+  local sLine = self.Line
+  local iPos  = (self.Pos + 1)
 
-  self.Str = self:Concat(self.Str, self.Char)
-  self.Pos = self.Pos + 1
+  self.Pos = iPos
+  self.Str = self:Concat(self.Str, sLast)
 
-  if (self.Pos <= string.len(self.Line)) then
-    self.Char = string.sub(self.Line, self.Pos, self.Pos)
+  if (iPos <= string.len(sLine)) then
+    self.Char = string.sub(sLine, iPos, iPos)
   else
     self.Char = nil
   end
 
-  return self.Char, last
+  return self.Char, sLast
+end
+
+function PANEL:NextSpan(sP, bN)
+  local sL = self.Line
+  local iP = self.Pos
+  local sS = self.Str
+  local nL = string.len(sL)
+  if(iP > nL) then return false, sS end
+  local iS, iE = sL:find(sP, iP, bN)
+  if(not (iS and iE)) then return false, sS end
+  self.Str = self:Concat(self.Str, sL:sub(iS, iE))
+  self.Pos = iE
+  return true
 end
 
 function PANEL:SyntaxColorLine(row)
@@ -680,44 +739,36 @@ function PANEL:PaintLine(row, guiCB, guiSE, guiRN, guiCL)
 
   if (self:HasSelection()) then
     local start, stop = self:MakeSelection(self:Selection())
-    local line, char = start[1], start[2]
-    local endline, endchar = stop[1], stop[2]
+    local sline, schar = start[1], start[2]
+    local eline, echar =  stop[1],  stop[2]
 
     surface.SetDrawColor(guiSE:Unpack())
     local length = string.len(self.Rows[row]) - scend + 1
 
-    char = char - scend
-    if (char < 0) then
-      char = 0
-    end
+    schar = math.max(schar - scend, 0)
+    echar = math.max(echar - scend, 0)
 
-    endchar = endchar - scend
-    if (endchar < 0) then
-      endchar = 0
-    end
-
-    if (row == line and line == endline) then
-      surface.DrawRect(char * width + width * 3 + 6, (row - scstr) * height, width * (endchar - char), height)
-    elseif (row == line) then
-      surface.DrawRect(char * width + width * 3 + 6, (row - scstr) * height, width * (length - char + 1), height)
-    elseif (row == endline) then
-      surface.DrawRect(width * 3 + 6, (row - scstr) * height, width * endchar, height)
-    elseif (row > line and row < endline) then
+    if (row == sline and sline == eline) then
+      surface.DrawRect(schar * width + width * 3 + 6, (row - scstr) * height, width * (echar - schar), height)
+    elseif (row == sline) then
+      surface.DrawRect(schar * width + width * 3 + 6, (row - scstr) * height, width * (length - schar + 1), height)
+    elseif (row == eline) then
+      surface.DrawRect(width * 3 + 6, (row - scstr) * height, width * echar, height)
+    elseif (row > sline and row < eline) then
       surface.DrawRect(width * 3 + 6, (row - scstr) * height, width * (length + 1), height)
     end
   end
 
   draw.SimpleText(tostring(row), self:GetFontName(), width * 3, (row - scstr) * height, guiRN, TEXT_ALIGN_RIGHT)
 
-  local offset = -scend + 1
+  local offset = (-scend + 1)
   for i, cell in ipairs(tRow) do
     local ccon, csr, cen = cell[1], cell[2][1], cell[2][2]
 
     if (offset < 0) then
       if (string.len(ccon) > -offset) then
-        line = string.sub(ccon, -offset + 1)
-        offset = string.len(line)
-        draw.SimpleText(line, self:GetFontName(cen), width * 3 + 6, (row - scstr) * height, csr)
+        local suline = string.sub(ccon, -offset + 1); offset = string.len(suline)
+        draw.SimpleText(suline, self:GetFontName(cen), width * 3 + 6, (row - scstr) * height, csr)
       else
         offset = offset + string.len(ccon)
       end
@@ -889,19 +940,20 @@ function PANEL:GetArea(selection)
 end
 
 function PANEL:SetArea(selection, text, isundo, isredo, before, after)
-
   local start, stop = self:MakeSelection(selection)
   local buffer = self:GetArea(selection)
+  local sline, schar = start[1], start[2]
+  local eline, echar =  stop[1],  stop[2]
 
-  if (start[1] ~= stop[1] or start[2] ~= stop[2]) then
+  if (sline ~= eline or schar ~= echar) then
     -- Clear selection
-    self.Rows[start[1]] = string.sub(self.Rows[start[1]], 1, start[2] - 1)..
-                          string.sub(self.Rows[stop[1]], stop[2])
-    self.PaintRows[start[1]] = false
+    self.Rows[sline] = string.sub(self.Rows[sline], 1, schar - 1)..
+                          string.sub(self.Rows[eline], echar)
+    self.PaintRows[sline] = false
 
-    for i = start[1] + 1, stop[1] do
-      table.remove(self.Rows, start[1] + 1)
-      table.remove(self.PaintRows, start[1] + 1)
+    for i = sline + 1, eline do
+      table.remove(self.Rows, sline + 1)
+      table.remove(self.PaintRows, sline + 1)
       self:RefreshView()
     end
 
@@ -930,22 +982,23 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     end
   end
 
-  local rows = string.Explode("\n", text) -- Insert text
+  local tRows = string.Explode("\n", text) -- Insert text
+  local nRows = #tRows -- Count the marked lines once
 
-  local remainder = string.sub(self.Rows[start[1]], start[2])
-  self.Rows[start[1]] = string.sub(self.Rows[start[1]], 1, start[2] - 1) .. rows[1]
-  self.PaintRows[start[1]] = false
+  local remainder = string.sub(self.Rows[sline], schar)
+  self.Rows[sline] = string.sub(self.Rows[sline], 1, schar - 1) .. tRows[1]
+  self.PaintRows[sline] = false
 
-  for i = 2, #rows do
-    table.insert(self.Rows, start[1] + i - 1, rows[i])
-    table.insert(self.PaintRows, start[1] + i - 1, false)
+  for i = 2, nRows do
+    table.insert(self.Rows, sline + i - 1, tRows[i])
+    table.insert(self.PaintRows, sline + i - 1, false)
     self:RefreshView() -- TODO: fix for cache errors
   end
 
-  local stop = {start[1] + #rows - 1, string.len(self.Rows[start[1] + #rows - 1]) + 1}
+  local stop = {sline + nRows - 1, string.len(self.Rows[sline + nRows - 1]) + 1}
 
-  self.Rows[stop[1]] = self.Rows[stop[1]] .. remainder
-  self.PaintRows[stop[1]] = false
+  self.Rows[eline] = self.Rows[eline] .. remainder
+  self.PaintRows[eline] = false
 
   self:SetEmptyRow()
   self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
