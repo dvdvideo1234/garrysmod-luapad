@@ -107,19 +107,21 @@ local COLOR_HIGHLIGHT = {
 }
 
 local TOKEN_CLASSIFY = {
+  SKP = {[" "] = true, ["\t"] = true}, -- Skip characters
+  SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
+  EOL = {E = "[\r\n]+", I = "\n"}, -- General pattern for splitting
   URL = "https?://%S+%.%S+", -- URL pattern matching
-  COM = {"--.*$", "//.*$"}, -- One line comment to the end
-  NUM = "[0-9%.]+", -- A number literal matching numbers
+  COM = {["-"] = "--.*$", ["/"] = "//.*$"}, -- Comments
+  NUM = "[0-9%.][0-9%.]+", -- A number literal matching numbers
   STR = {
-    E = "\\" -- Escape character. Ignore the end
+    E = "\\", -- Escape character. Ignore the end
     D = {M = "\"", Q = '"[^"]*"', E = '".*$'},
     S = {M = "\'", Q = "'[^']*'", E = "'.*$"}
   }, -- String patterns literal matching
   MUL = {S = "%[=*%[", E = "%]=*%]"},
-  G = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
-  T = {["function"] = true, ["table"] = true}, -- Libraries
+  GTK = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
+  TTK = {["function"] = true, ["table"] = true}, -- Libraries
   S = {"\"", "'", Esc = "\\"}, -- String and escape character
-  C = {"-", "/"}, -- Comment definitions with pre processor
   M = {"[", "=", "]"} -- Multi-line token definition
 }
 
@@ -475,7 +477,11 @@ function PANEL:OnMouseReleased(code)
 end
 
 function PANEL:SetText(text)
-  self.Rows = string.Explode("\n", text)
+  local g_NP = TOKEN_CLASSIFY.EOL.E
+
+  self.Rows = string.Explode(g_NP, text, true)
+
+  print("Rows:", #self.Rows)
 
   local last = self:SetEmptyRow()
 
@@ -490,13 +496,18 @@ function PANEL:SetText(text)
 end
 
 function PANEL:GetText()
-  return string.Implode("\n", self.Rows)
+  local g_NL = TOKEN_CLASSIFY.EOL.I
+  return string.Implode(g_NL, self.Rows)
 end
 
-function PANEL:MultiLineBlock(vM, vT)
+function PANEL:SetLineBlock(vM, vT)
   local tT = self.Token
   if(vM ~= nil) then tT.M = vM end
   if(vT ~= nil) then tT.T = vT end
+end
+
+function PANEL:GetLineBlock()
+  local tT = self.Token
   return tT.M, tT.T
 end
 
@@ -511,7 +522,7 @@ function PANEL:InitColorLine(row)
   self.Buff[2] = ""
 
   if(row == 1) then
-    self:MultiLineBlock(false, false)
+    self:SetLineBlock(false, false)
   end
 end
 
@@ -544,11 +555,16 @@ function PANEL:NextSpan(sP, bN)
   local iP = self.Pos
   local sS = self.Str
   local nL = string.len(sL)
-  if(iP > nL) then return false, sS end
+  if(iP > nL) then
+    self.Char = nil
+    return false, sS
+  end
   local iS, iE = sL:find(sP, iP, bN)
   if(not (iS and iE)) then return false, sS end
-  self.Str = self:Concat(self.Str, sL:sub(iS, iE))
-  self.Pos = iE
+  sS = self:Concat(self.Str, sL:sub(iS, iE))
+  iP = iE + 1
+  self.Str, self.Pos = sS, iP
+  self.Char = sL:sub(iP, iP)
   return true
 end
 
@@ -557,56 +573,68 @@ function PANEL:SyntaxColorLine(row)
   if(tRow) then return tRow end
 
   local tLib = {}; tRow = {}
-  local g_Glob = TOKEN_CLASSIFY.G
-  local g_Type = TOKEN_CLASSIFY.T
+  local g_Skip = TOKEN_CLASSIFY.SKP
+  local g_Coms = TOKEN_CLASSIFY.COM
+  local g_Glob = TOKEN_CLASSIFY.GTK
+  local g_Type = TOKEN_CLASSIFY.TTK
+  local g_Patn = TOKEN_CLASSIFY.NUM
   local g_Strm = TOKEN_CLASSIFY.S
-  local g_Coms = TOKEN_CLASSIFY.C
   local g_Muln = TOKEN_CLASSIFY.M
 
   self:InitColorLine(row)
 
   local char, last = self:NextChar()
 
+  print("Loop:", row, char)
+
   while char do
     local token = ""
     self.Str = ""
 
-    while(char and char == " ") do
+    while(char and g_Skip[char]) do
       char, last = self:NextChar()
     end
 
     if(not char) then break end
 
-    local multy, mtoken = self:MultiLineBlock()
+    local multy, mtoken = self:GetLineBlock()
 
-    if(multy) then
-      if(char == g_Muln[3]) then
-        local multy, open = multy, char
-        char, last = self:NextChar()
-        while(char and char == g_Muln[2]) do
-          multy = multy - 1
+    if(mtoken) then
+      if(multy) then
+        if(char == g_Muln[3]) then
+          local multy, open = multy, char
           char, last = self:NextChar()
-        end
-         -- Equals are same amount as start
-        if(multy == 0 and char == open) then
-          char, last = self:NextChar()
+          while(char and char == g_Muln[2]) do
+            multy = multy - 1
+            char, last = self:NextChar()
+          end
+           -- Equals are same amount as start
+          if(multy == 0 and char == open) then
+            char, last = self:NextChar()
+            token = (mtoken or "code.none")
+            -- Reset multi line block
+            self:SetLineBlock(false, false)
+          else -- Continue with the line block color
+            token = (mtoken or "code.none")
+            char, last = self:NextChar()
+          end -- Keep the last token
+        else -- Keep the last token
           token = (mtoken or "code.none")
-          -- Reset multi line block
-          self:MultiLineBlock(false, false)
-        else -- Otherwise continue with the multi line color
-          token = (mtoken or "code.none") -- Keep the last token
+          char, last = self:NextChar()
         end
-      else
-        char, last = self:NextChar()
-        token = (mtoken or "code.none") -- Keep the last token
-      end
-    elseif (char >= "0" and char <= "9") then
-      while char and (char >= "0" and char <= "9" or
-                      char == "." or char == "_") do
+      else -- Keep the last token
+        token = (mtoken or "code.none")
         char, last = self:NextChar()
       end
-
+    elseif (self:NextSpan(g_Patn)) then
       token = "code.number"
+    --elseif ((char >= "0" and char <= "9") or char == ".") then
+    --  while char and (char >= "0" and char <= "9" or
+    --                  char == "." or char == "_") do
+    --    char, last = self:NextChar()
+    --  end
+    --
+    --  token = "code.number"
     elseif (char >= "a" and char <= "z" or char >= "A" and char <= "Z" or char == "_") then
 
       while char and (char >= "a" and char <= "z" or
@@ -651,6 +679,8 @@ function PANEL:SyntaxColorLine(row)
 
     elseif (char == g_Strm[1]) then
 
+      -- print("String:", "|"..self.Line:sub(self.Pos, -1).."|")
+
       char, last = self:NextChar()
       while(char and char ~= g_Strm[1]) do
         if (char == g_Strm.Esc) then
@@ -672,7 +702,7 @@ function PANEL:SyntaxColorLine(row)
       char, last = self:NextChar()
 
       token = "code.string2"
-    elseif (char == g_Coms[1] or char == g_Coms[2]) then
+    elseif (g_Coms[char]) then
       char, last = self:NextChar()
 
       if (char == last) then
@@ -680,10 +710,10 @@ function PANEL:SyntaxColorLine(row)
           char, last = self:NextChar()
         end
         token = "code.comment"
-        self:MultiLineBlock(false, token)
+        self:SetLineBlock(false, token)
       else
         token = "code.none"
-        self:MultiLineBlock(false, false)
+        self:SetLineBlock(false, false)
       end
     elseif (char == g_Muln[1]) then
       local multy, open = 0, char
@@ -699,9 +729,9 @@ function PANEL:SyntaxColorLine(row)
         else
           token = "code.string"
         end
-        self:MultiLineBlock(multy, token)
+        self:SetLineBlock(multy, token)
       else
-        self:MultiLineBlock(false, false)
+        self:SetLineBlock(false, false)
         token = "code.none" -- Reset multi line
       end
     else
@@ -717,6 +747,18 @@ function PANEL:SyntaxColorLine(row)
     else
       table.insert(tRow, {self.Str, tC, (multy ~= nil)})
     end
+
+    print(common.stringPadL(tostring(row), 5),
+          common.stringPadL(tostring(token), 20),
+          common.stringPadL(tostring(self.Pos), 5),
+          common.stringPadL("|"..tostring(tRow[#tRow][1]):sub(-20,-1).."|", 20),
+          common.stringPadL(tostring(self.Line):sub(self.Pos,self.Pos), 2)
+          )
+  end
+  -- Comment was spawned to the end of line
+  local multy, mtoken = self:GetLineBlock()
+  if(not multy) then
+    self:SetLineBlock(false, false)
   end
   -- Cache the highlight view
   self.PaintRows[row] = tRow
@@ -847,6 +889,7 @@ function PANEL:Paint(w, h)
   local guiCL = self:GetTheme("gui.currentline")
 
   local iS, iE = self:GetRenderBounds()
+  print("Bounds:", iS, iE)
   for iR = iS, iE do
     self:PaintLine(iR, guiCB, guiSE, guiRN, guiCL)
   end
@@ -922,24 +965,27 @@ function PANEL:MakeSelection(selection)
 end
 
 function PANEL:GetArea(selection)
+  local g_NL = TOKEN_CLASSIFY.EOL.I
   local start, stop = self:MakeSelection(selection)
 
   if (start[1] == stop[1]) then
     return string.sub(self.Rows[start[1]], start[2], stop[2] - 1)
   else
-    local text = string.sub(self.Rows[start[1]], start[2])
     local iS, iE = (start[1] + 1), (stop[1] - 1)
+    local text = string.sub(self.Rows[start[1]], start[2])
+    local extra = string.sub(self.Rows[stop[1]], 1, stop[2] - 1)
 
     if iS <= iE then
-      local chunk = table.concat(self.Rows, "\n", iS, iE)
-      text = text .. "\n" .. chunk
+      local chunk = table.concat(self.Rows, g_NL, iS, iE)
+      text = text .. g_NL .. chunk
     end
 
-    return text .. "\n" .. string.sub(self.Rows[stop[1]], 1, stop[2] - 1)
+    return text .. g_NL .. extra
   end
 end
 
 function PANEL:SetArea(selection, text, isundo, isredo, before, after)
+  local g_NP = TOKEN_CLASSIFY.EOL.E
   local start, stop = self:MakeSelection(selection)
   local buffer = self:GetArea(selection)
   local sline, schar = start[1], start[2]
@@ -948,7 +994,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   if (sline ~= eline or schar ~= echar) then
     -- Clear selection
     self.Rows[sline] = string.sub(self.Rows[sline], 1, schar - 1)..
-                          string.sub(self.Rows[eline], echar)
+                       string.sub(self.Rows[eline], echar)
     self.PaintRows[sline] = false
 
     for i = sline + 1, eline do
@@ -982,7 +1028,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     end
   end
 
-  local tRows = string.Explode("\n", text) -- Insert text
+  local tRows = string.Explode(g_NP, text, true) -- Insert text
   local nRows = #tRows -- Count the marked lines once
 
   local remainder = string.sub(self.Rows[sline], schar)
@@ -1030,10 +1076,19 @@ function PANEL:SetSelection(text)
   self:SetCaret(self:SetArea(self:Selection(), text))
 end
 
+function PANEL:GetSystemEOL()
+  local tS = TOKEN_CLASSIFY.SEL
+  if(system.IsOSX()) then return tS.M end
+  if(system.IsLinux()) then return tS.L end
+  if(system.IsWindows()) then return tS.W end
+  return tS.L -- Defaults to Linux
+end
+
 function PANEL:ToSelection()
+  local g_NL = TOKEN_CLASSIFY.EOL.I
+  local sT = self:GetSystemEOL()
   self.Clips = self:GetSelection()
-  self.Clips = string.Replace(self.Clips, "\n", "\r\n")
-  SetClipboardText(self.Clips)
+  SetClipboardText(string.Replace(self.Clips, g_NL, sT))
 end
 
 function PANEL:CustomOnLoseFocus()
@@ -1045,6 +1100,7 @@ end
 
 function PANEL:CustomOnTextChanged()
   local ctrlv = false
+  local g_NL = TOKEN_CLASSIFY.EOL.I
   local text = self.TextEntry:GetText()
   self.TextEntry:SetText("")
 
@@ -1060,8 +1116,7 @@ function PANEL:CustomOnTextChanged()
     if (input.IsKeyDown(KEY_V)) then
       -- ctrl+[shift+]V
       ctrlv = true
-    else
-      -- ctrl+[shift+]key with key ~= V
+    else -- ctrl+[shift+]key with key ~= V
       return
     end
   end
@@ -1070,7 +1125,7 @@ function PANEL:CustomOnTextChanged()
     return
   end
   if (not ctrlv) then
-    if (text == "\n") then
+    if (text == g_NL) then
       return
     end
     if (text == "end") then
@@ -1161,8 +1216,7 @@ function PANEL:SelectAll()
 end
 
 function PANEL:CustomOnKeyCodeTyped(code)
-  self.Blink = RealTime()
-
+  local g_NL = TOKEN_CLASSIFY.EOL.I; self.Blink = RealTime()
   local alt = input.IsKeyDown(KEY_LALT) or input.IsKeyDown(KEY_RALT)
   local shift = input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT)
   local control = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
@@ -1257,7 +1311,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
       local row = self.Rows[self.Caret[1]]:sub(1, self.Caret[2] - 1)
       local diff = (row:find("%S") or (row:len() + 1)) - 1
       local tabs = string.rep("    ", math.floor(diff / 4))
-      self:SetSelection("\n" .. tabs)
+      self:SetSelection(g_NL .. tabs)
     elseif (code == KEY_UP) then
       if (self.Caret[1] > 1) then
         self.Caret[1] = self.Caret[1] - 1
@@ -1461,6 +1515,7 @@ function PANEL:GetWordEnd(caret)
 end
 
 function PANEL:Indent(shift)
+  local g_NL = TOKEN_CLASSIFY.EOL.I
   local tScr = self:CopyPosition(self.Scroll)
   local tStr, tCar = self:MakeSelection(self:Selection())
 
@@ -1478,10 +1533,10 @@ function PANEL:Indent(shift)
   end
 
   if (shift) then
-    local tmp = self:GetSelection():gsub("\n ? ? ? ?", "\n")
+    local tmp = self:GetSelection():gsub(g_NL.." ? ? ? ?", g_NL)
     self:SetSelection(self:UnIndent(tmp))
   else
-    self:SetSelection("    " .. self:GetSelection():gsub("\n", "\n    "))
+    self:SetSelection("    " .. self:GetSelection():gsub(g_NL, g_NL.."    "))
   end
 
   self.Caret = self:CopyPosition(tCar)
