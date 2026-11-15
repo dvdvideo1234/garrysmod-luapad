@@ -5,38 +5,6 @@ if (SERVER) then
   return
 end
 
-local KEYWORD_TOKENS = {
-    ["if"]       = true,
-    ["elseif"]   = true,
-    ["else"]     = true,
-    ["then"]     = true,
-    ["end"]      = true,
-    ["function"] = true,
-    ["do"]       = true,
-    ["while"]    = true,
-    ["break"]    = true,
-    ["for"]      = true,
-    ["in"]       = true,
-    ["local"]    = true,
-    ["true"]     = true,
-    ["false"]    = true,
-    ["nil"]      = true,
-    ["NULL"]     = true,
-    ["and"]      = true,
-    ["not"]      = true,
-    ["or"]       = true,
-    ["||"]       = true,
-    ["&&"]       = true,
-    ["!"]        = true,
-    ["!="]       = true,
-    ["return"]   = true,
-    ["continue"] = true,
-    ["goto"]     = true,
-    ["repeat"]   = true,
-    ["until"]    = true,
-    ["~="]       = true
-}
-
 --[[
  * Default theme customization
  * https://www.w3schools.com/colors/colors_converter.asp
@@ -107,6 +75,37 @@ local COLOR_HIGHLIGHT = {
 }
 
 local TOKEN_CLASSIFY = {
+  KEY = {
+    ["if"]       = true,
+    ["elseif"]   = true,
+    ["else"]     = true,
+    ["then"]     = true,
+    ["end"]      = true,
+    ["function"] = true,
+    ["do"]       = true,
+    ["while"]    = true,
+    ["break"]    = true,
+    ["for"]      = true,
+    ["in"]       = true,
+    ["local"]    = true,
+    ["true"]     = true,
+    ["false"]    = true,
+    ["nil"]      = true,
+    ["NULL"]     = true,
+    ["and"]      = true,
+    ["not"]      = true,
+    ["or"]       = true,
+    ["||"]       = true,
+    ["&&"]       = true,
+    ["!"]        = true,
+    ["!="]       = true,
+    ["return"]   = true,
+    ["continue"] = true,
+    ["goto"]     = true,
+    ["repeat"]   = true,
+    ["until"]    = true,
+    ["~="]       = true
+  }
   SKP = {[" "] = true, ["\t"] = true}, -- Skip characters
   SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
   EOL = {E = "[\r\n]+", I = "\n"}, -- General pattern for splitting
@@ -515,6 +514,7 @@ function PANEL:InitColorLine(row)
   if(not row) then return end
   self.Line = self.Rows[row]
 
+  self.Beg = string.len(self.Line)
   self.Pos = 0
   self.Str = ""
   self.Char = ""
@@ -533,6 +533,9 @@ function PANEL:Concat(sA, sB, sC)
 end
 
 function PANEL:NextChar()
+  if(luapad.debugmode) then
+    print("   PANEL:NextChar()")
+  end
   local sLast = self.Char
   if (not sLast) then return end
   local sLine = self.Line
@@ -553,19 +556,48 @@ end
 function PANEL:NextSpan(sP, bN)
   local sL = self.Line
   local iP = self.Pos
+  local iB = self.Beg
   local sS = self.Str
-  local nL = string.len(sL)
-  if(iP > nL) then
+  local iL = string.len(sL)
+  if(iP > iL) then
     self.Char = nil
-    return false, sS
+    return false
+  end
+  if(luapad.debugmode) then
+    print("   Search:", sP, iP, bN)
   end
   local iS, iE = sL:find(sP, iP, bN)
-  if(not (iS and iE)) then return false, sS end
-  sS = self:Concat(self.Str, sL:sub(iS, iE))
-  iP = iE + 1
-  self.Str, self.Pos = sS, iP
-  self.Char = sL:sub(iP, iP)
-  return true
+  if(iS and iE) then
+    if(iS == iP) then iP = iE + 1
+      sS = self:Concat(self.Str, sL:sub(iS, iE))
+      if(iE == iL) then
+        if(luapad.debugmode) then
+          print("   Match A", self.Pos, iE, iP)
+        end
+        self.Str, self.Pos = sS, iE
+        self.Char = nil
+        return true
+      else
+        if(luapad.debugmode) then
+          print("   Match B", self.Pos, iE, iP)
+        end
+        self.Str, self.Pos = sS, iP
+        self.Char = sL:sub(iP, iP)
+        return true
+      end
+    else
+      if(luapad.debugmode) then
+        print("   Match C", self.Pos, self.Beg, iS)
+      end
+      self.Beg = math.min(iB, iS - 1)
+      return false
+    end
+  else
+      if(luapad.debugmode) then
+        print("   Match D", self.Pos, self.Beg, iS)
+      end
+    return false
+  end
 end
 
 function PANEL:SyntaxColorLine(row)
@@ -578,6 +610,8 @@ function PANEL:SyntaxColorLine(row)
   local g_Glob = TOKEN_CLASSIFY.GTK
   local g_Type = TOKEN_CLASSIFY.TTK
   local g_Patn = TOKEN_CLASSIFY.NUM
+  local g_Keyw = TOKEN_CLASSIFY.KEY
+
   local g_Strm = TOKEN_CLASSIFY.S
   local g_Muln = TOKEN_CLASSIFY.M
 
@@ -585,7 +619,9 @@ function PANEL:SyntaxColorLine(row)
 
   local char, last = self:NextChar()
 
-  print("Loop:", row, char)
+  if(luapad.debugmode) then
+    print("Line:", row, char)
+  end
 
   while char do
     local token = ""
@@ -626,15 +662,15 @@ function PANEL:SyntaxColorLine(row)
         token = (mtoken or "code.none")
         char, last = self:NextChar()
       end
-    elseif (self:NextSpan(g_Patn)) then
+    elseif (self:NextSpan(g_Patn) and USE_PATTERN) then
+      token, char = "code.number", self.Char
+    elseif (((char >= "0" and char <= "9") or char == ".") and not USE_PATTERN) then
+      while char and (char >= "0" and char <= "9" or
+                      char == "." or char == "_") do
+        char, last = self:NextChar()
+      end
+
       token = "code.number"
-    --elseif ((char >= "0" and char <= "9") or char == ".") then
-    --  while char and (char >= "0" and char <= "9" or
-    --                  char == "." or char == "_") do
-    --    char, last = self:NextChar()
-    --  end
-    --
-    --  token = "code.number"
     elseif (char >= "a" and char <= "z" or char >= "A" and char <= "Z" or char == "_") then
 
       while char and (char >= "a" and char <= "z" or
@@ -647,7 +683,7 @@ function PANEL:SyntaxColorLine(row)
       local gstr = luapad.CheckGlobal(sstr, tLib)
       local tgstr = type(gstr)
 
-      if (KEYWORD_TOKENS[sstr]) then
+      if (g_Keyw[sstr]) then
 
         token = "code.construct"
 
@@ -748,7 +784,8 @@ function PANEL:SyntaxColorLine(row)
       table.insert(tRow, {self.Str, tC, (multy ~= nil)})
     end
 
-    print(common.stringPadL(tostring(row), 5),
+    print("Draw:",
+          common.stringPadL(tostring(row), 5),
           common.stringPadL(tostring(token), 20),
           common.stringPadL(tostring(self.Pos), 5),
           common.stringPadL("|"..tostring(tRow[#tRow][1]):sub(-20,-1).."|", 20),
