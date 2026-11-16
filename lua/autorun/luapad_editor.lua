@@ -105,22 +105,21 @@ local TOKEN_CLASSIFY = {
     ["repeat"]   = true,
     ["until"]    = true,
     ["~="]       = true
-  }
-  SKP = {[" "] = true, ["\t"] = true}, -- Skip characters
+  },
+  SKP = "%s+", -- Skip characters
   SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
   EOL = {E = "[\r\n]+", I = "\n"}, -- General pattern for splitting
-  URL = "https?://%S+%.%S+", -- URL pattern matching
-  COM = {["-"] = "--.*$", ["/"] = "//.*$"}, -- Comments
-  NUM = "[0-9%.][0-9%.]+", -- A number literal matching numbers
-  STR = {
-    E = "\\", -- Escape character. Ignore the end
-    D = {M = "\"", Q = '"[^"]*"', E = '".*$'},
-    S = {M = "\'", Q = "'[^']*'", E = "'.*$"}
-  }, -- String patterns literal matching
   MUL = {S = "%[=*%[", E = "%]=*%]"},
+  URL = "https?://%S+%.%S+", -- URL pattern matching
+  COM = {B = ".*$", C = {["-"] = true, ["/"] = true}}, -- Comments
+  NUM = "[0-9%.][0-9%.]+", -- A number literal matching numbers
+  STR = { -- String patterns literal matching
+    B = "%s[^%s]*%s", E = "$", R = "\\%s",
+    C = {["\""] = "code.string", ["\'"] = "code.string2"}
+  }, -- Contains the string configurations
+  FNL = "[a-zA-Z_][a-zA-Z0-9_]*", -- Identifier token
   GTK = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
   TTK = {["function"] = true, ["table"] = true}, -- Libraries
-  S = {"\"", "'", Esc = "\\"}, -- String and escape character
   M = {"[", "=", "]"} -- Multi-line token definition
 }
 
@@ -574,7 +573,7 @@ function PANEL:NextSpan(sP, bN)
         if(luapad.debugmode) then
           print("   Match A", self.Pos, iE, iP)
         end
-        self.Str, self.Pos = sS, iE
+        self.Str, self.Pos = sS, iP
         self.Char = nil
         return true
       else
@@ -600,19 +599,26 @@ function PANEL:NextSpan(sP, bN)
   end
 end
 
+
+
+function PANEL:GetChar()
+  return self.Char, self.Pos
+end
+
 function PANEL:SyntaxColorLine(row)
   local tRow = self.PaintRows[row]
   if(tRow) then return tRow end
 
-  local tLib = {}; tRow = {}
+  local tLib, tRow = {}, {}
   local g_Skip = TOKEN_CLASSIFY.SKP
   local g_Coms = TOKEN_CLASSIFY.COM
   local g_Glob = TOKEN_CLASSIFY.GTK
   local g_Type = TOKEN_CLASSIFY.TTK
   local g_Patn = TOKEN_CLASSIFY.NUM
   local g_Keyw = TOKEN_CLASSIFY.KEY
+  local g_Lifn = TOKEN_CLASSIFY.FNL
+  local g_Strm = TOKEN_CLASSIFY.STR
 
-  local g_Strm = TOKEN_CLASSIFY.S
   local g_Muln = TOKEN_CLASSIFY.M
 
   self:InitColorLine(row)
@@ -623,13 +629,12 @@ function PANEL:SyntaxColorLine(row)
     print("Line:", row, char)
   end
 
-  while char do
+  while self:GetChar() do
     local token = ""
     self.Str = ""
 
-    while(char and g_Skip[char]) do
-      char, last = self:NextChar()
-    end
+    self:NextSpan(g_Skip)
+    char = self:GetChar()
 
     if(not char) then break end
 
@@ -662,43 +667,24 @@ function PANEL:SyntaxColorLine(row)
         token = (mtoken or "code.none")
         char, last = self:NextChar()
       end
-    elseif (self:NextSpan(g_Patn) and USE_PATTERN) then
-      token, char = "code.number", self.Char
-    elseif (((char >= "0" and char <= "9") or char == ".") and not USE_PATTERN) then
-      while char and (char >= "0" and char <= "9" or
-                      char == "." or char == "_") do
-        char, last = self:NextChar()
-      end
-
+    elseif (self:NextSpan(g_Patn)) then
       token = "code.number"
-    elseif (char >= "a" and char <= "z" or char >= "A" and char <= "Z" or char == "_") then
-
-      while char and (char >= "a" and char <= "z" or
-                      char >= "A" and char <= "Z" or
-                      char >= "0" and char <= "9" or char == "_") do
-        char, last = self:NextChar()
-      end
-
+    elseif (self:NextSpan(g_Lifn)) then
       local sstr = string.Trim(self.Str)
       local gstr = luapad.CheckGlobal(sstr, tLib)
       local tgstr = type(gstr)
-
       if (g_Keyw[sstr]) then
-
         token = "code.construct"
-
       elseif ((gstr and (g_Type[tgstr] or g_Glob[gstr])) or
               (sstr and tLib.Src and tLib.Src[sstr])) then
       -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
           tLib.Src, token = gstr, "code.library"
-
           if(tLib.Nam) then
             tLib.Nam = self:Concat(tLib.Nam, sstr, ".")
           else
             tLib.Nam = sstr
           end
-
         elseif ((gstr == "e") and sstr == string.upper(sstr)) then
           token = "code.enumerator"
         elseif (gstr == "m") then
@@ -706,45 +692,32 @@ function PANEL:SyntaxColorLine(row)
         else
           token = "code.function"
         end
-
       else
         tLib.Src = nil
         tLib.Nam = nil
         token = "code.none"
       end
-
-    elseif (char == g_Strm[1]) then
-
-      -- print("String:", "|"..self.Line:sub(self.Pos, -1).."|")
-
-      char, last = self:NextChar()
-      while(char and char ~= g_Strm[1]) do
-        if (char == g_Strm.Esc) then
-          char, last = self:NextChar()
+    elseif(g_Strm.C[char]) then
+      local sB, sE = g_Strm.B, g_Strm.E
+      if(self:NextSpan(sB:format(char, char, char))) then
+        local sC = sB:format("", char, char)
+        local bF, sR = true, g_Strm.R:format(char)
+        local bC = (self.Str:sub(-2,-1) == sR)
+        while(bF and bC) do -- While the quote is escaped
+          bF = self:NextSpan(sC)
+          bC = (self.Str:sub(-2,-1) == sR)
+        end -- Found a closing quote and continue is disabled
+        if(not bF and bC) then
+          self:NextSpan(sB:format("", char, sE))
         end
-        char, last = self:NextChar()
+      else -- Starts with quote but end quote is missing
+        self:NextSpan(sB:format(char, char, sE))
       end
+      token = g_Strm.C[char]
+    elseif (g_Coms.C[char]) then
       char, last = self:NextChar()
-
-      token = "code.string"
-    elseif (char == g_Strm[2]) then
-      char, last = self:NextChar()
-      while(char and char ~= g_Strm[2]) do
-        if (char == g_Strm.Esc) then
-          char, last = self:NextChar()
-        end
-        char, last = self:NextChar()
-      end
-      char, last = self:NextChar()
-
-      token = "code.string2"
-    elseif (g_Coms[char]) then
-      char, last = self:NextChar()
-
       if (char == last) then
-        while(char and char == last) do
-          char, last = self:NextChar()
-        end
+        self:NextSpan(g_Coms.B)
         token = "code.comment"
         self:SetLineBlock(false, token)
       else
@@ -783,14 +756,16 @@ function PANEL:SyntaxColorLine(row)
     else
       table.insert(tRow, {self.Str, tC, (multy ~= nil)})
     end
-
-    print("Draw:",
-          common.stringPadL(tostring(row), 5),
-          common.stringPadL(tostring(token), 20),
-          common.stringPadL(tostring(self.Pos), 5),
-          common.stringPadL("|"..tostring(tRow[#tRow][1]):sub(-20,-1).."|", 20),
-          common.stringPadL(tostring(self.Line):sub(self.Pos,self.Pos), 2)
-          )
+    if(luapad.debugmode_row) then
+      print("Draw:",
+            common.stringPadL(tostring(row), 5),
+            common.stringPadL(tostring(token), 20),
+            common.stringPadL(tostring(self.Pos), 5),
+            common.stringPadL(tostring(#tRow), 5),
+            common.stringPadL("|"..tostring(tRow[#tRow][1]):sub(-20,-1).."|", 20),
+            common.stringPadL(tostring(self.Line):sub(self.Pos,self.Pos), 2)
+            )
+    end
   end
   -- Comment was spawned to the end of line
   local multy, mtoken = self:GetLineBlock()
@@ -926,7 +901,9 @@ function PANEL:Paint(w, h)
   local guiCL = self:GetTheme("gui.currentline")
 
   local iS, iE = self:GetRenderBounds()
-  print("Bounds:", iS, iE)
+  if(luapad.debugmode) then
+    print("Bounds:", iS, iE)
+  end
   for iR = iS, iE do
     self:PaintLine(iR, guiCB, guiSE, guiRN, guiCL)
   end
