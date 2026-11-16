@@ -106,7 +106,7 @@ local TOKEN_CLASSIFY = {
     ["until"]    = true,
     ["~="]       = true
   },
-  SKP = "%s+", -- Skip characters
+  SKP = {E = "%s+", A = ".*$"}, -- Skip characters
   SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
   EOL = {E = "[\r\n]+", I = "\n"}, -- General pattern for splitting
   MUL = {S = "%[=*%[", E = "%]=*%]"},
@@ -158,6 +158,7 @@ function PANEL:Init()
   self.Pos = 0 -- Current processed line position
   self.Char = "" -- The current read character
   self.Buff = {"", ""} -- General concatenation
+  self.Span = {"", 0, 0} -- Patter span match
   self.Clips = nil -- Holds the current clipboard
   self.Blink = RealTime()
 
@@ -513,7 +514,6 @@ function PANEL:InitColorLine(row)
   if(not row) then return end
   self.Line = self.Rows[row]
 
-  self.Beg = string.len(self.Line)
   self.Pos = 0
   self.Str = ""
   self.Char = ""
@@ -536,7 +536,7 @@ function PANEL:NextChar()
     print("   PANEL:NextChar()")
   end
   local sLast = self.Char
-  if (not sLast) then return end
+  if(not sLast) then return end
   local sLine = self.Line
   local iPos  = (self.Pos + 1)
 
@@ -555,54 +555,65 @@ end
 function PANEL:NextSpan(sP, bN)
   local sL = self.Line
   local iP = self.Pos
-  local iB = self.Beg
   local sS = self.Str
+  local tS = self.Span
   local iL = string.len(sL)
   if(iP > iL) then
     self.Char = nil
     return false
   end
-  if(luapad.debugmode) then
-    print("   Search:", sP, iP, bN)
-  end
+  tS[1], tS[2], tS[3] = "", 0, 0
   local iS, iE = sL:find(sP, iP, bN)
-  if(iS and iE) then
-    if(iS == iP) then iP = iE + 1
-      sS = self:Concat(self.Str, sL:sub(iS, iE))
-      if(iE == iL) then
-        if(luapad.debugmode) then
-          print("   Match A", self.Pos, iE, iP)
-        end
-        self.Str, self.Pos = sS, iP
-        self.Char = nil
-        return true
-      else
-        if(luapad.debugmode) then
-          print("   Match B", self.Pos, iE, iP)
-        end
-        self.Str, self.Pos = sS, iP
-        self.Char = sL:sub(iP, iP)
-        return true
-      end
-    else
-      if(luapad.debugmode) then
-        print("   Match C", self.Pos, self.Beg, iS)
-      end
-      self.Beg = math.min(iB, iS - 1)
-      return false
-    end
-  else
-      if(luapad.debugmode) then
-        print("   Match D", self.Pos, self.Beg, iS)
-      end
-    return false
+  if(not (iS and iE)) then return false end
+  tS[2], tS[3] = iS, iE
+  tS[1] = sL:sub(iS, iE)
+  if(iS ~= iP) then return false end
+  iP = iE + 1 -- Next character after match
+  sS = self:Concat(self.Str, tS[1])
+  if(iE == iL) then -- Reached end of line
+    self.Str, self.Pos = sS, iP
+    self.Char = nil
+    return true
+  else -- Characters are left
+    self.Str, self.Pos = sS, iP
+    self.Char = sL:sub(iP, iP)
+    return true
   end
 end
 
-
+function PANEL:GetScan(sP, bN)
+  local iP = self.Pos
+  local sL = self.Line
+  local tS = self.Span
+  tS[1], tS[2], tS[3] = "", 0, 0
+  local iS, iE = sL:find(sP, iP, bN)
+  if(not (iS and iE)) then return false end
+  tS[1] = sL:sub(iS, iE)
+  tS[2], tS[3] = iS, iE
+  return true
+end
 
 function PANEL:GetChar()
   return self.Char, self.Pos
+end
+
+function PANEL:GetSpan(bD)
+  if(bD) then
+    return self.Span
+  else
+    return unpack(self.Span)
+  end
+end
+
+function PANEL:Advance(iP)
+  local sL = self.Line
+  local cP = self.Pos
+  local iL = string.len(sL)
+  local iP = (tonumber(iP) or iL)
+  if(iP <= cP) then return end
+  self.Str = self:Concat(self.Str, sL:sub(cP, iP))
+  self.Char, self.Pos = sL:sub(iP, iP), iP
+  if(iP >= iL) then self.Char = nil end
 end
 
 function PANEL:SyntaxColorLine(row)
@@ -618,8 +629,7 @@ function PANEL:SyntaxColorLine(row)
   local g_Keyw = TOKEN_CLASSIFY.KEY
   local g_Lifn = TOKEN_CLASSIFY.FNL
   local g_Strm = TOKEN_CLASSIFY.STR
-
-  local g_Muln = TOKEN_CLASSIFY.M
+  local g_Muln = TOKEN_CLASSIFY.MUL
 
   self:InitColorLine(row)
 
@@ -633,7 +643,7 @@ function PANEL:SyntaxColorLine(row)
     local token = ""
     self.Str = ""
 
-    self:NextSpan(g_Skip)
+    self:NextSpan(g_Skip.E)
     char = self:GetChar()
 
     if(not char) then break end
@@ -641,29 +651,30 @@ function PANEL:SyntaxColorLine(row)
     local multy, mtoken = self:GetLineBlock()
 
     if(mtoken) then
+      print("Close-0:", multy, mtoken)
       if(multy) then
-        if(char == g_Muln[3]) then
-          local multy, open = multy, char
-          char, last = self:NextChar()
-          while(char and char == g_Muln[2]) do
-            multy = multy - 1
-            char, last = self:NextChar()
-          end
+        if(self:GetScan(g_Muln.E)) then
+          local sM, iS, iE = self:GetSpan()
+          print("Close-1:", g_Muln.E, sM, iS, iE)
            -- Equals are same amount as start
-          if(multy == 0 and char == open) then
-            char, last = self:NextChar()
+          if(multy == sM:len()) then
+            self:NextSpan(g_Muln.E)
             token = (mtoken or "code.none")
             -- Reset multi line block
             self:SetLineBlock(false, false)
+            print("Close-2:", g_Muln.E, sM, iS, iE)
           else -- Continue with the line block color
             token = (mtoken or "code.none")
-            char, last = self:NextChar()
+            self:NextSpan(g_Skip.A)
+            print("Close-3:", g_Muln.E, sM, iS, iE)
           end -- Keep the last token
         else -- Keep the last token
           token = (mtoken or "code.none")
-          char, last = self:NextChar()
+          self:NextSpan(g_Skip.A)
+          print("Close-4:", g_Muln.E, sM, iS, iE)
         end
       else -- Keep the last token
+        print("Close-5:", g_Muln.E, sM, iS, iE)
         token = (mtoken or "code.none")
         char, last = self:NextChar()
       end
@@ -714,35 +725,26 @@ function PANEL:SyntaxColorLine(row)
         self:NextSpan(sB:format(char, char, sE))
       end
       token = g_Strm.C[char]
-    elseif (g_Coms.C[char]) then
+    elseif(g_Coms.C[char]) then
       char, last = self:NextChar()
-      if (char == last) then
-        self:NextSpan(g_Coms.B)
+      if(char == last) then
+        char, last = self:NextChar()
         token = "code.comment"
-        self:SetLineBlock(false, token)
+        if(self:NextSpan(g_Muln.S)) then
+          local sM = self:GetSpan()
+          self:SetLineBlock(sM:len(), token)
+        else
+          self:SetLineBlock(false, token)
+          self:NextSpan(g_Coms.B)
+        end
       else
         token = "code.none"
         self:SetLineBlock(false, false)
       end
-    elseif (char == g_Muln[1]) then
-      local multy, open = 0, char
-      char, last = self:NextChar()
-      while(char and char == g_Muln[2]) do
-        char, last = self:NextChar()
-        multy = multy + 1
-      end
-      if (char == open) then
-        char, last = self:NextChar()
-        if(mtoken == "code.comment") then
-          token = mtoken
-        else
-          token = "code.string"
-        end
-        self:SetLineBlock(multy, token)
-      else
-        self:SetLineBlock(false, false)
-        token = "code.none" -- Reset multi line
-      end
+    elseif(self:NextSpan(g_Muln.S)) then
+      token = "code.string"
+      local sM = self:GetSpan()
+      self:SetLineBlock(sM:len(), token)
     else
       char, last = self:NextChar()
       token = "code.operator"
