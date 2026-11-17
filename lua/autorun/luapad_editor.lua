@@ -76,51 +76,40 @@ local COLOR_HIGHLIGHT = {
 
 local TOKEN_CLASSIFY = {
   KEY = {
-    ["if"]       = true,
-    ["elseif"]   = true,
-    ["else"]     = true,
-    ["then"]     = true,
-    ["end"]      = true,
-    ["function"] = true,
-    ["do"]       = true,
-    ["while"]    = true,
-    ["break"]    = true,
-    ["for"]      = true,
-    ["in"]       = true,
-    ["local"]    = true,
-    ["true"]     = true,
-    ["false"]    = true,
-    ["nil"]      = true,
-    ["NULL"]     = true,
-    ["and"]      = true,
-    ["not"]      = true,
-    ["or"]       = true,
-    ["||"]       = true,
-    ["&&"]       = true,
-    ["!"]        = true,
-    ["!="]       = true,
-    ["return"]   = true,
-    ["continue"] = true,
-    ["goto"]     = true,
-    ["repeat"]   = true,
-    ["until"]    = true,
-    ["~="]       = true
+    ["if"]       = true, ["elseif"]   = true, ["else"]     = true,
+    ["then"]     = true, ["end"]      = true, ["function"] = true,
+    ["do"]       = true, ["while"]    = true, ["break"]    = true,
+    ["for"]      = true, ["in"]       = true, ["local"]    = true,
+    ["true"]     = true, ["false"]    = true, ["nil"]      = true,
+    ["NULL"]     = true, ["and"]      = true, ["not"]      = true,
+    ["or"]       = true, ["return"]   = true, ["continue"] = true,
+    ["goto"]     = true, ["repeat"]   = true, ["until"]    = true,
+  },
+  OPS = {
+    ["+"] = true, ["-"] = true, ["*"] = true,
+    ["/"] = true, ["%"] = true, ["^"] = true,
+    [">"] = true, ["<"] = true, ["#"] = true,
+    ["^"] = true, ["!"] = true,
+    -- Operators with two characters
+    ["=="] = true, ["~="] = true,
+    [">="] = true, ["<="] = true,
+    [".."] = true, ["||"] = true,
+    ["&&"] = true, ["!="] = true
   },
   SKP = {E = "%s+", A = ".*$"}, -- Skip characters
   SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
   EOL = {E = "[\r\n]+", I = "\n"}, -- General pattern for splitting
-  MUL = {S = "%[=*%[", E = "%]=*%]"},
+  MUL = {S = "%[=*%[", E = "%]=*%]", L = ".*$"}, -- Multi line pattern
   URL = "https?://%S+%.%S+", -- URL pattern matching
-  COM = {B = ".*$", C = {["-"] = true, ["/"] = true}}, -- Comments
-  NUM = "[0-9%.][0-9%.]+", -- A number literal matching numbers
+  COM = {B = ".*$", C = {["-"] = "%-[%-]+", ["/"] = "/[/]+"}}, -- Comments
+  NUM = "%d+%.?%d*%f[^%d%.]", -- A number literal matching numbers
   STR = { -- String patterns literal matching
     B = "%s[^%s]*%s", E = "$", R = "\\%s",
     C = {["\""] = "code.string", ["\'"] = "code.string2"}
   }, -- Contains the string configurations
   FNL = "[a-zA-Z_][a-zA-Z0-9_]*", -- Identifier token
   GTK = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
-  TTK = {["function"] = true, ["table"] = true}, -- Libraries
-  M = {"[", "=", "]"} -- Multi-line token definition
+  TTK = {["function"] = true, ["table"] = true} -- Libraries
 }
 
 -- Create fonts
@@ -339,23 +328,23 @@ function PANEL:SetEmptyRow()
 end
 
 function PANEL:CursorToCaret()
-  local x, y = self:CursorPos()
+  local iX, iY = self:CursorPos()
 
-  x = x - (self.FontWidth * 3 + 6)
-  x = ((x < 0) and 0 or x)
-  y = ((y < 0) and 0 or y)
+  iX = iX - (self.FontWidth * 3 + 6)
+  iX = ((iX < 0) and 0 or iX)
+  iY = ((iY < 0) and 0 or iY)
 
-  local last, leng = self:GetRownum(), 0
-  local line = math.floor(y / self.FontHeight)
-  local char = math.floor(x / self.FontWidth + 0.5)
+  local iR, iL = self:GetRownum(), 0
+  local iH = math.floor(iY / self.FontHeight)
+  local iW = math.floor(iX / self.FontWidth + 0.5)
 
-  line = line + self.Scroll[1]
-  char = char + self.Scroll[2]
-  line = ((line > last) and last or line)
-  leng = string.len(self.Rows[line])
-  char = math.min(char, leng + 1)
+  iH = iH + self.Scroll[1]
+  iW = iW + self.Scroll[2]
+  iH = ((iH > iR) and iR or iH)
+  iL = string.len(self.Rows[iH])
+  iW = math.min(iW, iL + 1)
 
-  return {line, char}
+  return {iH, iW}
 end
 
 function PANEL:OnMousePressed(code)
@@ -480,8 +469,6 @@ function PANEL:SetText(text)
 
   self.Rows = string.Explode(g_NP, text, true)
 
-  print("Rows:", #self.Rows)
-
   local last = self:SetEmptyRow()
 
   self.Caret = {1, 1}
@@ -531,10 +518,7 @@ function PANEL:Concat(sA, sB, sC)
   return table.concat(tB, sC)
 end
 
-function PANEL:NextChar()
-  if(luapad.debugmode) then
-    print("   PANEL:NextChar()")
-  end
+function PANEL:Fetch()
   local sLast = self.Char
   if(not sLast) then return end
   local sLine = self.Line
@@ -552,49 +536,52 @@ function PANEL:NextChar()
   return self.Char, sLast
 end
 
-function PANEL:NextSpan(sP, bN)
+function PANEL:Capture(sP, bN, bF)
+  local sP = tostring(sP or "")
+  if(sP == "") then return false end
+  local cP = self.Pos
   local sL = self.Line
-  local iP = self.Pos
-  local sS = self.Str
   local tS = self.Span
   local iL = string.len(sL)
-  if(iP > iL) then
-    self.Char = nil
-    return false
-  end
   tS[1], tS[2], tS[3] = "", 0, 0
-  local iS, iE = sL:find(sP, iP, bN)
+  if(cP > iL) then return false end
+  local iS, iE = sL:find(sP, cP, bN)
   if(not (iS and iE)) then return false end
-  tS[2], tS[3] = iS, iE
-  tS[1] = sL:sub(iS, iE)
-  if(iS ~= iP) then return false end
-  iP = iE + 1 -- Next character after match
-  sS = self:Concat(self.Str, tS[1])
-  if(iE == iL) then -- Reached end of line
-    self.Str, self.Pos = sS, iP
-    self.Char = nil
-    return true
-  else -- Characters are left
-    self.Str, self.Pos = sS, iP
-    self.Char = sL:sub(iP, iP)
-    return true
-  end
-end
-
-function PANEL:GetScan(sP, bN)
-  local iP = self.Pos
-  local sL = self.Line
-  local tS = self.Span
-  tS[1], tS[2], tS[3] = "", 0, 0
-  local iS, iE = sL:find(sP, iP, bN)
-  if(not (iS and iE)) then return false end
+  if(bF and iS ~= cP) then return false end
   tS[1] = sL:sub(iS, iE)
   tS[2], tS[3] = iS, iE
   return true
 end
 
-function PANEL:GetChar()
-  return self.Char, self.Pos
+function PANEL:Advance(iP)
+  local cP = self.Pos
+  local sS = self.Str
+  local sL = self.Line
+  local tS = self.Span
+  local iL = string.len(sL)
+  local iP = (tonumber(iP) or tS[3])
+  if(not iP or iP <= cP) then iP = cP end
+  if(cP > iL) then self.Char = nil; return end
+  self.Str = self:Concat(sS, sL:sub(cP, iP))
+  iP = iP + 1; self.Pos = iP
+  if(iP > iL) then self.Char = nil
+  else self.Char = sL:sub(iP, iP) end
+end
+
+function PANEL:Consume(sP, bN)
+  local bC = self:Capture(sP, bN, true)
+  if(bC) then self:Advance() end
+  return bC
+end
+
+function PANEL:GetChar(iC)
+  if(not iC) then
+    return self.Char, self.Pos
+  else
+    local cP, sL = self.Pos, self.Line
+    local iC = math.max(cP + (tonumber(iC) or 0), cP)
+    return string.sub(sL, iC, iC), iC
+  end
 end
 
 function PANEL:GetSpan(bD)
@@ -603,17 +590,6 @@ function PANEL:GetSpan(bD)
   else
     return unpack(self.Span)
   end
-end
-
-function PANEL:Advance(iP)
-  local sL = self.Line
-  local cP = self.Pos
-  local iL = string.len(sL)
-  local iP = (tonumber(iP) or iL)
-  if(iP <= cP) then return end
-  self.Str = self:Concat(self.Str, sL:sub(cP, iP))
-  self.Char, self.Pos = sL:sub(iP, iP), iP
-  if(iP >= iL) then self.Char = nil end
 end
 
 function PANEL:SyntaxColorLine(row)
@@ -630,20 +606,17 @@ function PANEL:SyntaxColorLine(row)
   local g_Lifn = TOKEN_CLASSIFY.FNL
   local g_Strm = TOKEN_CLASSIFY.STR
   local g_Muln = TOKEN_CLASSIFY.MUL
+  local g_Opts = TOKEN_CLASSIFY.OPS
 
   self:InitColorLine(row)
 
-  local char, last = self:NextChar()
-
-  if(luapad.debugmode) then
-    print("Line:", row, char)
-  end
+  local char, last = self:Fetch()
 
   while self:GetChar() do
     local token = ""
     self.Str = ""
 
-    self:NextSpan(g_Skip.E)
+    self:Consume(g_Skip.E)
     char = self:GetChar()
 
     if(not char) then break end
@@ -651,36 +624,30 @@ function PANEL:SyntaxColorLine(row)
     local multy, mtoken = self:GetLineBlock()
 
     if(mtoken) then
-      print("Close-0:", multy, mtoken)
       if(multy) then
-        if(self:GetScan(g_Muln.E)) then
+        if(self:Capture(g_Muln.E)) then
           local sM, iS, iE = self:GetSpan()
-          print("Close-1:", g_Muln.E, sM, iS, iE)
            -- Equals are same amount as start
           if(multy == sM:len()) then
-            self:NextSpan(g_Muln.E)
+            self:Consume(g_Muln.E)
             token = (mtoken or "code.none")
             -- Reset multi line block
             self:SetLineBlock(false, false)
-            print("Close-2:", g_Muln.E, sM, iS, iE)
           else -- Continue with the line block color
             token = (mtoken or "code.none")
-            self:NextSpan(g_Skip.A)
-            print("Close-3:", g_Muln.E, sM, iS, iE)
-          end -- Keep the last token
-        else -- Keep the last token
+            self:Consume(g_Skip.A)
+          end -- Keep the previous token
+        else -- Keep the previous token
           token = (mtoken or "code.none")
-          self:NextSpan(g_Skip.A)
-          print("Close-4:", g_Muln.E, sM, iS, iE)
+          self:Consume(g_Skip.A)
         end
-      else -- Keep the last token
-        print("Close-5:", g_Muln.E, sM, iS, iE)
+      else -- Keep the previous token
         token = (mtoken or "code.none")
-        char, last = self:NextChar()
+        char, last = self:Fetch()
       end
-    elseif (self:NextSpan(g_Patn)) then
+    elseif (self:Consume(g_Patn)) then
       token = "code.number"
-    elseif (self:NextSpan(g_Lifn)) then
+    elseif (self:Consume(g_Lifn)) then
       local sstr = string.Trim(self.Str)
       local gstr = luapad.CheckGlobal(sstr, tLib)
       local tgstr = type(gstr)
@@ -710,44 +677,60 @@ function PANEL:SyntaxColorLine(row)
       end
     elseif(g_Strm.C[char]) then
       local sB, sE = g_Strm.B, g_Strm.E
-      if(self:NextSpan(sB:format(char, char, char))) then
+      if(self:Consume(sB:format(char, char, char))) then
         local sC = sB:format("", char, char)
         local bF, sR = true, g_Strm.R:format(char)
         local bC = (self.Str:sub(-2,-1) == sR)
         while(bF and bC) do -- While the quote is escaped
-          bF = self:NextSpan(sC)
+          bF = self:Consume(sC)
           bC = (self.Str:sub(-2,-1) == sR)
         end -- Found a closing quote and continue is disabled
         if(not bF and bC) then
-          self:NextSpan(sB:format("", char, sE))
+          self:Consume(sB:format("", char, sE))
         end
       else -- Starts with quote but end quote is missing
-        self:NextSpan(sB:format(char, char, sE))
+        self:Consume(sB:format(char, char, sE))
       end
       token = g_Strm.C[char]
-    elseif(g_Coms.C[char]) then
-      char, last = self:NextChar()
-      if(char == last) then
-        char, last = self:NextChar()
-        token = "code.comment"
-        if(self:NextSpan(g_Muln.S)) then
-          local sM = self:GetSpan()
-          self:SetLineBlock(sM:len(), token)
+    elseif(self:Consume(g_Coms.C[char])) then
+      token = "code.comment"
+      if(self:Consume(g_Muln.S)) then
+        local sM = self:GetSpan()
+        self:SetLineBlock(sM:len(), token)
+        if(self:Capture(g_Muln.E)) then
+          self:Advance()
+          self:SetLineBlock(false, false)
         else
-          self:SetLineBlock(false, token)
-          self:NextSpan(g_Coms.B)
+          self:Consume(g_Muln.L)
         end
       else
-        token = "code.none"
-        self:SetLineBlock(false, false)
+        self:SetLineBlock(false, token)
+        self:Consume(g_Coms.B)
       end
-    elseif(self:NextSpan(g_Muln.S)) then
+    elseif(self:Consume(g_Muln.S)) then
       token = "code.string"
       local sM = self:GetSpan()
       self:SetLineBlock(sM:len(), token)
+      if(self:Capture(g_Muln.E)) then
+        self:Advance()
+        self:SetLineBlock(false, false)
+      else
+        self:Consume(g_Muln.L)
+      end
     else
-      char, last = self:NextChar()
-      token = "code.operator"
+      local sN = self:GetChar(1)
+      local sO = self:Concat(char, sN)
+      if(g_Opts[sO]) then -- Double character
+        token = "code.operator"
+        char, last = self:Fetch()
+      else -- The operator is single character
+        if(g_Opts[char]) then
+          token = "code.operator"
+        else -- The character is not operator
+          token = "code.none"
+        end
+      end -- Prepare to read the next character
+      char, last = self:Fetch()
     end
 
     local tC = self.Highlight[token]
@@ -758,15 +741,21 @@ function PANEL:SyntaxColorLine(row)
     else
       table.insert(tRow, {self.Str, tC, (multy ~= nil)})
     end
+
     if(luapad.debugmode_row) then
+      local nL = 30
+      local function con(str, len, char)
+        local char = tostring(char or " "):sub(1,1)
+        return string.rep(char, math.max(0, len - #str))..str
+      end
       print("Draw:",
-            common.stringPadL(tostring(row), 5),
-            common.stringPadL(tostring(token), 20),
-            common.stringPadL(tostring(self.Pos), 5),
-            common.stringPadL(tostring(#tRow), 5),
-            common.stringPadL("|"..tostring(tRow[#tRow][1]):sub(-20,-1).."|", 20),
-            common.stringPadL(tostring(self.Line):sub(self.Pos,self.Pos), 2)
-            )
+        con(tostring(row), 5),
+        con(tostring(token), 20),
+        con(tostring(self.Pos), 5),
+        con(tostring(#tRow), 5),
+        con("|"..tostring(tRow[#tRow][1]):sub(-(nL - 2),-1).."|", nL),
+        con(tostring(self.Line):sub(self.Pos,self.Pos), 2)
+      )
     end
   end
   -- Comment was spawned to the end of line
@@ -858,7 +847,7 @@ end
 --[[
  * Render from the first line otherwise the multi-line comments are not triggered correctly
  * It is possible the beginning of the screen to be in the middle of a multi-line comment
- * Because of that the rendering should start from the last row that is not a multi-line entry
+ * Because of that the rendering should start from the row which is not a multi-line entry
 ]]
 function PANEL:GetRenderBounds()
   local tTab = self:GetTable()
@@ -903,9 +892,6 @@ function PANEL:Paint(w, h)
   local guiCL = self:GetTheme("gui.currentline")
 
   local iS, iE = self:GetRenderBounds()
-  if(luapad.debugmode) then
-    print("Bounds:", iS, iE)
-  end
   for iR = iS, iE do
     self:PaintLine(iR, guiCB, guiSE, guiRN, guiCL)
   end
