@@ -30,7 +30,7 @@ local GLOB_CONFIG = {
   STORKY = "gmod_luapad",    -- Dedicated tab panel key to store stream info
   PRESND = "ambient/water/drip%d.wav", -- Sound format played on button press
   DATFMT = "%Y-%m-%d %H:%M:%S", -- Date and time general format
-  SRCHFM = "Found routine [%s] in %s", -- Debug search messages
+  SRCHFM = "%s: Found routine [%s] in %s!", -- Debug search messages
   CFLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY),
   RFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY)
 }
@@ -839,7 +839,9 @@ function luapad.CheckGlobal(func, last)
   if (luapad._sG[func] ~= nil) then
     local sN = FMSYNTAX_HILIGHT.N
     if (luapad.debugmode) then
-      print(GLOB_CONFIG.SRCHFM:format(func, sN))
+      local sF = GLOB_CONFIG.SRCHFM
+      local sA = GLOB_CONFIG.ADDONN[1]
+      luapad.SetConsole(sF, "STAT_OK", sA, func, sN)
     end
     return luapad._sG[func]
   end
@@ -847,14 +849,19 @@ function luapad.CheckGlobal(func, last)
     local tL, sN = last.Src, last.Nam
     if(tL and istable(tL) and tL[func]) then
       if (luapad.debugmode) then
-        print(GLOB_CONFIG.SRCHFM:format(func, tostring(sN or "_LAST_")))
+        local sF = GLOB_CONFIG.SRCHFM
+        local sA = GLOB_CONFIG.ADDONN[1]
+        local nN = tostring(sN or "_LAST_")
+        luapad.SetConsole(sF, "STAT_OK", sA, func, nN)
       end
       return tL[func]
     end
   end
   if (_G[func] ~= nil) then
     if (luapad.debugmode) then
-      print(GLOB_CONFIG.SRCHFM:format(func, "_G"))
+      local sF = GLOB_CONFIG.SRCHFM
+      local sA = GLOB_CONFIG.ADDONN[1]
+      luapad.SetConsole(sF, "STAT_OK", sA, func, "_G")
     end
     return _G[func]
   end

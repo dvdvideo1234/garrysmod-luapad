@@ -102,7 +102,7 @@ local TOKEN_CLASSIFY = {
   MUL = {S = "%[=*%[", E = "%]=*%]", L = ".*$"}, -- Multi line pattern
   URL = "https?://%S+%.%S+", -- URL pattern matching
   COM = {B = ".*$", C = {["-"] = "%-[%-]+", ["/"] = "/[/]+"}}, -- Comments
-  NUM = "%d+%.?%d*%f[^%d%.]", -- A number literal matching numbers
+  NUM = {"0[xX]%x+", "%d*%.?%d+"}, -- A number literal matching numbers
   STR = { -- String patterns literal matching
     B = "%s[^%s]*%s", E = "$", R = "\\%s",
     C = {["\""] = "code.string", ["\'"] = "code.string2"}
@@ -260,18 +260,19 @@ end
 function  PANEL:SetThemeReuse(bD)
   local tR = COLOR_HIGHLIGHT.Reuse
   local tH = self:GetTable().Highlight
+  local vC = (bD and color_white or color_black)
   for sR, sK in pairs(tR) do
     local iC = 10 -- Make maximum 10 jumps
     local sC = sR -- Reuse start index
     local tC = tH[sC] -- Start data
-    while(iC > 0 and sC and not tC) do iC = iC - 1
+    while(iC > 0 and sC and not tC) do
       sC = tR[sC] -- Navigate to the next key
       tC = tH[sC] -- Navigate to the next data
+      iC = iC - 1 -- Increment the step count
     end -- Find a color with 10 jumps max
     if(tC and istable(tC) and IsColor(tC[1])) then
       tH[sR] = tC -- Color has been navigated
-    else -- Otherwise
-      local vC = (bD and color_white or color_black)
+    else -- Otherwise -- Entry is not validated
       tH[sR] = {vC, false} -- Base color no bold
     end
   end
@@ -376,75 +377,65 @@ function PANEL:OnMousePressed(code)
     local pMenu = DermaMenu()
     if(not IsValid(pMenu)) then return end
     pMenu:SetParent(self)
-
+    -- Undo previous changes
     if (self:CanUndo()) then
-      pMenu:AddOption(
-        "Undo", function()
-          self:DoUndo()
-        end):SetImage(luapad.ToIcon("arrow_undo"))
+      pMenu:AddOption("Undo", function()
+        self:DoUndo()
+      end):SetImage(luapad.ToIcon("arrow_undo"))
     end
+    -- Redo previous changes
     if (self:CanRedo()) then
-      pMenu:AddOption(
-        "Redo", function()
-          self:DoRedo()
-        end):SetImage(luapad.ToIcon("arrow_redo"))
+      pMenu:AddOption("Redo", function()
+        self:DoRedo()
+      end):SetImage(luapad.ToIcon("arrow_redo"))
     end
-
+    -- Draw a separator
     if (self:CanUndo() or self:CanRedo()) then
       pMenu:AddSpacer()
     end
-
+    -- Cut mark contents
     if (self:HasSelection()) then
-      pMenu:AddOption(
-        "Cut", function()
-          if (self:HasSelection()) then
-            self:ToSelection()
-            self:SetSelection()
-          end
-        end):SetImage(luapad.ToIcon("cut"))
-      pMenu:AddOption(
-        "Copy", function()
-          if (self:HasSelection()) then
-            self:ToSelection()
-          end
-        end):SetImage(luapad.ToIcon("page_copy"))
-    end
-
-    pMenu:AddOption(
-      "Paste", function()
-        if (self.Clips) then
-          self:SetSelection(self.Clips)
-        else
+      pMenu:AddOption("Cut", function()
+        if (self:HasSelection()) then
+          self:ToSelection()
           self:SetSelection()
         end
-      end):SetImage(luapad.ToIcon("page_paste"))
-
-    if (self:HasSelection()) then
-      pMenu:AddOption(
-        "Delete", function()
-          self:SetSelection()
-        end):SetImage(luapad.ToIcon("page_delete"))
+      end):SetImage(luapad.ToIcon("cut"))
+      -- Copy mark contents
+      pMenu:AddOption("Copy", function()
+        if (self:HasSelection()) then
+          self:ToSelection()
+        end
+      end):SetImage(luapad.ToIcon("page_copy"))
     end
-
+    -- Paste mark contents
+    pMenu:AddOption("Paste", function()
+      local bC = luapad.IsHere(self.Clips)
+      self:SetSelection(bC and self.Clips or nil)
+    end):SetImage(luapad.ToIcon("page_paste"))
+    -- Delete mark contents
+    if (self:HasSelection()) then
+      pMenu:AddOption("Delete", function()
+        self:SetSelection()
+      end):SetImage(luapad.ToIcon("page_delete"))
+    end
+    -- Mark all contents
     pMenu:AddSpacer()
-
-    pMenu:AddOption(
-      "Select all", function()
-        self:SelectAll()
-      end):SetImage(luapad.ToIcon("pencil"))
-
+    pMenu:AddOption("Select all", function()
+      self:SelectAll()
+    end):SetImage(luapad.ToIcon("pencil"))
+    -- Try to follow the selection as link
     if (self:HasSelection()) then
       local sS = self:GetSelection()
       local sU = sS:match(TOKEN_CLASSIFY.URL)
       if(sU) then
         pMenu:AddSpacer()
-        pMenu:AddOption(
-          "Follow", function()
-            gui.OpenURL(sU)
-          end):SetImage(luapad.ToIcon("world_link"))
+        pMenu:AddOption("Follow", function()
+          gui.OpenURL(sU)
+        end):SetImage(luapad.ToIcon("world_link"))
       end
     end
-
+    -- Force menu on the foreground
     pMenu:Open()
     pMenu:MakePopup()
   end
@@ -486,18 +477,18 @@ function PANEL:GetText()
   return string.Implode(g_NL, self.Rows)
 end
 
-function PANEL:SetLineBlock(vM, vT)
+function PANEL:SetRowBlock(vM, vT)
   local tT = self.Token
   if(vM ~= nil) then tT.M = vM end
   if(vT ~= nil) then tT.T = vT end
 end
 
-function PANEL:GetLineBlock()
+function PANEL:GetRowBlock()
   local tT = self.Token
   return tT.M, tT.T
 end
 
-function PANEL:InitColorLine(row)
+function PANEL:InitColorRowID(row)
   if(not row) then return end
   self.Line = self.Rows[row]
 
@@ -508,35 +499,37 @@ function PANEL:InitColorLine(row)
   self.Buff[2] = ""
 
   if(row == 1) then
-    self:SetLineBlock(false, false)
+    self:SetRowBlock(false, false)
   end
 end
 
-function PANEL:Concat(sA, sB, sC)
+function PANEL:GetConcat(sA, sB, sC)
   local tB = self.Buff
   tB[1], tB[2] = sA, sB
   return table.concat(tB, sC)
 end
 
-function PANEL:Fetch()
-  local sLast = self.Char
-  if(not sLast) then return end
-  local sLine = self.Line
-  local iPos  = (self.Pos + 1)
+function PANEL:ConsumeChar()
+  local cP = self.Char
+  if(not cP) then return end
+  local sS = self.Str
+  local sL = self.Line
+  local iL = string.len(sL)
+  local iP  = (self.Pos + 1)
 
-  self.Pos = iPos
-  self.Str = self:Concat(self.Str, sLast)
+  self.Pos = iP
+  self.Str = self:GetConcat(sS, cP)
 
-  if (iPos <= string.len(sLine)) then
-    self.Char = string.sub(sLine, iPos, iPos)
+  if (iP <= iL) then
+    self.Char = string.sub(sL, iP, iP)
   else
     self.Char = nil
   end
 
-  return self.Char, sLast
+  return self.Char, cP
 end
 
-function PANEL:Capture(sP, bN, bF)
+function PANEL:CaptureSpan(sP, bN, bF)
   local sP = tostring(sP or "")
   if(sP == "") then return false end
   local cP = self.Pos
@@ -545,15 +538,15 @@ function PANEL:Capture(sP, bN, bF)
   local iL = string.len(sL)
   tS[1], tS[2], tS[3] = "", 0, 0
   if(cP > iL) then return false end
-  local iS, iE = sL:find(sP, cP, bN)
+  local iS, iE = string.find(sL, sP, cP, bN)
   if(not (iS and iE)) then return false end
   if(bF and iS ~= cP) then return false end
-  tS[1] = sL:sub(iS, iE)
+  tS[1] = string.sub(sL, iS, iE)
   tS[2], tS[3] = iS, iE
   return true
 end
 
-function PANEL:Advance(iP)
+function PANEL:AdvanceSpan(iP)
   local cP = self.Pos
   local sS = self.Str
   local sL = self.Line
@@ -562,16 +555,55 @@ function PANEL:Advance(iP)
   local iP = (tonumber(iP) or tS[3])
   if(not iP or iP <= cP) then iP = cP end
   if(cP > iL) then self.Char = nil; return end
-  self.Str = self:Concat(sS, sL:sub(cP, iP))
+  self.Str = self:GetConcat(sS, string.sub(sL, cP, iP))
   iP = iP + 1; self.Pos = iP
   if(iP > iL) then self.Char = nil
-  else self.Char = sL:sub(iP, iP) end
+  else self.Char = string.sub(sL, iP, iP) end
 end
 
-function PANEL:Consume(sP, bN)
-  local bC = self:Capture(sP, bN, true)
-  if(bC) then self:Advance() end
+function PANEL:UpdateRowSpan(tRow, sT, bM)
+  if(not istable(tRow)) then return end
+  local tH = self:GetTable().Highlight
+  if(not istable(tH)) then return end
+  local oH, nH, sS = tH[sT], #tRow, self.Str
+  -- Write the cell in the highlight array
+  if(nH == 0) then -- No cells for this row
+    table.insert(tRow, {sS, oH, bM})
+    return -- Insert this cell and return
+  end
+  -- Update current cell with same color
+  local tC = tRow[nH] -- Current sell
+  local cS, cH = unpack(tC) -- Unpack
+  if(oH == cH) then -- Same as previous
+    tC[1] = self:GetConcat(cS, sS)
+  else -- Different highlight than previous
+    table.insert(tRow, {sS, oH, bM})
+  end
+end
+
+function PANEL:FinalizeRow(tRow, iD)
+  -- Comment was spawned to the end of line
+  local mM, mT = self:GetRowBlock()
+  if(not mM) then
+    self:SetRowBlock(false, false)
+  end
+  -- Cache the highlight view
+  self.PaintRows[iD] = tRow
+  return tRow
+end
+
+function PANEL:ConsumeSpan(sP, bN)
+  local bC = self:CaptureSpan(sP, bN, true)
+  if(bC) then self:AdvanceSpan() end
   return bC
+end
+
+function PANEL:ConsumeArray(tP, bN)
+  if(not istable(tP)) then return false end
+  for iP = 1, #tP do -- Array of patterns
+    local bC = self:CaptureSpan(tP[iP], bN, true)
+    if(bC) then self:AdvanceSpan(); return bC end
+  end; return false -- Not found
 end
 
 function PANEL:GetChar(iC)
@@ -592,7 +624,7 @@ function PANEL:GetSpan(bD)
   end
 end
 
-function PANEL:SyntaxColorLine(row)
+function PANEL:SyntaxColorRowID(row)
   local tRow = self.PaintRows[row]
   if(tRow) then return tRow end
 
@@ -608,46 +640,46 @@ function PANEL:SyntaxColorLine(row)
   local g_Muln = TOKEN_CLASSIFY.MUL
   local g_Opts = TOKEN_CLASSIFY.OPS
 
-  self:InitColorLine(row)
+  self:InitColorRowID(row)
 
-  local char, last = self:Fetch()
+  local char, last = self:ConsumeChar()
 
   while self:GetChar() do
     local token = ""
     self.Str = ""
 
-    self:Consume(g_Skip.E)
+    self:ConsumeSpan(g_Skip.E)
     char = self:GetChar()
 
     if(not char) then break end
 
-    local multy, mtoken = self:GetLineBlock()
+    local multy, mtoken = self:GetRowBlock()
 
     if(mtoken) then
       if(multy) then
-        if(self:Capture(g_Muln.E)) then
+        if(self:CaptureSpan(g_Muln.E)) then
           local sM, iS, iE = self:GetSpan()
            -- Equals are same amount as start
           if(multy == sM:len()) then
-            self:Consume(g_Muln.E)
+            self:ConsumeSpan(g_Muln.E)
             token = (mtoken or "code.none")
             -- Reset multi line block
-            self:SetLineBlock(false, false)
+            self:SetRowBlock(false, false)
           else -- Continue with the line block color
             token = (mtoken or "code.none")
-            self:Consume(g_Skip.A)
+            self:ConsumeSpan(g_Skip.A)
           end -- Keep the previous token
         else -- Keep the previous token
           token = (mtoken or "code.none")
-          self:Consume(g_Skip.A)
+          self:ConsumeSpan(g_Skip.A)
         end
       else -- Keep the previous token
         token = (mtoken or "code.none")
-        char, last = self:Fetch()
+        char, last = self:ConsumeChar()
       end
-    elseif (self:Consume(g_Patn)) then
+    elseif (self:ConsumeArray(g_Patn)) then
       token = "code.number"
-    elseif (self:Consume(g_Lifn)) then
+    elseif (self:ConsumeSpan(g_Lifn)) then
       local sstr = string.Trim(self.Str)
       local gstr = luapad.CheckGlobal(sstr, tLib)
       local tgstr = type(gstr)
@@ -659,7 +691,7 @@ function PANEL:SyntaxColorLine(row)
         if (tgstr == "table") then
           tLib.Src, token = gstr, "code.library"
           if(tLib.Nam) then
-            tLib.Nam = self:Concat(tLib.Nam, sstr, ".")
+            tLib.Nam = self:GetConcat(tLib.Nam, sstr, ".")
           else
             tLib.Nam = sstr
           end
@@ -677,52 +709,52 @@ function PANEL:SyntaxColorLine(row)
       end
     elseif(g_Strm.C[char]) then
       local sB, sE = g_Strm.B, g_Strm.E
-      if(self:Consume(sB:format(char, char, char))) then
+      if(self:ConsumeSpan(sB:format(char, char, char))) then
         local sC = sB:format("", char, char)
         local bF, sR = true, g_Strm.R:format(char)
-        local bC = (self.Str:sub(-2,-1) == sR)
+        local bC = (string.sub(self.Str,-2,-1) == sR)
         while(bF and bC) do -- While the quote is escaped
-          bF = self:Consume(sC)
-          bC = (self.Str:sub(-2,-1) == sR)
+          bF = self:ConsumeSpan(sC)
+          bC = (string.sub(self.Str,-2,-1) == sR)
         end -- Found a closing quote and continue is disabled
         if(not bF and bC) then
-          self:Consume(sB:format("", char, sE))
+          self:ConsumeSpan(sB:format("", char, sE))
         end
       else -- Starts with quote but end quote is missing
-        self:Consume(sB:format(char, char, sE))
+        self:ConsumeSpan(sB:format(char, char, sE))
       end
       token = g_Strm.C[char]
-    elseif(self:Consume(g_Coms.C[char])) then
+    elseif(self:ConsumeSpan(g_Coms.C[char])) then
       token = "code.comment"
-      if(self:Consume(g_Muln.S)) then
+      if(self:ConsumeSpan(g_Muln.S)) then
         local sM = self:GetSpan()
-        self:SetLineBlock(sM:len(), token)
-        if(self:Capture(g_Muln.E)) then
-          self:Advance()
-          self:SetLineBlock(false, false)
+        self:SetRowBlock(sM:len(), token)
+        if(self:CaptureSpan(g_Muln.E)) then
+          self:AdvanceSpan()
+          self:SetRowBlock(false, false)
         else
-          self:Consume(g_Muln.L)
+          self:ConsumeSpan(g_Muln.L)
         end
       else
-        self:SetLineBlock(false, token)
-        self:Consume(g_Coms.B)
+        self:SetRowBlock(false, token)
+        self:ConsumeSpan(g_Coms.B)
       end
-    elseif(self:Consume(g_Muln.S)) then
+    elseif(self:ConsumeSpan(g_Muln.S)) then
       token = "code.string"
       local sM = self:GetSpan()
-      self:SetLineBlock(sM:len(), token)
-      if(self:Capture(g_Muln.E)) then
-        self:Advance()
-        self:SetLineBlock(false, false)
+      self:SetRowBlock(sM:len(), token)
+      if(self:CaptureSpan(g_Muln.E)) then
+        self:AdvanceSpan()
+        self:SetRowBlock(false, false)
       else
-        self:Consume(g_Muln.L)
+        self:ConsumeSpan(g_Muln.L)
       end
     else
       local sN = self:GetChar(1)
-      local sO = self:Concat(char, sN)
+      local sO = self:GetConcat(char, sN)
       if(g_Opts[sO]) then -- Double character
         token = "code.operator"
-        char, last = self:Fetch()
+        char, last = self:ConsumeChar()
       else -- The operator is single character
         if(g_Opts[char]) then
           token = "code.operator"
@@ -730,49 +762,39 @@ function PANEL:SyntaxColorLine(row)
           token = "code.none"
         end
       end -- Prepare to read the next character
-      char, last = self:Fetch()
+      char, last = self:ConsumeChar()
     end
 
-    local tC = self.Highlight[token]
-    local nH = #tRow
+    -- Register this cell to the current row
+    self:UpdateRowSpan(tRow, token, (multy ~= nil))
 
-    if (nH > 1 and tC == tRow[nH][2]) then
-      tRow[nH][1] = self:Concat(tRow[nH][1], self.Str)
-    else
-      table.insert(tRow, {self.Str, tC, (multy ~= nil)})
-    end
-
-    if(luapad.debugmode_row) then
+    if(luapad.debugmode) then
       local nL = 30
       local function con(str, len, char)
-        local char = tostring(char or " "):sub(1,1)
+        local char = string.sub(tostring(char or " "),1,1)
         return string.rep(char, math.max(0, len - #str))..str
       end
-      print("Draw:",
+      -- Build a message table
+      local tM = {
+        "Luapad.Syntax:",
         con(tostring(row), 5),
         con(tostring(token), 20),
         con(tostring(self.Pos), 5),
         con(tostring(#tRow), 5),
         con("|"..tostring(tRow[#tRow][1]):sub(-(nL - 2),-1).."|", nL),
         con(tostring(self.Line):sub(self.Pos,self.Pos), 2)
-      )
+      }
+      luapad.SetConsole(table.concat(tM, "\t"), "STAT_OK", sA, func, sN)
     end
   end
-  -- Comment was spawned to the end of line
-  local multy, mtoken = self:GetLineBlock()
-  if(not multy) then
-    self:SetLineBlock(false, false)
-  end
-  -- Cache the highlight view
-  self.PaintRows[row] = tRow
-  -- Return the calculated row
-  return tRow
+
+  return self:FinalizeRow(tRow, row)
 end
 
-function PANEL:PaintLine(row, guiCB, guiSE, guiRN, guiCL)
+function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
   if (row > self:GetRownum()) then return end
 
-  local tRow = self:SyntaxColorLine(row)
+  local tRow = self:SyntaxColorRowID(row)
   local width, height = self.FontWidth, self.FontHeight
   local scstr, scend  = self.Scroll[1], self.Scroll[2]
   local castr, caend  = self.Caret[1] , self.Caret[2]
@@ -893,7 +915,7 @@ function PANEL:Paint(w, h)
 
   local iS, iE = self:GetRenderBounds()
   for iR = iS, iE do
-    self:PaintLine(iR, guiCB, guiSE, guiRN, guiCL)
+    self:PaintRowID(iR, guiCB, guiSE, guiRN, guiCL)
   end
 
   return true
@@ -910,15 +932,16 @@ function PANEL:CopyPosition(caret)
 end
 
 function PANEL:MovePosition(caret, offset)
+  local tR, nR = self.Rows, self:GetRownum()
   local caret = {caret[1], caret[2]}
 
   if (offset > 0) then
     while true do
-      local length = string.len(self.Rows[caret[1]]) - caret[2] + 2
+      local length = string.len(tR[caret[1]]) - caret[2] + 2
       if (offset < length) then
         caret[2] = caret[2] + offset
         break
-      elseif (caret[1] == self:GetRownum()) then
+      elseif (caret[1] == nR) then
         caret[2] = caret[2] + length - 1
         break
       else
@@ -940,7 +963,7 @@ function PANEL:MovePosition(caret, offset)
       else
         offset = offset - caret[2]
         caret[1] = caret[1] - 1
-        caret[2] = string.len(self.Rows[caret[1]]) + 1
+        caret[2] = string.len(tR[caret[1]]) + 1
       end
     end
   end
@@ -1183,7 +1206,7 @@ end
 function PANEL:UnIndent(line)
   local iF = line:find("%S")
   local iS = (iF == nil or iF > 5) and 5 or iF
-  return line:sub(iS)
+  return string.sub(line, iS)
 end
 
 function PANEL:CanUndo()
@@ -1310,8 +1333,9 @@ function PANEL:CustomOnKeyCodeTyped(code)
 
   else
     if (code == KEY_ENTER) then
-      local row = self.Rows[self.Caret[1]]:sub(1, self.Caret[2] - 1)
-      local diff = (row:find("%S") or (row:len() + 1)) - 1
+      local row = self.Rows[self.Caret[1]]
+      local rsub = string.sub(row, 1, self.Caret[2] - 1)
+      local diff = (rsub:find("%S") or (rsub:len() + 1)) - 1
       local tabs = string.rep("    ", math.floor(diff / 4))
       self:SetSelection(g_NL .. tabs)
     elseif (code == KEY_UP) then
