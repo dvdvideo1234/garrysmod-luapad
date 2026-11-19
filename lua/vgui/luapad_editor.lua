@@ -102,10 +102,16 @@ local TOKEN_CLASSIFY = {
   MUL = {S = "%[=*%[", E = "%]=*%]", L = ".*$"}, -- Multi line pattern
   URL = "https?://%S+%.%S+", -- URL pattern matching
   COM = {B = ".*$", C = {["-"] = "%-[%-]+", ["/"] = "/[/]+"}}, -- Comments
-  NUM = {"0[xX]%x+", "%d*%.?%d+"}, -- A number literal matching numbers
+  NUM = {"0[xX]%x+", "%d*%.?%d+"}, -- A number literals matching numbers
   STR = { -- String patterns literal matching
-    B = "%s[^%s]*%s", E = "$", R = "\\%s",
-    C = {["\""] = "code.string", ["\'"] = "code.string2"}
+    ["\""] = {
+      B = "\"[^\"]*\"", C = "[^\"]*\"", E = "[^\"]*$",
+      L = "\"[^\"]*$" , R = "\\\"", T = "code.string"
+    },
+    ["\'"] = {
+      B = "\'[^\']*\'", C = "[^\']*\'", E = "[^\']*$",
+      L = "\'[^\']*$" , R = "\\\'", T = "code.string2"
+    }
   }, -- Contains the string configurations
   FNL = "[a-zA-Z_][a-zA-Z0-9_]*", -- Identifier token
   GTK = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
@@ -707,23 +713,19 @@ function PANEL:SyntaxColorRowID(row)
         tLib.Nam = nil
         token = "code.none"
       end
-    elseif(g_Strm.C[char]) then
-      local sB, sE = g_Strm.B, g_Strm.E
-      if(self:ConsumeSpan(sB:format(char, char, char))) then
-        local sC = sB:format("", char, char)
-        local bF, sR = true, g_Strm.R:format(char)
+    elseif(g_Strm[char]) then
+      local tS = g_Strm[char]
+      if(self:ConsumeSpan(tS.B)) then
+        local sC, sR, bF = tS.C, tS.R, true
         local bC = (string.sub(self.Str,-2,-1) == sR)
         while(bF and bC) do -- While the quote is escaped
-          bF = self:ConsumeSpan(sC)
+          bF = self:ConsumeSpan(tS)
           bC = (string.sub(self.Str,-2,-1) == sR)
         end -- Found a closing quote and continue is disabled
-        if(not bF and bC) then
-          self:ConsumeSpan(sB:format("", char, sE))
-        end
-      else -- Starts with quote but end quote is missing
-        self:ConsumeSpan(sB:format(char, char, sE))
-      end
-      token = g_Strm.C[char]
+        if(not bF and bC) then self:ConsumeSpan(tS.E) end
+        -- Starts with quote but end quote is missing
+      else self:ConsumeSpan(tS.L) end
+      token = tS.T -- Read the token from config
     elseif(self:ConsumeSpan(g_Coms.C[char])) then
       token = "code.comment"
       if(self:ConsumeSpan(g_Muln.S)) then
