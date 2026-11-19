@@ -54,8 +54,10 @@ local COLOR_STATUS = {
   ["COMS_OK"] = Color(92 , 205,  92, 255),
   ["COMS_WR"] = Color(205, 140,  92, 255),
   ["COMS_ER"] = Color(205,  92,  92, 255),
-  ["COMS_SV"] = Color(136, 221, 255, 255),
-  ["COMS_CL"] = Color(255, 221, 102, 255)
+  ["COMS_SV"] = Color(156, 241, 255, 200),
+  ["COMS_CL"] = Color(255, 241, 122, 200),
+  ["COMS_MU"] = Color(100, 220, 100, 200),
+  ["COMS_SH"] = Color(170, 140, 210, 255)
 }
 
 local ACCEPTED_STEAMS = {
