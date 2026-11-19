@@ -511,7 +511,8 @@ end
 
 function PANEL:GetConcat(sA, sB, sC)
   local tB = self.Buff
-  tB[1], tB[2] = sA, sB
+  tB[1] = tostring(sA or "")
+  tB[2] = tostring(sB or "")
   return table.concat(tB, sC)
 end
 
@@ -535,6 +536,12 @@ function PANEL:ConsumeChar()
   return self.Char, cP
 end
 
+--[[
+ * Captures a pattern as a span
+ * sP > Pattern that must be checked
+ * bN > Pass true to search as plain text
+ * bF > Pass true to match only from the next position
+]]
 function PANEL:CaptureSpan(sP, bN, bF)
   local sP = tostring(sP or "")
   if(sP == "") then return false end
@@ -552,6 +559,11 @@ function PANEL:CaptureSpan(sP, bN, bF)
   return true
 end
 
+--[[
+ * Move to the end of the last match
+ * iP > The cursor advances to this position
+ *      When empty defaults to the last span
+]]
 function PANEL:AdvanceSpan(iP)
   local cP = self.Pos
   local sS = self.Str
@@ -567,6 +579,12 @@ function PANEL:AdvanceSpan(iP)
   else self.Char = string.sub(sL, iP, iP) end
 end
 
+--[[
+ * Updates the current row with a token
+ * tRow > The row table to be updated
+ * sT   > Current token from matching loop
+ * bM   > The cell is a multi-line entry
+]]
 function PANEL:UpdateRowSpan(tRow, sT, bM)
   if(not istable(tRow)) then return end
   local tH = self:GetTable().Highlight
@@ -587,6 +605,11 @@ function PANEL:UpdateRowSpan(tRow, sT, bM)
   end
 end
 
+--[[
+ * Setups the panel to draw the next row
+ * tRow > The row table to be updated
+ * iD   > ID used to register the draw cells
+]]
 function PANEL:FinalizeRow(tRow, iD)
   -- Comment was spawned to the end of line
   local mM, mT = self:GetRowBlock()
@@ -598,12 +621,22 @@ function PANEL:FinalizeRow(tRow, iD)
   return tRow
 end
 
+--[[
+ * Consume text from the contents
+ * sP > Pattern that must be checked
+ * bN > Pass true to search as plain text
+]]
 function PANEL:ConsumeSpan(sP, bN)
   local bC = self:CaptureSpan(sP, bN, true)
   if(bC) then self:AdvanceSpan() end
   return bC
 end
 
+--[[
+ * Consume text from the contents via pattern array
+ * tP > Pattern array that must be checked
+ * bN > Pass true to search as plain text
+]]
 function PANEL:ConsumeArray(tP, bN)
   if(not istable(tP)) then return false end
   for iP = 1, #tP do -- Array of patterns
@@ -612,13 +645,26 @@ function PANEL:ConsumeArray(tP, bN)
   end; return false -- Not found
 end
 
-function PANEL:GetChar(iC)
+--[[
+ * Returns the current character or scans ahead
+ * iC > How many characters ahead should scan
+ * bS > On success return the entire span
+]]
+function PANEL:GetChar(iC, bS)
   if(not iC) then
     return self.Char, self.Pos
   else
-    local cP, sL = self.Pos, self.Line
+    local cP = self.Pos
+    local sL = self.Line
+    local iL = string.len(sL)
     local iC = math.max(cP + (tonumber(iC) or 0), cP)
-    return string.sub(sL, iC, iC), iC
+    if(iC < 1 or iC > iL) then return nil end
+    if(cP < 1 or cP > iL) then return nil end
+    if(bS) then
+      return string.sub(sL, cP, iC), iC
+    else
+      return string.sub(sL, iC, iC), iC
+    end
   end
 end
 
@@ -716,14 +762,18 @@ function PANEL:SyntaxColorRowID(row)
     elseif(g_Strm[char]) then
       local tS = g_Strm[char]
       if(self:ConsumeSpan(tS.B)) then
-        local sC, sR, bF = tS.C, tS.R, true
-        local bC = (string.sub(self.Str,-2,-1) == sR)
-        while(bF and bC) do -- While the quote is escaped
-          bF = self:ConsumeSpan(tS)
-          bC = (string.sub(self.Str,-2,-1) == sR)
-        end -- Found a closing quote and continue is disabled
-        if(not bF and bC) then self:ConsumeSpan(tS.E) end
-        -- Starts with quote but end quote is missing
+        local sR = tostring(tS.R or "")
+        local sC, bF, nR = tS.C, true, string.len(sR)
+        if(nR > 1) then -- String quote must be escaped
+          local cR = string.sub(self.Str,-nR,-1)
+          local bC = (cR == sR) -- Is this token escaped
+          while(bF and bC) do -- While the quote is escaped
+            bF = self:ConsumeSpan(sC)
+            cR = string.sub(self.Str,-nR,-1)
+            bC = (cR == sR) -- Is this token escaped
+          end -- Found a closing quote and continue is disabled
+          if(not bF and bC) then self:ConsumeSpan(tS.E) end
+        end -- Language has same quote that escapes entry
       else self:ConsumeSpan(tS.L) end
       token = tS.T -- Read the token from config
     elseif(self:ConsumeSpan(g_Coms.C[char])) then
@@ -752,19 +802,27 @@ function PANEL:SyntaxColorRowID(row)
         self:ConsumeSpan(g_Muln.L)
       end
     else
-      local sN = self:GetChar(1)
-      local sO = self:GetConcat(char, sN)
-      if(g_Opts[sO]) then -- Double character
-        token = "code.operator"
-        char, last = self:ConsumeChar()
-      else -- The operator is single character
-        if(g_Opts[char]) then
-          token = "code.operator"
-        else -- The character is not operator
-          token = "code.none"
-        end
-      end -- Prepare to read the next character
-      char, last = self:ConsumeChar()
+      local sS, iC = self:GetChar()
+      local nS, bS = g_Opts.__size__, false
+      if(not nS) then nS = 0
+        for nam, flg in pairs(g_Opts) do
+          nS = math.max(nS, string.len(nam))
+        end; g_Opts.__size__ = math.ceil(nS)
+      end
+      for iS = nS, 1, -1 do
+        local sP, iP = self:GetChar(iS - 1, true)
+        if(sP) then -- There is a next character
+          local bP = g_Opts[sP] -- Multi character
+          if(bP and isbool(bP)) then
+            token, bS = "code.operator", true
+            self:AdvanceSpan(iC + iS - 1); break
+          end -- Multi character operator is found
+        end -- Operator is not populated
+      end -- The character is not operator
+      if(not bS) then -- No operator has been matched
+        char, last = self:ConsumeChar() -- Advance
+        token = "code.none" -- Mark the symbol
+      end -- Multi character operator is not found
     end
 
     -- Register this cell to the current row
@@ -1561,10 +1619,12 @@ function PANEL:Indent(shift)
   end
 
   if (shift) then
-    local tmp = self:GetSelection():gsub(g_NL.." ? ? ? ?", g_NL)
+    local srp = string.rep(" ?", 4)
+    local tmp = self:GetSelection():gsub(g_NL..srp, g_NL)
     self:SetSelection(self:UnIndent(tmp))
   else
-    self:SetSelection("    " .. self:GetSelection():gsub(g_NL, g_NL.."    "))
+    local srp = string.rep(" ", 4)
+    self:SetSelection(srp.. self:GetSelection():gsub(g_NL, g_NL..srp))
   end
 
   self.Caret = self:CopyPosition(tCar)
