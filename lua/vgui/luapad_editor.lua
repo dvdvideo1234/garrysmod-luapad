@@ -710,7 +710,7 @@ function PANEL:SyntaxColorRowID(row)
           local sM, iS, iE = self:GetSpan()
            -- Equals are same amount as start
           if(multy == sM:len()) then
-            self:ConsumeSpan(g_Muln.E)
+            self:AdvanceSpan() -- Advance to the token
             token = (mtoken or "code.none")
             -- Reset multi line block
             self:SetRowBlock(false, false)
@@ -735,7 +735,8 @@ function PANEL:SyntaxColorRowID(row)
       if (keyw and isbool(keyw)) then
         token = "code.construct"
       elseif ((gstr and (g_Type[tgstr] or g_Glob[gstr])) or
-              (sstr and tLib.Src and tLib.Src[sstr])) then
+              (sstr and tLib.Src and tLib.Src[sstr]))
+      then
         if (tgstr == "table") then
           tLib.Src, token = gstr, "code.library"
           if(tLib.Nam) then
@@ -804,23 +805,23 @@ function PANEL:SyntaxColorRowID(row)
       end
     else
       local sS, iC = self:GetChar()
-      local nS, bS = g_Opts.__size__, false
+      local nS = g_Opts.__size__
       if(not nS) then nS = 0
         for nam, flg in pairs(g_Opts) do
           nS = math.max(nS, string.len(nam))
         end; g_Opts.__size__ = math.ceil(nS)
-      end
-      for iS = nS, 1, -1 do
+      end; token = nil -- Use the token as flag
+      for iS = nS, 1, -1 do -- Check length
         local sP, iP = self:GetChar(iS - 1, true)
         if(sP) then -- There is a next character
           local bP = g_Opts[sP] -- Multi character
           if(bP and isbool(bP)) then
-            token, bS = "code.operator", true
+            token = "code.operator"
             self:AdvanceSpan(iC + iS - 1); break
           end -- Multi character operator is found
         end -- Operator is not populated
       end -- The character is not operator
-      if(not bS) then -- No operator has been matched
+      if(not token) then -- No operator has been matched
         char, last = self:ConsumeChar() -- Advance
         token = "code.none" -- Mark the symbol
       end -- Multi character operator is not found
