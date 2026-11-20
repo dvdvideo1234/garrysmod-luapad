@@ -96,7 +96,7 @@ local TOKEN_CLASSIFY = {
     [".."] = true, ["||"] = true,
     ["&&"] = true, ["!="] = true
   },
-  SKP = {E = "%s+", A = ".*$"}, -- Skip characters
+  SKP = {E = "%s+", A = ".*$", W = "^%w$"}, -- Skip characters
   SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
   EOL = {E = "[\r\n]+", I = "\n"}, -- General pattern for splitting
   MUL = {S = "%[=*%[", E = "%]=*%]", L = ".*$"}, -- Multi line pattern
@@ -104,14 +104,11 @@ local TOKEN_CLASSIFY = {
   COM = {B = ".*$", C = {["-"] = "%-[%-]+", ["/"] = "/[/]+"}}, -- Comments
   NUM = {"0[xX]%x+", "%d*%.?%d+"}, -- A number literals matching numbers
   STR = { -- String patterns literal matching
-    ["\""] = {
-      B = "\"[^\"]*\"", C = "[^\"]*\"", E = "[^\"]*$",
-      L = "\"[^\"]*$" , R = "\\\"", T = "code.string"
-    },
-    ["\'"] = {
-      B = "\'[^\']*\'", C = "[^\']*\'", E = "[^\']*$",
-      L = "\'[^\']*$" , R = "\\\'", T = "code.string2"
-    }
+    B = "%s[^%s]*%s", C = "[^%s]*%s", E = "[^%s]*$", L = "%s[^%s]*$",
+    U = { -- Dedicated configuration for every character opening a string
+      ["\""] = {R = "\\\"", T = "code.string" }, -- Double quote
+      ["\'"] = {R = "\\\'", T = "code.string2"}  -- Single quote
+    } -- Includes whenever escape sequence is present
   }, -- Contains the string configurations
   FNL = "[a-zA-Z_][a-zA-Z0-9_]*", -- Identifier token
   GTK = {["f"] = true, ["e"] = true, ["m"] = true}, -- Syntax
@@ -734,12 +731,11 @@ function PANEL:SyntaxColorRowID(row)
     elseif (self:ConsumeSpan(g_Lifn)) then
       local sstr = string.Trim(self.Str)
       local gstr = luapad.CheckGlobal(sstr, tLib)
-      local tgstr = type(gstr)
-      if (g_Keyw[sstr]) then
+      local tgstr, keyw = type(gstr), g_Keyw[sstr]
+      if (keyw and isbool(keyw)) then
         token = "code.construct"
       elseif ((gstr and (g_Type[tgstr] or g_Glob[gstr])) or
               (sstr and tLib.Src and tLib.Src[sstr])) then
-      -- Could be better code, but what the hell; it works
         if (tgstr == "table") then
           tLib.Src, token = gstr, "code.library"
           if(tLib.Nam) then
@@ -759,23 +755,28 @@ function PANEL:SyntaxColorRowID(row)
         tLib.Nam = nil
         token = "code.none"
       end
-    elseif(g_Strm[char]) then
-      local tS = g_Strm[char]
-      if(self:ConsumeSpan(tS.B)) then
-        local sR = tostring(tS.R or "")
-        local sC, bF, nR = tS.C, true, string.len(sR)
-        if(nR > 1) then -- String quote must be escaped
+    elseif(g_Strm.U[char]) then
+      local tU = g_Strm.U[char]
+      local sE = g_Strm.E:format(char)
+      local sC = g_Strm.C:format(char,char)
+      local sL = g_Strm.L:format(char,char)
+      local sB = g_Strm.B:format(char,char,char)
+      if(self:ConsumeSpan(sB)) then
+        local sR = tostring(tU.R or "")
+        local eR = string.sub(sR, -1, -1)
+        local cC, bF, nR = sC, true, string.len(sR)
+        if(nR > 1 and eR == char) then -- Quote is escaped
           local cR = string.sub(self.Str,-nR,-1)
           local bC = (cR == sR) -- Is this token escaped
           while(bF and bC) do -- While the quote is escaped
-            bF = self:ConsumeSpan(sC)
+            bF = self:ConsumeSpan(cC)
             cR = string.sub(self.Str,-nR,-1)
             bC = (cR == sR) -- Is this token escaped
           end -- Found a closing quote and continue is disabled
-          if(not bF and bC) then self:ConsumeSpan(tS.E) end
+          if(not bF and bC) then self:ConsumeSpan(sE) end
         end -- Language has same quote that escapes entry
-      else self:ConsumeSpan(tS.L) end
-      token = tS.T -- Read the token from config
+      else self:ConsumeSpan(sL) end
+      token = tU.T -- Read the token from config
     elseif(self:ConsumeSpan(g_Coms.C[char])) then
       token = "code.comment"
       if(self:ConsumeSpan(g_Muln.S)) then
@@ -828,7 +829,7 @@ function PANEL:SyntaxColorRowID(row)
     -- Register this cell to the current row
     self:UpdateRowSpan(tRow, token, (multy ~= nil))
 
-    if(luapad.debugmode) then
+    if(luapad.debugsyntax) then
       local nL = 30
       local function con(str, len, char)
         local char = string.sub(tostring(char or " "),1,1)
@@ -1562,17 +1563,14 @@ function PANEL:GetWordStart(caret)
   if (#line < caret[2]) then
     return caret
   end
+  local map = TOKEN_CLASSIFY.SKP.W
   for i = 0, caret[2] do
     local idx = (caret[2] - i)
     local car = line[idx]
-
     if (not car) then
       return {caret[1], idx + 1}
     end
-    if (car >= "a" and car <= "z" or
-        car >= "A" and car <= "Z" or
-        car >= "0" and car <= "9") then
-    else
+    if car:find(map) then
       return {caret[1], idx + 1}
     end
   end
@@ -1584,16 +1582,13 @@ function PANEL:GetWordEnd(caret)
   if (#line < caret[2]) then
     return caret
   end
+  local map = TOKEN_CLASSIFY.SKP.W
   for i = caret[2], #line do
     local car = line[i]
-
     if (not car) then
       return {caret[1], i}
     end
-    if (car >= "a" and car <= "z" or
-        car >= "A" and car <= "Z" or
-        car >= "0" and car <= "9") then
-    else
+    if car:find(map) then
       return {caret[1], i}
     end
   end

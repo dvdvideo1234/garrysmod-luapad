@@ -6,6 +6,7 @@
 luapad = {}
 
 luapad.debugmode = true
+luapad.debugsyntax = true
 luapad.forcedownload = true
 luapad.ignoreconsoleopen = true
 
@@ -520,7 +521,8 @@ if (SERVER) then
 
   if (luapad.forcedownload) then
     AddCSLuaFile("autorun/luapad.lua")
-    AddCSLuaFile("autorun/luapad_editor.lua")
+    AddCSLuaFile("vgui/luapad_editor.lua")
+    AddCSLuaFile("luapad/syntax_globals.lua")
   end
 
   -- If the server has configuration files send them to the clients
