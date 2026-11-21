@@ -1250,7 +1250,7 @@ function PANEL:OnMouseWheeled(delta)
   if(control and sign ~= 0) then
     local iF = self:GetFontInfo() + sign
     local iS = ((iF == 0) and 1 or iF)
-    local tS = self:GetParent():GetStreamInfo()
+    local tS = self:GetStreamInfo()
     self:SetFontInfo(iS)
     tS.Font = self:GetFontInfo()
   else
@@ -1360,13 +1360,13 @@ function PANEL:CustomOnKeyCodeTyped(code)
     elseif (code == KEY_LBRACKET) then
       local pS = luapad.SearchArea
       if(IsValid(pS)) then
-        local pB = pS:GetButtonReverse()
+        local pB = pS:GetButtonPrev()
         if(IsValid(pB)) then pB:DoClick() end
       end
     elseif (code == KEY_RBRACKET) then
       local pS = luapad.SearchArea
       if(IsValid(pS)) then
-        local pB = pS:GetButtonForward()
+        local pB = pS:GetButtonNext()
         if(IsValid(pB)) then pB:DoClick() end
       end
     elseif (code == KEY_F) then

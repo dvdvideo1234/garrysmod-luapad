@@ -5,7 +5,7 @@
 
 luapad = {}
 
-luapad.debugmode = false
+luapad.debugmode = true
 luapad.debugsyntax = false
 luapad.forcedownload = true
 luapad.ignoreconsoleopen = true
@@ -15,6 +15,7 @@ local GLOB_CONFIG = {
   PANLSZ = 3 / 4, -- The ratio panel will use according to the screen size
   DAYINS = 86400, -- The amount of second present in one day
   MAXMSL = 60000, -- As the maximum write string limit is 65532
+  REPTAB = {W = {"\t", "\t   "}, R = {"\t   ", "\t"}}, --Load and save tabs
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
   PATENM = "[A-Z_]+", -- General pattern matching a enumeration key
   DELIMS = {V = "|", I = "\t", N = "[\r\n]+"}, -- Symbols used for separator and exports
@@ -2036,7 +2037,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   if(SERVER) then return end
 
   local sNam = (luapad.IsHere(name) and tostring(name or "") or GLOB_CONFIG.FMNAME:format(0))
-  local sCon = tostring(cont or "") -- The contents are not exported so it does not default
+  local sCon = tostring(cont or "") -- The contents are not exported later updated to equalize tabs
   local sPth = (luapad.IsHere(path) and tostring(path or "") or table.concat(GLOB_CONFIG.DATADR))
   local sIco = (luapad.IsHere(icon) and tostring(icon) or "page_white")
   local sTag = (luapad.IsHere(term) and tostring(term) or nil)
@@ -2046,36 +2047,25 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
 
-  local pPan = vgui.Create("DPanel", pSheet)
-  if(not IsValid(pPan)) then return end
+  local pText = vgui.Create("DLuapadEditor", pSheet)
+  if(not IsValid(pText)) then return end
 
   local nW, nH = pSheet:GetSize()
-  pPan:SetSize(nW, nH - 22)
-  pPan:Dock(FILL)
-  pPan[GLOB_CONFIG.STORKY] = {}
+  pText:SetSize(nW, nH - 22)
+  pText:Dock(FILL)
+  pText:SetFontInfo(iFon)
+  pText[GLOB_CONFIG.STORKY] = {}
 
  --[[
    * Retrieves the storage info from the tab
   ]]
-  function pPan:GetStreamInfo()
-    local tP = self:GetTable()
-    return tP[GLOB_CONFIG.STORKY]
+  function pText:GetStreamInfo()
+    local tT = self:GetTable()
+    return tT[GLOB_CONFIG.STORKY]
   end
 
-  local nW, nH = pPan:GetSize()
-  local pText = vgui.Create("DLuapadEditor", pPan)
-  if(not IsValid(pText)) then return end
-
-  -- Configure the tab text area
-  pText:SetSize(nW, nH)
-  pText:SetText(sCon)
-  pText:Dock(FILL)
-  pText:RequestFocus()
-  pText:SizeToContents()
-  pText:SetFontInfo(iFon)
-
   -- Configure stream info
-  local tSor = pPan[GLOB_CONFIG.STORKY]
+  local tSor = pText[GLOB_CONFIG.STORKY]
   tSor.Name = sNam -- The actual file name associated with the tab
   tSor.Path = sPth -- File path always relative to the game folder
   tSor.Term = sTag -- Tab term in case provided is displayed instead of name
@@ -2091,23 +2081,23 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   end
 
   -- A reference to the current
-  local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pPan, luapad.ToIcon(sIco), false, false)
+  local tInfo = pSheet:AddSheet(tostring(sTag or sNam), pText, luapad.ToIcon(sIco), false, false)
   local pTab  = tInfo.Tab; pTab:SetTooltip(sPth .. sNam)
+
+  --[[
+   * Retrieves the editor text area panel
+  ]]
+  function pTab:GetTextArea()
+    return self:GetPanel()
+  end
 
  --[[
    * Retrieves the storage info from the tab
    * An alias for the panel stream info
   ]]
   function pTab:GetStreamInfo()
-    local tP = self:GetPanel():GetTable()
-    return tP[GLOB_CONFIG.STORKY]
-  end
-
-  --[[
-   * Retrieves the editor text area panel
-  ]]
-  function pTab:GetTextArea()
-    return self:GetPanel():GetChildren()[1]
+    local tT = self:GetTextArea():GetTable()
+    return tT[GLOB_CONFIG.STORKY]
   end
 
   --[[
@@ -2116,17 +2106,22 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   function pTab:GetContents()
     local pText = self:GetTextArea()
     if(not IsValid(pText)) then return "" end
-    return pText:GetText()
+    local tC = GLOB_CONFIG.REPTAB.R
+    local sR = (pText:GetText() or "")
+    local sC = string.gsub(sR, unpack(tC))
+    return sC
   end
 
   --[[
    * Retrieves the text from this tab
   ]]
-  function pTab:SetContents(sCon)
+  function pTab:SetContents(sC)
     local pText = self:GetTextArea()
     if(not IsValid(pText)) then return end
-    local sCon = tostring(sCon or "")
-    pText:SetText(sCon)
+    local tC = GLOB_CONFIG.REPTAB.W
+    local sC = tostring(sC or "")
+    local sR = string.gsub(sC, unpack(tC))
+    pText:SetText(sR)
     pText:RequestFocus()
     pText:SizeToContents()
   end
@@ -2203,6 +2198,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
     pMenu:Open()
   end
 
+  pTab:SetContents(sCon)
   pSheet:SetActiveTab(pTab)
   pSheet:InvalidateLayout()
 
@@ -2351,7 +2347,7 @@ function luapad.SaveThemeFile(vTre, sN)
     return
   end
   -- If the theme directory is missing, create it
-  if(not file.IsDir(sB, "DATA")) then file.CreateDir(tD[1]) end
+  if(not file.IsDir(sB, "DATA")) then file.CreateDir(sB) end
   -- If the file already exists prompt to replace while validating user input
   if(file.Exists(sB..sF, "DATA")) then bN = false -- Name is not yet validate
     luapad.ShowConfirmDialog(
@@ -2428,7 +2424,7 @@ function luapad.SetThemeFile(vTre, sN)
     return
   end
   local oB, sB, sF = GLOB_CONFIG.DATADR[1]..tD[1], tD[1], sN..".txt"
-  if(not file.IsDir(sB, "DATA")) then file.CreateDir(tD[1]) end
+  if(not file.IsDir(sB, "DATA")) then file.CreateDir(sB) end
   -- Open the file so the theme can be extracted
   local sR = file.Read(sB..sF, "DATA")
   if(not sR) then
@@ -2699,7 +2695,7 @@ end
  * Otherwise it will just read the game file system where
  * the content is refreshed during the game startup
 ]]
-function luapad.OpenSearch(cont)
+function luapad.OpenSearch(sCon)
   if(SERVER) then return end
 
   local pSheet = luapad.PropertySheet
@@ -2746,17 +2742,17 @@ function luapad.OpenSearch(cont)
   local uT, vT = (xS - 6 * nP - 2 * nB), nB
   pText:SetPos(xT, yT)
   pText:SetSize(uT, vT)
-  pText:SetText(tostring(cont or ""))
+  pText:SetText(tostring(sCon or ""))
   pText:SetTooltip("Search by patterns!")
 
   -- Click to search backwords
-  local pBack = vgui.Create("DButton", luapad.SearchArea)
-  if(not IsValid(pBack)) then return end
+  local pPrev = vgui.Create("DButton", luapad.SearchArea)
+  if(not IsValid(pPrev)) then return end
   local xL = (xT + pText:GetWide() + 2 * nP)
-  pBack:SetText("<")
-  pBack:SetPos(xL, yT)
-  pBack:SetSize(nB, nB)
-  function pBack:DoClick()
+  pPrev:SetText("<")
+  pPrev:SetPos(xL, yT)
+  pPrev:SetSize(nB, nB)
+  function pPrev:DoClick()
     local pS = luapad.PropertySheet
     if(not IsValid(pS)) then return end
     local pA = pS:GetActiveTab()
@@ -2768,12 +2764,9 @@ function luapad.OpenSearch(cont)
     local tT = pT:GetTable()
     local tS = pT:CopyPosition(tT.Start)
     local tC = pT:CopyPosition(tT.Caret)
-    local tR = tT.Rows
+    local tR, cR, cP, sR, sP = tT.Rows, tC[1], tC[2], tS[1], tS[2]
     -- Search limit is the beginning of the selection (whichever of Start/Caret comes first)
-    local cR, cP = tC[1], tC[2]
-    if(tS[1] < tC[1] or (tS[1] == tC[1] and tS[2] < tC[2])) then
-      cR, cP = tS[1], tS[2]
-    end
+    if(sR < cR or (sR == cR and sP < cP)) then cR, cP = sR, sP end
     local bF = false -- Flag to mark that a match was found
     for iR = cR, 1, -1 do
       local sL = tR[iR]
@@ -2802,13 +2795,13 @@ function luapad.OpenSearch(cont)
   end
 
   -- Click to search forward
-  local pForw = vgui.Create("DButton", luapad.SearchArea)
-  if(not IsValid(pForw)) then return end
-  local xR = (xL + pBack:GetWide() + 2 * nP)
-  pForw:SetText(">")
-  pForw:SetPos(xR, yT)
-  pForw:SetSize(nB, nB)
-  function pForw:DoClick()
+  local pNext = vgui.Create("DButton", luapad.SearchArea)
+  if(not IsValid(pNext)) then return end
+  local xR = (xL + pPrev:GetWide() + 2 * nP)
+  pNext:SetText(">")
+  pNext:SetPos(xR, yT)
+  pNext:SetSize(nB, nB)
+  function pNext:DoClick()
     local pS = luapad.PropertySheet
     if(not IsValid(pS)) then return end
     local pA = pS:GetActiveTab()
@@ -2837,9 +2830,9 @@ function luapad.OpenSearch(cont)
 
   -- Create clotures so the file text area can access the search
   function luapad.SearchArea:GetTextArea() return pText end
+  function luapad.SearchArea:GetButtonNext() return pNext end
+  function luapad.SearchArea:GetButtonPrev() return pPrev end
   function luapad.SearchArea:GetSearchClose() return pClose end
-  function luapad.SearchArea:GetButtonForward() return pForw end
-  function luapad.SearchArea:GetButtonReverse() return pBack end
 
   return pText
 end
@@ -2940,9 +2933,6 @@ function luapad.SaveScript(vTre)
       luapad.SaveAsScript()
     else
       file.Write(sF, sC)
-      -- Update path and name
-      tS.Path, tS.Name = oB, sN
-      pT:SetText(sN)
       pT:SetTooltip(oB..sN)
       pS:SetActiveTab(pT)
       -- Check status
