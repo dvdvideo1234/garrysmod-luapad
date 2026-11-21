@@ -174,8 +174,17 @@ function PANEL:Init()
     self:GetParent():CustomOnKeyCodeTyped(code)
   end
 
+  self:SetGutterWidth(4)
   self:SetThemeDefault()
   self.LastClick = 0
+end
+
+function PANEL:GetGutterWidth()
+  return math.max(tonumber(self.GutterWidth) or 4, 4)
+end
+
+function PANEL:SetGutterWidth(width)
+  self.GutterWidth = math.max((tonumber(width) or 4), 4)
 end
 
 function PANEL:GetRownum()
@@ -332,9 +341,10 @@ function PANEL:SetEmptyRow()
 end
 
 function PANEL:CursorToCaret()
+  local mG = self:GetGutterWidth()
   local iX, iY = self:CursorPos()
 
-  iX = iX - (self.FontWidth * 3 + 6)
+  iX = iX - (self.FontWidth * mG + 6)
   iX = ((iX < 0) and 0 or iX)
   iY = ((iY < 0) and 0 or iY)
 
@@ -358,15 +368,15 @@ function PANEL:OnMousePressed(code)
     local cucar = self:CursorToCaret()
     if ((CurTime() - self.LastClick) < 1 and
       cucar[1] == self.Caret[1] and
-      cucar[2] == self.Caret[2] and self.Temp
+      cucar[2] == self.Caret[2] and self.CanMark
     ) then
-      self.Start = self:GetWordStart(self.Caret)
-      self.Caret = self:GetWordEnd(self.Caret)
-      self.Temp = false
+      self.Start = self:GetWordStart(cucar)
+      self.Caret = self:GetWordEnd(cucar)
+      self.CanMark = false
       return
     end
 
-    self.Temp = true
+    self.CanMark = true
     self.LastClick = CurTime()
     self:RequestFocus()
     self.Blink = RealTime()
@@ -422,6 +432,12 @@ function PANEL:OnMousePressed(code)
         self:SetSelection()
       end):SetImage(luapad.ToIcon("page_delete"))
     end
+    -- Search for a string contents
+    if (self:HasSelection()) then
+      pMenu:AddOption("Search", function()
+        luapad.OpenSearch(self:GetSelection())
+      end):SetImage(luapad.ToIcon("find"))
+    end
     -- Mark all contents
     pMenu:AddSpacer()
     pMenu:AddOption("Select all", function()
@@ -451,7 +467,7 @@ function PANEL:OnMouseReleased(code)
 
   if (code == MOUSE_LEFT) then
     self.MouseDown = nil
-    if (not self.Temp) then
+    if (not self.CanMark) then
       return
     end
     self.Caret = self:CursorToCaret()
@@ -744,8 +760,8 @@ function PANEL:SyntaxColorRowID(row)
           else
             tLib.Nam = sstr
           end
-        elseif ((gstr == "e") and sstr == string.upper(sstr)) then
-          token = "code.enumerator"
+        elseif ((gstr == "e" or not g_Type[tgstr]) and sstr == string.upper(sstr)) then
+          token = "code.enumerator" -- Neither function nor table capitalized
         elseif (gstr == "m") then
           token = "code.metatable"
         else
@@ -856,6 +872,7 @@ end
 function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
   if (row > self:GetRownum()) then return end
 
+  local mG = self:GetGutterWidth()
   local tRow = self:SyntaxColorRowID(row)
   local width, height = self.FontWidth, self.FontHeight
   local scstr, scend  = self.Scroll[1], self.Scroll[2]
@@ -863,7 +880,7 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
 
   if (row == castr and self.TextEntry:HasFocus()) then
     surface.SetDrawColor(guiCL:Unpack())
-    surface.DrawRect(width * 3 + 5, (row - scstr) * height, self:GetWide() - (width * 3 + 5), height)
+    surface.DrawRect(width * mG + 5, (row - scstr) * height, self:GetWide() - (width * mG + 5), height)
   end
 
   if (self:HasSelection()) then
@@ -878,17 +895,17 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
     echar = math.max(echar - scend, 0)
 
     if (row == sline and sline == eline) then
-      surface.DrawRect(schar * width + width * 3 + 6, (row - scstr) * height, width * (echar - schar), height)
+      surface.DrawRect(schar * width + width * mG + 6, (row - scstr) * height, width * (echar - schar), height)
     elseif (row == sline) then
-      surface.DrawRect(schar * width + width * 3 + 6, (row - scstr) * height, width * (length - schar + 1), height)
+      surface.DrawRect(schar * width + width * mG + 6, (row - scstr) * height, width * (length - schar + 1), height)
     elseif (row == eline) then
-      surface.DrawRect(width * 3 + 6, (row - scstr) * height, width * echar, height)
+      surface.DrawRect(width * mG + 6, (row - scstr) * height, width * echar, height)
     elseif (row > sline and row < eline) then
-      surface.DrawRect(width * 3 + 6, (row - scstr) * height, width * (length + 1), height)
+      surface.DrawRect(width * mG + 6, (row - scstr) * height, width * (length + 1), height)
     end
   end
 
-  draw.SimpleText(tostring(row), self:GetFontName(), width * 3, (row - scstr) * height, guiRN, TEXT_ALIGN_RIGHT)
+  draw.SimpleText(tostring(row), self:GetFontName(), width * mG, (row - scstr) * height, guiRN, TEXT_ALIGN_RIGHT)
 
   local offset = (-scend + 1)
   for i, cell in ipairs(tRow) do
@@ -897,12 +914,12 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
     if (offset < 0) then
       if (string.len(ccon) > -offset) then
         local suline = string.sub(ccon, -offset + 1); offset = string.len(suline)
-        draw.SimpleText(suline, self:GetFontName(cen), width * 3 + 6, (row - scstr) * height, csr)
+        draw.SimpleText(suline, self:GetFontName(cen), width * mG + 6, (row - scstr) * height, csr)
       else
         offset = offset + string.len(ccon)
       end
     else
-      draw.SimpleText(ccon, self:GetFontName(cen), offset * width + width * 3 + 6, (row - scstr) * height, csr)
+      draw.SimpleText(ccon, self:GetFontName(cen), offset * width + width * mG + 6, (row - scstr) * height, csr)
       offset = offset + string.len(ccon)
     end
   end
@@ -910,20 +927,21 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
   if (row == castr and self.TextEntry:HasFocus()) then
     if ((RealTime() - self.Blink) % 0.8 < 0.4 and caend >= scend) then
         surface.SetDrawColor(guiCB:Unpack())
-        surface.DrawRect((caend - scend) * width + width * 3 + 6,
+        surface.DrawRect((caend - scend) * width + width * mG + 6,
                          (castr - scstr) * height, 1, height)
     end
   end
 end
 
 function PANEL:PerformLayout()
+  local mG = self:GetGutterWidth()
   local nW, nH = self:GetFontSize()
   local mW, mT = self:GetWide(), self:GetTall()
 
   self.ScrollBar:SetSize(16, mT)
   self.ScrollBar:SetPos(mW - 16, 0)
   self.Size[1] = math.floor(mT / nH) - 1
-  self.Size[2] = math.floor((mW - (nW * 3 + 6) - 16) / nW) - 1
+  self.Size[2] = math.floor((mW - (nW * mG + 6) - 16) / nW) - 1
 
   self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
 end
@@ -960,13 +978,14 @@ function PANEL:Paint(w, h)
     self.Caret = self:CursorToCaret()
   end
 
+  local mG = self:GetGutterWidth()
   local mW, mT = self:GetWide(), self:GetTall()
 
   surface.SetDrawColor(self:GetTheme("gui.rowlinebar"):Unpack())
-  surface.DrawRect(0, 0, self.FontWidth * 3 + 4, mT)
+  surface.DrawRect(0, 0, self.FontWidth * mG + 4, mT)
 
   surface.SetDrawColor(self:GetTheme("gui.background"):Unpack())
-  surface.DrawRect(self.FontWidth * 3 + 5, 0, mW - (self.FontWidth * 3 + 5), mT)
+  surface.DrawRect(self.FontWidth * mG + 5, 0, mW - (self.FontWidth * mG + 5), mT)
 
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
 
@@ -983,9 +1002,9 @@ function PANEL:Paint(w, h)
   return true
 end
 
-function PANEL:SetCaret(caret)
+function PANEL:SetCaret(caret, start)
   self.Caret = self:CopyPosition(caret)
-  self.Start = self:CopyPosition(caret)
+  self.Start = self:CopyPosition(start or caret)
   self:ScrollCaret()
 end
 
@@ -1297,8 +1316,8 @@ end
 
 function PANEL:SelectAll()
   local nR = self:GetRownum()
-  self.Caret = {nR, string.len(self.Rows[nR]) + 1}
   self.Start = {1, 1}
+  self.Caret = {nR, string.len(self.Rows[nR]) + 1}
   self:ScrollCaret()
 end
 
@@ -1338,6 +1357,20 @@ function PANEL:CustomOnKeyCodeTyped(code)
       luapad.OpenScript()
     elseif (code == KEY_N) then
       luapad.NewTab()
+    elseif (code == KEY_LBRACKET) then
+      local pS = luapad.SearchArea
+      if(IsValid(pS)) then
+        local pB = pS:GetButtonReverse()
+        if(IsValid(pB)) then pB:DoClick() end
+      end
+    elseif (code == KEY_RBRACKET) then
+      local pS = luapad.SearchArea
+      if(IsValid(pS)) then
+        local pB = pS:GetButtonForward()
+        if(IsValid(pB)) then pB:DoClick() end
+      end
+    elseif (code == KEY_F) then
+      luapad.OpenSearch(self:GetSelection())
     elseif (code == KEY_UP) then
       self.Scroll[1] = math.max(self.Scroll[1] - 1, 1)
     elseif (code == KEY_DOWN) then
@@ -1568,10 +1601,7 @@ function PANEL:GetWordStart(caret)
   for i = 0, caret[2] do
     local idx = (caret[2] - i)
     local car = line[idx]
-    if (not car) then
-      return {caret[1], idx + 1}
-    end
-    if car:find(map) then
+    if(not (car and car:find(map))) then
       return {caret[1], idx + 1}
     end
   end
@@ -1586,10 +1616,7 @@ function PANEL:GetWordEnd(caret)
   local map = TOKEN_CLASSIFY.SKP.W
   for i = caret[2], #line do
     local car = line[i]
-    if (not car) then
-      return {caret[1], i}
-    end
-    if car:find(map) then
+    if(not (car and car:find(map))) then
       return {caret[1], i}
     end
   end

@@ -5,13 +5,14 @@
 
 luapad = {}
 
-luapad.debugmode = true
-luapad.debugsyntax = true
+luapad.debugmode = false
+luapad.debugsyntax = false
 luapad.forcedownload = true
 luapad.ignoreconsoleopen = true
 
 local GLOB_CONFIG = {
-  PANLSZ = 2 / 3, -- The ratio panel will use according to the screen size
+  FRACGR = 0.61803398875, -- Golden ration fraction for GUI elements
+  PANLSZ = 3 / 4, -- The ratio panel will use according to the screen size
   DAYINS = 86400, -- The amount of second present in one day
   MAXMSL = 60000, -- As the maximum write string limit is 65532
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
@@ -939,13 +940,13 @@ function luapad.SaveTabs()
   end
   -- Generate a tabs save configuration file
   local tB, tS = GLOB_CONFIG.DATADR, GLOB_CONFIG.SAVTAB
-  if(not file.IsDir(tB[2]..tS[1], "DATA")) then file.CreateDir(tB[2]..tS[1]) end
   local sD, sP, sN = table.concat(tB), unpack(tS)
   local bB, sB, oB = luapad.GetPath(sD..sP)
   if(not bB) then  -- File not found then bail out
     luapad.SetStatus("File [%s%s] import not supported! (change origin folder)", "STAT_WR", oB, sN)
     return -- No need to process everything else when there is no file
   end
+  if(not file.IsDir(sB, "DATA")) then file.CreateDir(sB) end
   file.Write(sB..sN, table.concat(tW, "\n"))
   luapad.SetStatus("File [%s%s] tab state successfully exported!", "STAT_OK", oB, sN)
 end
@@ -957,13 +958,13 @@ function luapad.LoadTabs()
   luapad.CloseTabAll() -- The * symbol is invalid for a file name
   -- Read the saved tabs file and load the related files
   local tB, tS = GLOB_CONFIG.DATADR, GLOB_CONFIG.SAVTAB
-  if(not file.IsDir(tB[2]..tS[1], "DATA")) then file.CreateDir(tB[2]..tS[1]) end
   local sD, sP, sN = table.concat(tB), unpack(tS)
   local bB, sB, oB = luapad.GetPath(sD..sP)
   if(not bB) then  -- File not found then bail out
     luapad.SetStatus("File [%s%s] import not supported! (change origin folder)", "STAT_WR", oB, sN)
     return -- No need to process everything else when there is no file
   end
+  if(not file.IsDir(sB, "DATA")) then file.CreateDir(sB) end
   local sF = file.Read(sB..sN, "DATA")
   if(not sF) then  -- File not found then bail out
     luapad.SetStatus("File [%s%s] import has failed! (the file is missing)", "STAT_OK", oB, sN)
@@ -2609,9 +2610,10 @@ function luapad.OpenTree()
     luapad.BrowserArea = nil
   end
 
+  local nR = GLOB_CONFIG.FRACGR
   local nX, nY = pSheet:GetPos()
   local nW, nH = pSheet:GetSize()
-  local nM = ((0.61803398875) * nW) / 2
+  local nM = (nR * nW) / 2
   -- Browser position and size
   local xB, yB = (nX + (nW - nM)), (nY + 22)
   local xS, yS = nM, (nH - 23)
@@ -2627,7 +2629,7 @@ function luapad.OpenTree()
   if(not IsValid(pClose)) then return end
   pClose:Dock(LEFT)
   pClose:SetWide(16)
-  pClose:SetText(">")
+  pClose:SetText("X")
   pClose:SetTooltip("Close")
   function pClose:DoClick()
     local pB = luapad.BrowserArea
@@ -2687,6 +2689,159 @@ function luapad.OpenTree()
     SetClipboardText(sF)
   end
   return pTree
+end
+
+
+--[[
+ * Every request is relative to the main game folder
+ * Paths starting with `data/` use the `data` folder
+ * This is done so that the file can be reloaded properly
+ * Otherwise it will just read the game file system where
+ * the content is refreshed during the game startup
+]]
+function luapad.OpenSearch(cont)
+  if(SERVER) then return end
+
+  local pSheet = luapad.PropertySheet
+  if(not IsValid(pSheet)) then return end
+
+  if (luapad.SearchArea) then
+    local pB = luapad.SearchArea
+    if(IsValid(pB)) then pB:Remove() end
+    luapad.SearchArea = nil
+  end
+
+  local nR = GLOB_CONFIG.FRACGR
+  local nC, nB, nP = 16, 25, 2
+  local nX, nY = pSheet:GetPos()
+  local nW, nH = pSheet:GetSize()
+  local nM = (nR * nW) / 2
+  -- Browser position and size
+  local xB, yB = (nX + (nW - nM)), (nY + nB)
+  local xS, yS = nM, (nB + nC + 4 * nP)
+  -- Base panel to dock others to
+  luapad.SearchArea = vgui.Create("DPanel", luapad.Frame)
+  if(not IsValid(luapad.SearchArea)) then return end
+  luapad.SearchArea:DockPadding(nP,nP,nP,nP)
+  luapad.SearchArea:SetPos(xB, yB)
+  luapad.SearchArea:SetSize(xS, yS)
+  luapad.SearchArea:InvalidateLayout()
+
+  -- Close Button with the entire span
+  local pClose = vgui.Create("DButton", luapad.SearchArea)
+  if(not IsValid(pClose)) then return end
+  pClose:Dock(BOTTOM)
+  pClose:SetTall(nC)
+  pClose:SetText("X")
+  pClose:SetTooltip("Close")
+  function pClose:DoClick()
+    local pB = luapad.SearchArea
+    if(IsValid(pB)) then pB:Remove() end
+    luapad.SearchArea = nil
+  end
+
+  local pText = vgui.Create("DTextEntry", luapad.SearchArea)
+  if(not IsValid(pText)) then return end
+  local xT, yT = 2, 2
+  local uT, vT = (xS - 6 * nP - 2 * nB), nB
+  pText:SetPos(xT, yT)
+  pText:SetSize(uT, vT)
+  pText:SetText(tostring(cont or ""))
+  pText:SetTooltip("Search by patterns!")
+
+  -- Click to search backwords
+  local pBack = vgui.Create("DButton", luapad.SearchArea)
+  if(not IsValid(pBack)) then return end
+  local xL = (xT + pText:GetWide() + 2 * nP)
+  pBack:SetText("<")
+  pBack:SetPos(xL, yT)
+  pBack:SetSize(nB, nB)
+  function pBack:DoClick()
+    local pS = luapad.PropertySheet
+    if(not IsValid(pS)) then return end
+    local pA = pS:GetActiveTab()
+    if(not IsValid(pA)) then return end
+    local pT = pA:GetTextArea()
+    if(not IsValid(pT)) then return end
+    local sC = pText:GetText()
+    if(not luapad.IsHere(sC)) then return end
+    local tT = pT:GetTable()
+    local tS = pT:CopyPosition(tT.Start)
+    local tC = pT:CopyPosition(tT.Caret)
+    local tR = tT.Rows
+    -- Search limit is the beginning of the selection (whichever of Start/Caret comes first)
+    local cR, cP = tC[1], tC[2]
+    if(tS[1] < tC[1] or (tS[1] == tC[1] and tS[2] < tC[2])) then
+      cR, cP = tS[1], tS[2]
+    end
+    local bF = false -- Flag to mark that a match was found
+    for iR = cR, 1, -1 do
+      local sL = tR[iR]
+      local nL = #sL
+      -- On the caret row the match must end before the limit, on the rest of the rows anywhere
+      local nLim = (iR == cR) and cP or (nL + 1)
+      local mS, mE, iI = nil, nil, 1
+      while(iI <= nL) do -- Walk all the matches in the row and remember the last valid one
+        local iS, iE = string.find(sL, sC, iI)
+        if(not iS or iS >= nLim) then break end
+        if(iE < nLim) then mS, mE = iS, iE end
+        iI = iS + 1 -- Advance by one so overlapping matches are not skipped
+      end
+      if(mS and mE) then bF = true -- The thing is found, so mark it the same way as forward does
+        tS[1], tC[1], tS[2], tC[2] = iR, iR, mS, (mE + 1); pT:SetCaret(tC, tS)
+        luapad.SetStatus("Found [%s] in row [%s] at [%s|%s] span!", "STAT_OK", sC, iR, mS, mE)
+        break -- Drop the loop
+      end
+    end
+    if(not bF) then
+      local iL = pT:GetRownum()
+      local nE = #tR[iL] + 1
+      luapad.SetStatus("File start reached and [%s] was not found! (move to the end)", "STAT_OK", sC)
+      tS[1], tC[1], tS[2], tC[2] = iL, iL, nE, nE; pT:SetCaret(tC, tS)
+    end
+  end
+
+  -- Click to search forward
+  local pForw = vgui.Create("DButton", luapad.SearchArea)
+  if(not IsValid(pForw)) then return end
+  local xR = (xL + pBack:GetWide() + 2 * nP)
+  pForw:SetText(">")
+  pForw:SetPos(xR, yT)
+  pForw:SetSize(nB, nB)
+  function pForw:DoClick()
+    local pS = luapad.PropertySheet
+    if(not IsValid(pS)) then return end
+    local pA = pS:GetActiveTab()
+    if(not IsValid(pA)) then return end
+    local pT = pA:GetTextArea()
+    if(not IsValid(pT)) then return end
+    local sC = pText:GetText()
+    if(not luapad.IsHere(sC)) then return end
+    local tT = pT:GetTable()
+    local tS = pT:CopyPosition(tT.Start)
+    local tC = pT:CopyPosition(tT.Caret)
+    local tR, cR, cP = tT.Rows, tC[1], tC[2] -- Rows
+    for iR = cR, pT:GetRownum() do
+      local iS, iE = string.find(tR[iR], sC, cP)
+      if(iS and iE) then cP = 0 -- The thing is found so move the caret to mark it
+        tS[1], tC[1], tS[2], tC[2] = iR, iR, iS, (iE + 1); pT:SetCaret(tC, tS)
+        luapad.SetStatus("Found [%s] in row [%s] at [%s|%s] span!", "STAT_OK", sC, iR, iS, iE)
+        break -- Drop the loop
+      end; cP = 1 -- Start at the beginning on the next row
+    end
+    if(cP > 0) then
+      luapad.SetStatus("File end reached and [%s] was not found! (move to the beginning)", "STAT_OK", sC)
+      tS[1], tC[1], tS[2], tC[2] = 1, 1, 1, 1; pT:SetCaret(tC, tS)
+    end
+  end
+
+  -- Create clotures so the file text area can access the search
+  function luapad.SearchArea:GetTextArea() return pText end
+  function luapad.SearchArea:GetSearchClose() return pClose end
+  function luapad.SearchArea:GetButtonForward() return pForw end
+  function luapad.SearchArea:GetButtonReverse() return pBack end
+
+  return pText
 end
 
 function luapad.OpenScript(path)
