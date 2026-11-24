@@ -15,7 +15,6 @@ local GLOB_CONFIG = {
   PANLSZ = 3 / 4, -- The ratio panel will use according to the screen size
   DAYINS = 86400, -- The amount of second present in one day
   MAXMSL = 60000, -- As the maximum write string limit is 65532
-  REPTAB = {W = {"\t", "\t   "}, R = {"\t   ", "\t"}}, --Load and save tabs
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
   PATENM = "[A-Z_]+", -- General pattern matching a enumeration key
   DELIMS = {V = "|", I = "\t", N = "[\r\n]+"}, -- Symbols used for separator and exports
@@ -2106,10 +2105,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   function pTab:GetContents()
     local pText = self:GetTextArea()
     if(not IsValid(pText)) then return "" end
-    local tC = GLOB_CONFIG.REPTAB.R
-    local sR = (pText:GetText() or "")
-    local sC = string.gsub(sR, unpack(tC))
-    return sC
+    return (pText:GetText() or "") -- Tabs are kept as real tabs
   end
 
   --[[
@@ -2118,10 +2114,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   function pTab:SetContents(sC)
     local pText = self:GetTextArea()
     if(not IsValid(pText)) then return end
-    local tC = GLOB_CONFIG.REPTAB.W
-    local sC = tostring(sC or "")
-    local sR = string.gsub(sC, unpack(tC))
-    pText:SetText(sR)
+    pText:SetText(tostring(sC or "")) -- The editor renders tabs itself
     pText:RequestFocus()
     pText:SizeToContents()
   end

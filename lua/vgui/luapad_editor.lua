@@ -175,6 +175,7 @@ function PANEL:Init()
   end
 
   self:SetGutterWidth(4)
+  self:SetTabSize(4)
   self:SetThemeDefault()
   self.LastClick = 0
 end
@@ -193,6 +194,57 @@ end
 
 function PANEL:GetFontSize()
   return self.FontWidth, self.FontHeight
+end
+
+function PANEL:GetTabSize()
+  return math.max(math.floor(tonumber(self.TabSize) or 4), 1)
+end
+
+function PANEL:SetTabSize(size)
+  self.TabSize = math.max(math.floor(tonumber(size) or 4), 1)
+end
+
+--[[
+ * Returns how many screen cells a byte occupies when it
+ * starts at visual offset `vis` (0-based). Tabs jump to the next stop.
+]]
+function PANEL:GetCellWidth(byte, vis)
+  if (byte == 9) then -- "\t"
+    local tabw = self:GetTabSize()
+    return tabw - vis % tabw
+  end
+  return 1
+end
+
+--[[
+ * Converts a caret column (byte index, 1-based) on a row
+ * into a visual column (screen cell index, 1-based)
+]]
+function PANEL:ColumnToVisual(row, col)
+  local line = self.Rows[row] or ""
+  local last = math.min(col - 1, string.len(line))
+  local vis = 0
+  for i = 1, last do
+    vis = vis + self:GetCellWidth(string.byte(line, i), vis)
+  end
+  return vis + (col - 1 - last) + 1
+end
+
+--[[
+ * Converts a visual column (screen cell index, 1-based) on a row
+ * into the nearest caret column (byte index, 1-based)
+]]
+function PANEL:VisualToColumn(row, vcol)
+  local line = self.Rows[row] or ""
+  local target, vis = (vcol - 1), 0
+  for i = 1, string.len(line) do
+    local w = self:GetCellWidth(string.byte(line, i), vis)
+    if (target < vis + w) then
+      return ((target - vis) <= (w / 2)) and i or (i + 1)
+    end
+    vis = vis + w
+  end
+  return string.len(line) + 1
 end
 
 function PANEL:RefreshView()
@@ -353,10 +405,10 @@ function PANEL:CursorToCaret()
   local iW = math.floor(iX / self.FontWidth + 0.5)
 
   iH = iH + self.Scroll[1]
-  iW = iW + self.Scroll[2]
+  iW = iW + self.Scroll[2] -- Visual column
   iH = ((iH > iR) and iR or iH)
-  iL = string.len(self.Rows[iH])
-  iW = math.min(iW, iL + 1)
+  iW = self:VisualToColumn(iH, iW) -- Caret column
+
 
   return {iH, iW}
 end
@@ -888,46 +940,49 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
     local sline, schar = start[1], start[2]
     local eline, echar =  stop[1],  stop[2]
 
-    surface.SetDrawColor(guiSE:Unpack())
-    local length = string.len(self.Rows[row]) - scend + 1
-
-    schar = math.max(schar - scend, 0)
-    echar = math.max(echar - scend, 0)
-
-    if (row == sline and sline == eline) then
-      surface.DrawRect(schar * width + width * mG + 6, (row - scstr) * height, width * (echar - schar), height)
-    elseif (row == sline) then
-      surface.DrawRect(schar * width + width * mG + 6, (row - scstr) * height, width * (length - schar + 1), height)
-    elseif (row == eline) then
-      surface.DrawRect(width * mG + 6, (row - scstr) * height, width * echar, height)
-    elseif (row > sline and row < eline) then
-      surface.DrawRect(width * mG + 6, (row - scstr) * height, width * (length + 1), height)
+    if (row >= sline and row <= eline) then
+      surface.SetDrawColor(guiSE:Unpack())
+      -- Work in visual columns so tabs are covered by their real width
+      local vS = (row == sline) and self:ColumnToVisual(row, schar) or 1
+      local vE = (row == eline) and self:ColumnToVisual(row, echar)
+                 or (self:ColumnToVisual(row, string.len(self.Rows[row]) + 1) + 1)
+      vS = math.max(vS - scend, 0)
+      vE = math.max(vE - scend, 0)
+      surface.DrawRect(vS * width + width * mG + 6, (row - scstr) * height, width * (vE - vS), height)
     end
   end
 
   draw.SimpleText(tostring(row), self:GetFontName(), width * mG, (row - scstr) * height, guiRN, TEXT_ALIGN_RIGHT)
 
-  local offset = (-scend + 1)
+  -- Tabs are never passed to the renderer. Every cell is split on "\t",
+  -- the plain chunks are drawn at their visual column and each tab
+  -- only advances the visual column to the next tab stop.
+  local vcol, vscr = 0, (scend - 1) -- Visual column and horizontal scroll
+  local tabw, posy = self:GetTabSize(), (row - scstr) * height
+  local base = width * mG + 6
   for i, cell in ipairs(tRow) do
     local ccon, csr, cen = cell[1], cell[2][1], cell[2][2]
-
-    if (offset < 0) then
-      if (string.len(ccon) > -offset) then
-        local suline = string.sub(ccon, -offset + 1); offset = string.len(suline)
-        draw.SimpleText(suline, self:GetFontName(cen), width * mG + 6, (row - scstr) * height, csr)
-      else
-        offset = offset + string.len(ccon)
+    local font = self:GetFontName(cen)
+    for chunk, tab in string.gmatch(ccon, "([^\t]*)(\t?)") do
+      if (chunk ~= "") then
+        local clen = string.len(chunk)
+        if (vcol + clen > vscr) then
+          local cut = math.max(vscr - vcol, 0)
+          draw.SimpleText(string.sub(chunk, cut + 1), font, base + (vcol + cut - vscr) * width, posy, csr)
+        end
+        vcol = vcol + clen
       end
-    else
-      draw.SimpleText(ccon, self:GetFontName(cen), offset * width + width * mG + 6, (row - scstr) * height, csr)
-      offset = offset + string.len(ccon)
+      if (tab ~= "") then
+        vcol = vcol + (tabw - vcol % tabw)
+      end
     end
   end
 
   if (row == castr and self.TextEntry:HasFocus()) then
-    if ((RealTime() - self.Blink) % 0.8 < 0.4 and caend >= scend) then
+    local vcar = self:ColumnToVisual(castr, caend)
+    if ((RealTime() - self.Blink) % 0.8 < 0.4 and vcar >= scend) then
         surface.SetDrawColor(guiCB:Unpack())
-        surface.DrawRect((caend - scend) * width + width * mG + 6,
+        surface.DrawRect((vcar - scend) * width + width * mG + 6,
                          (castr - scstr) * height, 1, height)
     end
   end
@@ -1273,12 +1328,15 @@ function PANEL:ScrollCaret()
     m_Scroll[1] = math.max(m_Caret[1] - m_Size[1] + 2, 1)
   end
 
-  if (m_Caret[2] - m_Scroll[2] < 4) then
-    m_Scroll[2] = math.max(m_Caret[2] - 4, 1)
+  -- Horizontal scroll is measured in visual columns
+  local vCar = self:ColumnToVisual(m_Caret[1], m_Caret[2])
+
+  if (vCar - m_Scroll[2] < 4) then
+    m_Scroll[2] = math.max(vCar - 4, 1)
   end
 
-  if (m_Caret[2] - 1 - m_Scroll[2] > m_Size[2] - 4) then
-    m_Scroll[2] = math.max(m_Caret[2] - 1 - m_Size[2] + 4, 1)
+  if (vCar - 1 - m_Scroll[2] > m_Size[2] - 4) then
+    m_Scroll[2] = math.max(vCar - 1 - m_Size[2] + 4, 1)
   end
 
   self.ScrollBar:SetScroll(m_Scroll[1] - 1)
@@ -1430,15 +1488,13 @@ function PANEL:CustomOnKeyCodeTyped(code)
     if (code == KEY_ENTER) then
       local row = self.Rows[self.Caret[1]]
       local rsub = string.sub(row, 1, self.Caret[2] - 1)
-      local diff = (rsub:find("%S") or (rsub:len() + 1)) - 1
-      local tabs = string.rep("    ", math.floor(diff / 4))
+      local tabs = string.match(rsub, "^[ \t]*") -- Keep tabs and spaces as-is
       self:SetSelection(g_NL .. tabs)
     elseif (code == KEY_UP) then
       if (self.Caret[1] > 1) then
+        local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
         self.Caret[1] = self.Caret[1] - 1
-
-        local length = string.len(self.Rows[self.Caret[1]])
-        self.Caret[2] = math.min(self.Caret[2], length + 1)
+        self.Caret[2] = self:VisualToColumn(self.Caret[1], vcol)
       end
 
       self:ScrollCaret()
@@ -1448,10 +1504,9 @@ function PANEL:CustomOnKeyCodeTyped(code)
       end
     elseif (code == KEY_DOWN) then
       if (self.Caret[1] < self:GetRownum()) then
+        local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
         self.Caret[1] = self.Caret[1] + 1
-
-        local length = string.len(self.Rows[self.Caret[1]])
-        self.Caret[2] = math.min(self.Caret[2], length + 1)
+        self.Caret[2] = self:VisualToColumn(self.Caret[1], vcol)
       end
 
       self:ScrollCaret()
@@ -1580,8 +1635,9 @@ function PANEL:CustomOnKeyCodeTyped(code)
           self:SetSelection("")
         end
       else
-        local count = (self.Caret[2] + 2) % 4 + 1
-        self:SetSelection(string.rep(" ", count))
+        local tabw = self:GetTabSize()
+        local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
+        self:SetSelection(string.rep(" ", tabw - (vcol - 1) % tabw))
       end
     end
     self.TabFocus = true
