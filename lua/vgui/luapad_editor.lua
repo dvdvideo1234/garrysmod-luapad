@@ -98,7 +98,7 @@ local TOKEN_CLASSIFY = {
   },
   SKP = {E = "%s+", A = ".*$", W = "^%w$"}, -- Skip characters
   SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
-  EOL = {E = "[\r\n]+", I = "\n"}, -- General pattern for splitting
+  EOL = {E = "[\r\n]+", I = "\n", N = "\r\n?"}, -- General pattern for splitting
   MUL = {S = "%[=*%[", E = "%]=*%]", L = ".*$"}, -- Multi line pattern
   URL = "https?://%S+%.%S+", -- URL pattern matching
   COM = {B = ".*$", C = {["-"] = "%-[%-]+", ["/"] = "/[/]+"}}, -- Comments
@@ -213,7 +213,53 @@ function PANEL:GetCellWidth(byte, vis)
     local tabw = self:GetTabSize()
     return tabw - vis % tabw
   end
+  if (byte and byte >= 128 and byte <= 191) then
+    return 0 -- UTF-8 continuation byte belongs to the previous character
+  end
   return 1
+end
+
+--[[
+ * Returns true when the byte at `col` is in the middle of a UTF-8 character
+]]
+function PANEL:IsInsideChar(line, col)
+  local byte = string.byte(line, col)
+  return (byte ~= nil and byte >= 128 and byte <= 191)
+end
+
+--[[
+ * Moves a caret column off UTF-8 continuation bytes
+ * dir < 0 snaps to the start of the character, otherwise past its end
+]]
+function PANEL:SnapColumn(row, col, dir)
+  local line = self.Rows[row] or ""
+  local step = ((dir and dir < 0) and -1 or 1)
+  while (col > 1 and col <= string.len(line) and self:IsInsideChar(line, col)) do
+    col = col + step
+  end
+  return col
+end
+
+--[[
+ * Number of screen cells of a string without tabs
+]]
+function PANEL:GetCellCount(text)
+  local _, count = string.gsub(text, "[^\128-\191]", "")
+  return count
+end
+
+--[[
+ * Byte index where the character after `cells` screen cells starts
+ * in a string without tabs
+]]
+function PANEL:GetCellByte(text, cells)
+  local col, len = 1, string.len(text)
+  while (cells > 0 and col <= len) do
+    col = col + 1
+    while (col <= len and self:IsInsideChar(text, col)) do col = col + 1 end
+    cells = cells - 1
+  end
+  return col
 end
 
 --[[
@@ -240,7 +286,8 @@ function PANEL:VisualToColumn(row, vcol)
   for i = 1, string.len(line) do
     local w = self:GetCellWidth(string.byte(line, i), vis)
     if (target < vis + w) then
-      return ((target - vis) <= (w / 2)) and i or (i + 1)
+      if ((target - vis) <= (w / 2)) then return i end
+      return self:SnapColumn(row, i + 1, 1)
     end
     vis = vis + w
   end
@@ -526,10 +573,18 @@ function PANEL:OnMouseReleased(code)
   end
 end
 
-function PANEL:SetText(text)
-  local g_NP = TOKEN_CLASSIFY.EOL.E
+--[[
+ * Splits text into rows keeping empty lines
+ * Any of "\r\n", "\r" or "\n" counts as one line break
+]]
+function PANEL:SplitLines(text)
+  local tEOL = TOKEN_CLASSIFY.EOL
+  local sT = string.gsub(tostring(text or ""), tEOL.N, tEOL.I)
+  return string.Explode(tEOL.I, sT, false)
+end
 
-  self.Rows = string.Explode(g_NP, text, true)
+function PANEL:SetText(text)
+  self.Rows = self:SplitLines(text)
 
   local last = self:SetEmptyRow()
 
@@ -965,10 +1020,11 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
     local font = self:GetFontName(cen)
     for chunk, tab in string.gmatch(ccon, "([^\t]*)(\t?)") do
       if (chunk ~= "") then
-        local clen = string.len(chunk)
+        local clen = self:GetCellCount(chunk)
         if (vcol + clen > vscr) then
           local cut = math.max(vscr - vcol, 0)
-          draw.SimpleText(string.sub(chunk, cut + 1), font, base + (vcol + cut - vscr) * width, posy, csr)
+          local from = self:GetCellByte(chunk, cut)
+          draw.SimpleText(string.sub(chunk, from), font, base + (vcol + cut - vscr) * width, posy, csr)
         end
         vcol = vcol + clen
       end
@@ -1069,7 +1125,7 @@ end
 
 function PANEL:MovePosition(caret, offset)
   local tR, nR = self.Rows, self:GetRownum()
-  local caret = {caret[1], caret[2]}
+  local caret, dir = {caret[1], caret[2]}, offset -- Direction is kept for UTF-8 snapping
 
   if (offset > 0) then
     while true do
@@ -1104,6 +1160,7 @@ function PANEL:MovePosition(caret, offset)
     end
   end
 
+  caret[2] = self:SnapColumn(caret[1], caret[2], dir)
   return caret
 end
 
@@ -1146,7 +1203,6 @@ function PANEL:GetArea(selection)
 end
 
 function PANEL:SetArea(selection, text, isundo, isredo, before, after)
-  local g_NP = TOKEN_CLASSIFY.EOL.E
   local start, stop = self:MakeSelection(selection)
   local buffer = self:GetArea(selection)
   local sline, schar = start[1], start[2]
@@ -1189,7 +1245,7 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     end
   end
 
-  local tRows = string.Explode(g_NP, text, true) -- Insert text
+  local tRows = self:SplitLines(text) -- Insert text
   local nRows = #tRows -- Count the marked lines once
 
   local remainder = string.sub(self.Rows[sline], schar)
@@ -1342,10 +1398,43 @@ function PANEL:ScrollCaret()
   self.ScrollBar:SetScroll(m_Scroll[1] - 1)
 end
 
+--[[
+ * Removes one indentation level from the start of a line:
+ * one leading tab, or up to tab-size leading spaces
+]]
 function PANEL:UnIndent(line)
-  local iF = line:find("%S")
-  local iS = (iF == nil or iF > 5) and 5 or iF
-  return string.sub(line, iS)
+  if (string.sub(line, 1, 1) == "\t") then
+    return string.sub(line, 2)
+  end
+  local spaces = string.rep(" ?", self:GetTabSize())
+  return (string.gsub(line, "^" .. spaces, "", 1))
+end
+
+--[[
+ * Returns the column where one indentation step before the caret starts
+ * A tab is one step, spaces go back to the previous tab stop
+ * Returns nil when there is no whitespace right before the caret
+]]
+function PANEL:GetIndentStep(caret)
+  local line, col = self.Rows[caret[1]] or "", caret[2]
+  if (col <= 1) then return nil end
+  if (string.byte(line, col - 1) == 9) then return col - 1 end
+  local tabw = self:GetTabSize()
+  local vcol = self:ColumnToVisual(caret[1], col)
+  local need, step = ((vcol - 2) % tabw + 1), col
+  while (need > 0 and step > 1 and string.byte(line, step - 1) == 32) do
+    step, need = (step - 1), (need - 1)
+  end
+  return ((step < col) and step or nil)
+end
+
+--[[
+ * Returns true when only tabs and spaces precede the caret
+]]
+function PANEL:IsInIndent(caret)
+  local line = self.Rows[caret[1]] or ""
+  local head = string.sub(line, 1, caret[2] - 1)
+  return (not string.find(head, "[^ \t]"))
 end
 
 function PANEL:CanUndo()
@@ -1539,12 +1628,11 @@ function PANEL:CustomOnKeyCodeTyped(code)
         self.Start = self:CopyPosition(self.Caret)
       end
     elseif (code == KEY_PAGEUP) then
+      local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
       self.Caret[1] = self.Caret[1] - math.ceil(self.Size[1] / 2)
       self.Scroll[1] = self.Scroll[1] - math.ceil(self.Size[1] / 2)
       self.Caret[1] = math.max(self.Caret[1], 1)
-
-      local length = string.len(self.Rows[self.Caret[1]])
-      self.Caret[2] = math.min(self.Caret[2], length + 1)
+      self.Caret[2] = self:VisualToColumn(self.Caret[1], vcol)
       self.Scroll[1] = math.max(self.Scroll[1], 1)
       self:ScrollCaret()
 
@@ -1552,6 +1640,7 @@ function PANEL:CustomOnKeyCodeTyped(code)
         self.Start = self:CopyPosition(self.Caret)
       end
     elseif (code == KEY_PAGEDOWN) then
+      local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
       self.Caret[1] = self.Caret[1] + math.ceil(self.Size[1] / 2)
       self.Scroll[1] = self.Scroll[1] + math.ceil(self.Size[1] / 2)
 
@@ -1559,10 +1648,9 @@ function PANEL:CustomOnKeyCodeTyped(code)
 
       if (self.Caret[1] == self:GetRownum()) then
         self.Caret[2] = 1
+      else
+        self.Caret[2] = self:VisualToColumn(self.Caret[1], vcol)
       end
-
-      local length = string.len(self.Rows[self.Caret[1]])
-      self.Caret[2] = math.min(self.Caret[2], length + 1)
       self:ScrollCaret()
 
       if (not shift) then
@@ -1595,9 +1683,9 @@ function PANEL:CustomOnKeyCodeTyped(code)
       if (self:HasSelection()) then
         self:SetSelection()
       else
-        local buffer = self:GetArea({self.Caret, {self.Caret[1], 1}})
-        if (self.Caret[2] % 4 == 1 and string.len(buffer) > 0 and string.rep(" ", string.len(buffer)) == buffer) then
-          self:SetCaret(self:SetArea({self.Caret, self:MovePosition(self.Caret, -4)}))
+        local step = self:IsInIndent(self.Caret) and self:GetIndentStep(self.Caret)
+        if (step) then -- Remove one indentation level (tab or spaces to the previous stop)
+          self:SetCaret(self:SetArea({self.Caret, {self.Caret[1], step}}))
         else
           self:SetCaret(self:SetArea({self.Caret, self:MovePosition(self.Caret, -1)}))
         end
@@ -1606,9 +1694,12 @@ function PANEL:CustomOnKeyCodeTyped(code)
       if (self:HasSelection()) then
         self:SetSelection()
       else
-        local buffer = self:GetArea({{self.Caret[1], self.Caret[2] + 4}, {self.Caret[1], 1}})
-        if (self.Caret[2] % 4 == 1 and string.rep(" ", string.len(buffer)) == buffer and string.len(self.Rows[self.Caret[1]]) >= self.Caret[2] + 4 - 1) then
-          self:SetCaret(self:SetArea({self.Caret, self:MovePosition(self.Caret, 4)}))
+        local tabw = self:GetTabSize()
+        local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
+        local need = tabw - (vcol - 1) % tabw -- Spaces up to the next tab stop
+        local ahead = string.sub(self.Rows[self.Caret[1]], self.Caret[2], self.Caret[2] + need - 1)
+        if (self:IsInIndent(self.Caret) and need > 1 and ahead == string.rep(" ", need)) then
+          self:SetCaret(self:SetArea({self.Caret, {self.Caret[1], self.Caret[2] + need}}))
         else
           self:SetCaret(self:SetArea({self.Caret, self:MovePosition(self.Caret, 1)}))
         end
@@ -1627,11 +1718,9 @@ function PANEL:CustomOnKeyCodeTyped(code)
       self:Indent(shift)
     else
       if (shift) then
-        local newpos = math.max(self.Caret[2] - 4, 1)
-        self.Start = {self.Caret[1], newpos}
-        if (self:GetSelection():find("%S")) then
-          self.Start = self:CopyPosition(self.Caret)
-        else
+        local step = self:GetIndentStep(self.Caret)
+        if (step) then -- Remove a tab or spaces back to the previous stop
+          self.Start = {self.Caret[1], step}
           self:SetSelection("")
         end
       else
@@ -1697,14 +1786,14 @@ function PANEL:Indent(shift)
     self.Caret = self:MovePosition(self.Caret, -1)
   end
 
+  local tRows = string.Explode(g_NL, self:GetSelection(), false)
   if (shift) then
-    local srp = string.rep(" ?", 4)
-    local tmp = self:GetSelection():gsub(g_NL..srp, g_NL)
-    self:SetSelection(self:UnIndent(tmp))
+    for iD = 1, #tRows do tRows[iD] = self:UnIndent(tRows[iD]) end
   else
-    local srp = string.rep(" ", 4)
-    self:SetSelection(srp.. self:GetSelection():gsub(g_NL, g_NL..srp))
+    local srp = string.rep(" ", self:GetTabSize())
+    for iD = 1, #tRows do tRows[iD] = srp .. tRows[iD] end
   end
+  self:SetSelection(table.concat(tRows, g_NL))
 
   self.Caret = self:CopyPosition(tCar)
   self.Start = self:CopyPosition(tStr)
