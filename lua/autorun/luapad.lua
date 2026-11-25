@@ -50,6 +50,19 @@ local VAR_STM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_statmsgtm",   1, GLOB_CONF
 local VAR_FSZ = CreateConVar(GLOB_CONFIG.ADDONN[2].."_fontisize",   2, GLOB_CONFIG.CFLAGS, "Default font size when argument is not here", 0, 6)
 local VAR_THM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_themename","XX", GLOB_CONFIG.CFLAGS, "Syntax highlighting theme being used")
 
+cvars.RemoveChangeCallback(VAR_TBS:GetName(), "luapad_tabsize")
+cvars.AddChangeCallback(VAR_TBS:GetName(), function(sN, vO, vN)
+  local pSheet = luapad.PropertySheet
+  if(not IsValid(pSheet)) then return end
+  for _, tI in ipairs(pSheet:GetItems()) do
+    local pText = tI.Tab:GetTextArea()
+    if(IsValid(pText)) then
+      pText:SetTabSize(vN)
+      pText:RefreshView()
+    end
+  end
+end, "luapad_tabsize")
+
 local COLOR_STATUS = {
   ["#TEMCO#"] = Color(  0,   0,   0,   0),
   ["STAT_OK"] = Color(72 , 205,  72, 255),
@@ -2045,7 +2058,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   local sTag = (luapad.IsHere(term) and tostring(term) or nil)
   local sTem = (luapad.IsHere(teme) and tostring(teme) or VAR_THM:GetString())
   local iFon = math.floor(tonumber(font) or VAR_FSZ:GetFloat())
-  local iTab = math.max(math.floor(tonumber(tabs) or VAR_TBS:GetInt()), 1)
+  local iTab = (tonumber(tabs) or VAR_TBS:GetInt())
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -2075,8 +2088,8 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   tSor.Term = sTag -- Tab term in case provided is displayed instead of name
   tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
   tSor.Teme = sTem -- The theme being used for the tab text area
-  tSor.Font = pText:GetFontInfo()  -- The font being applied on the text area
-  tSor.Tabs = pText:GetTabSize()   -- The tab size used when opening a file
+  tSor.Font = pText:GetFontInfo() -- The font being applied on the text area
+  tSor.Tabs = pText:GetTabSize()  -- The tab size used when opening a file
 
   -- Configure the export values. Remove storage delimiter
   for sN, sS in pairs(tSor) do
