@@ -180,6 +180,18 @@ function PANEL:Init()
   self:SetThemeDefault()
 end
 
+--[[
+ * Whether the Tab key inserts a real tab character
+ * instead of spaces up to the next tab stop
+]]
+function PANEL:GetTabInsert()
+  return tobool(self.UseTabs)
+end
+
+function PANEL:SetTabInsert(bool)
+  self.UseTabs = tobool(bool)
+end
+
 function PANEL:GetGutterWidth()
   return math.max(tonumber(self.GutterWidth) or 4, 4)
 end
@@ -1723,9 +1735,13 @@ function PANEL:CustomOnKeyCodeTyped(code)
           self:SetSelection("")
         end
       else
-        local tabw = self:GetTabSize()
-        local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
-        self:SetSelection(string.rep(" ", tabw - (vcol - 1) % tabw))
+        if (self:GetTabInsert()) then
+          self:SetSelection("\t") -- Real tab render advances it to the next stop
+        else
+          local tabw = self:GetTabSize()
+          local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
+          self:SetSelection(string.rep(" ", tabw - (vcol - 1) % tabw))
+        end
       end
     end
     self.TabFocus = true

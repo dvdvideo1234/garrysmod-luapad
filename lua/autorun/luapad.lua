@@ -44,6 +44,7 @@ local VAR_ADM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_adminonly",  1, GLOB_CONFI
 local VAR_EDT = CreateConVar(GLOB_CONFIG.ADDONN[2].."_endataorg",  1, GLOB_CONFIG.RFLAGS, "File operation in the whole data folder", 0, 1)
 
 -- These are the client specific configurations
+local VAR_TBI = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabinsert",   0, GLOB_CONFIG.CFLAGS, "Tab key inserts a real tab instead of spaces", 0, 1)
 local VAR_TBS = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabchsize",   2, GLOB_CONFIG.CFLAGS, "How many characters the tab uses when displayed", 1, 8)
 local VAR_MXF = CreateConVar(GLOB_CONFIG.ADDONN[2].."_maxunamed",  10, GLOB_CONFIG.CFLAGS, "Maximum number of new files in the folder", 0, 100)
 local VAR_STM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_statmsgtm",   1, GLOB_CONFIG.CFLAGS, "Status messages time visible fraction delta", 0, 100)
@@ -2059,6 +2060,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   local sTem = (luapad.IsHere(teme) and tostring(teme) or VAR_THM:GetString())
   local iFon = math.floor(tonumber(font) or VAR_FSZ:GetFloat())
   local iTab = (tonumber(tabs) or VAR_TBS:GetInt())
+  local bTab = (sCon:sub(1, 1) == "\t" or sCon:find("\n\t", 1, true) ~= nil)
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -2071,6 +2073,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   pText:Dock(FILL)
   pText:SetTabSize(iTab)
   pText:SetFontInfo(iFon)
+  pText:SetTabInsert(bTab or VAR_TBI:GetBool())
   pText[GLOB_CONFIG.STORKY] = {}
 
  --[[
