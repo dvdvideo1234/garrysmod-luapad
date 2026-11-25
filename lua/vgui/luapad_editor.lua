@@ -94,7 +94,9 @@ local TOKEN_CLASSIFY = {
     ["=="] = true, ["~="] = true,
     [">="] = true, ["<="] = true,
     [".."] = true, ["||"] = true,
-    ["&&"] = true, ["!="] = true
+    ["&&"] = true, ["!="] = true,
+    -- Operators with three characters
+    ["..."] = true -- Varargs
   },
   SKP = {E = "%s+", A = ".*$", W = "^%w$"}, -- Skip characters
   SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
