@@ -20,7 +20,8 @@ local GLOB_CONFIG = {
   DELIMS = {V = "|", I = "\t", N = "[\r\n]+"}, -- Symbols used for separator and exports
   ADDONN = {"Luapad", "luapad"}, -- Generic addon name used for messages and hashes
   DATADR = {"data/", "luapad/"}, -- General data directory used in the entire application
-  SAVTAB = {"settings/", "saved_tabs.txt"}, -- Saved tabs configuration
+  SAVTAB = {"settings/", "saved_tabs.txt"}, -- Saved tabs configuration from stream info
+  SAVTNS = {"Name", "Path", "Term", "Icon", "Teme", "Font", "Tabs"}, -- Tab configuration
   SYNTAX = {"settings/", "%s_syntax_globals.txt"}, -- Syntax global entries file
   THMDEF = {"themes/", "default"}, -- Default theme configuration
   VALDFS = {"[%/\\:%*%?\"<>|]", "^([^%.]+)"}, -- File system name validation
@@ -43,6 +44,7 @@ local VAR_ADM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_adminonly",  1, GLOB_CONFI
 local VAR_EDT = CreateConVar(GLOB_CONFIG.ADDONN[2].."_endataorg",  1, GLOB_CONFIG.RFLAGS, "File operation in the whole data folder", 0, 1)
 
 -- These are the client specific configurations
+local VAR_TBS = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabchsize",   2, GLOB_CONFIG.CFLAGS, "How many characters the tab uses when displayed", 1, 8)
 local VAR_MXF = CreateConVar(GLOB_CONFIG.ADDONN[2].."_maxunamed",  10, GLOB_CONFIG.CFLAGS, "Maximum number of new files in the folder", 0, 100)
 local VAR_STM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_statmsgtm",   1, GLOB_CONFIG.CFLAGS, "Status messages time visible fraction delta", 0, 100)
 local VAR_FSZ = CreateConVar(GLOB_CONFIG.ADDONN[2].."_fontisize",   2, GLOB_CONFIG.CFLAGS, "Default font size when argument is not here", 0, 6)
@@ -919,7 +921,7 @@ function luapad.SaveTabs()
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-  local tO, tW = {1,2,3,4,5,6}, {}
+  local tN, tO, tW = GLOB_CONFIG.SAVTNS {}, {}
   local tI = pS:GetItems()
   local aT = pS:GetActiveTab()
   local sEx = GLOB_CONFIG.DELIMS.I
@@ -928,13 +930,14 @@ function luapad.SaveTabs()
     local pT = tP.Tab
     if(IsValid(pT)) then
       local tS = pT:GetStreamInfo()
-      tO[1] = tostring(tS.Name or "") -- File name
-      tO[2] = tostring(tS.Path or "") -- Path in game FS
-      tO[3] = tostring(tS.Term or "") -- Custom tab name
-      tO[4] = tostring(tS.Icon or "") -- Custom tab icon
-      tO[5] = tostring(tS.Teme or "") -- Custom tab palette
-      tO[6] = tostring(tS.Font or "") -- Entry font size
-      if(pT == aT) then tO[1] = "*" .. tO[1] end
+      for iN = 1, #tN do
+        local sI = tN[iN]
+        local sV = tostring(tS[sM] or "")
+        if(pT == aT and iN == 1) then
+          sV = "*" .. sV -- Concat an asterisk
+        end -- Active tab is marked with asterisk
+        table.insert(tO, sV) -- Register value
+      end -- Insert generated table in the output
       table.insert(tW, table.concat(tO, sEx))
     end
   end
@@ -2032,16 +2035,17 @@ end
  * icon > The icon being displayed on the tab node
  * them > The theme being used for this specific tab
 ]]
-function luapad.AddTab(name, cont, path, term, icon, teme, font)
+function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   if(SERVER) then return end
 
   local sNam = (luapad.IsHere(name) and tostring(name or "") or GLOB_CONFIG.FMNAME:format(0))
-  local sCon = tostring(cont or "") -- The contents are not exported later updated to equalize tabs
+  local sCon = tostring(cont or "") -- The contents are not exported in the tab storage
   local sPth = (luapad.IsHere(path) and tostring(path or "") or table.concat(GLOB_CONFIG.DATADR))
   local sIco = (luapad.IsHere(icon) and tostring(icon) or "page_white")
   local sTag = (luapad.IsHere(term) and tostring(term) or nil)
   local sTem = (luapad.IsHere(teme) and tostring(teme) or VAR_THM:GetString())
   local iFon = math.floor(tonumber(font) or VAR_FSZ:GetFloat())
+  local iTab = math.max(math.floor(tonumber(tabs) or VAR_TBS:GetInt()), 1)
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -2052,6 +2056,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   local nW, nH = pSheet:GetSize()
   pText:SetSize(nW, nH - 22)
   pText:Dock(FILL)
+  pText:SetTabSize(iTab)
   pText:SetFontInfo(iFon)
   pText[GLOB_CONFIG.STORKY] = {}
 
@@ -2071,6 +2076,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
   tSor.Icon = sIco -- Custom tab icon usually defined by the file extension
   tSor.Teme = sTem -- The theme being used for the tab text area
   tSor.Font = pText:GetFontInfo()  -- The font being applied on the text area
+  tSor.Tabs = pText:GetTabSize()   -- The tab size used when opening a file
 
   -- Configure the export values. Remove storage delimiter
   for sN, sS in pairs(tSor) do
@@ -2095,7 +2101,9 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
    * An alias for the panel stream info
   ]]
   function pTab:GetStreamInfo()
-    local tT = self:GetTextArea():GetTable()
+    local pT = self:GetTextArea()
+    if(not IsValid(pT)) then return nil end
+    local tT = pT:GetTable()
     return tT[GLOB_CONFIG.STORKY]
   end
 
@@ -2103,20 +2111,20 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font)
    * Retrieves the text from this tab
   ]]
   function pTab:GetContents()
-    local pText = self:GetTextArea()
-    if(not IsValid(pText)) then return "" end
-    return (pText:GetText() or "") -- Tabs are kept as real tabs
+    local pT = self:GetTextArea()
+    if(not IsValid(pT)) then return "" end
+    return (pT:GetText() or "") -- Tabs are kept as real tabs
   end
 
   --[[
    * Retrieves the text from this tab
   ]]
   function pTab:SetContents(sC)
-    local pText = self:GetTextArea()
-    if(not IsValid(pText)) then return end
-    pText:SetText(tostring(sC or "")) -- The editor renders tabs itself
-    pText:RequestFocus()
-    pText:SizeToContents()
+    local pT = self:GetTextArea()
+    if(not IsValid(pT)) then return end
+    pT:SetText(tostring(sC or "")) -- The editor renders tabs itself
+    pT:RequestFocus()
+    pT:SizeToContents()
   end
 
   --[[

@@ -142,8 +142,8 @@ function PANEL:Init()
   self.Start = {1, 1}
   self.Scroll = {1, 1}
   self.Size = {1, 1}
-  self.Undo = {}
-  self.Redo = {}
+  self.Undo = {} -- Undo action stack
+  self.Redo = {} -- Redo action stack
   self.Token = {} -- Multi-line comment token info
   self.Line = "" -- Reference to current line
   self.Str = "" -- Already processed character set
@@ -174,10 +174,10 @@ function PANEL:Init()
     self:GetParent():CustomOnKeyCodeTyped(code)
   end
 
-  self:SetGutterWidth(4)
-  self:SetTabSize(4)
-  self:SetThemeDefault()
   self.LastClick = 0
+  self:SetTabSize(4)
+  self:SetGutterWidth(4)
+  self:SetThemeDefault()
 end
 
 function PANEL:GetGutterWidth()
@@ -209,7 +209,7 @@ end
  * starts at visual offset `vis` (0-based). Tabs jump to the next stop.
 ]]
 function PANEL:GetCellWidth(byte, vis)
-  if (byte == 9) then -- "\t"
+  if (byte == 9) then -- Tabulation
     local tabw = self:GetTabSize()
     return tabw - vis % tabw
   end
@@ -244,8 +244,8 @@ end
  * Number of screen cells of a string without tabs
 ]]
 function PANEL:GetCellCount(text)
-  local _, count = string.gsub(text, "[^\128-\191]", "")
-  return count
+  local _, cnt = string.gsub(text, "[^\128-\191]", "")
+  return cnt
 end
 
 --[[
@@ -273,7 +273,7 @@ function PANEL:ColumnToVisual(row, col)
   for i = 1, last do
     vis = vis + self:GetCellWidth(string.byte(line, i), vis)
   end
-  return vis + (col - 1 - last) + 1
+  return (vis + col - last)
 end
 
 --[[
@@ -455,7 +455,6 @@ function PANEL:CursorToCaret()
   iW = iW + self.Scroll[2] -- Visual column
   iH = ((iH > iR) and iR or iH)
   iW = self:VisualToColumn(iH, iW) -- Caret column
-
 
   return {iH, iW}
 end
@@ -1445,7 +1444,7 @@ function PANEL:DoUndo()
   local tU = self.Undo
   local nU = #tU
   if (nU <= 0) then return end
-  local tC = tU[nU]; tU[nU] = nil
+  local tC = table.remove(tU)
   self:SetCaret(self:SetArea(tC[1], tC[2], true, false, tC[3], tC[4]))
 end
 
@@ -1457,7 +1456,7 @@ function PANEL:DoRedo()
   local tR = self.Redo
   local nR = #tR
   if (nR <= 0) then return end
-  local tC = tR[nR]; tR[nR] = nil
+  local tC = table.remove(tR)
   self:SetCaret(self:SetArea(tC[1], tC[2], false, true, tC[3], tC[4]))
 end
 
