@@ -46,6 +46,7 @@ local VAR_EDT = CreateConVar(GLOB_CONFIG.ADDONN[2].."_endataorg",  1, GLOB_CONFI
 -- These are the client specific configurations
 local VAR_TBI = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabinsert",   0, GLOB_CONFIG.CFLAGS, "Tab key inserts a real tab instead of spaces", 0, 1)
 local VAR_TBS = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabchsize",   2, GLOB_CONFIG.CFLAGS, "How many characters the tab uses when displayed", 1, 8)
+local VAR_SPR = CreateConVar(GLOB_CONFIG.ADDONN[2].."_shwprgrph",   0, GLOB_CONFIG.CFLAGS, "Show whitespace and paragraph characters", 0, 1)
 local VAR_MXF = CreateConVar(GLOB_CONFIG.ADDONN[2].."_maxunamed",  10, GLOB_CONFIG.CFLAGS, "Maximum number of new files in the folder", 0, 100)
 local VAR_STM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_statmsgtm",   1, GLOB_CONFIG.CFLAGS, "Status messages time visible fraction delta", 0, 100)
 local VAR_FSZ = CreateConVar(GLOB_CONFIG.ADDONN[2].."_fontisize",   2, GLOB_CONFIG.CFLAGS, "Default font size when argument is not here", 0, 6)
@@ -57,12 +58,19 @@ cvars.AddChangeCallback(VAR_TBS:GetName(), function(sN, vO, vN)
   if(not IsValid(pSheet)) then return end
   for _, tI in ipairs(pSheet:GetItems()) do
     local pText = tI.Tab:GetTextArea()
-    if(IsValid(pText)) then
-      pText:SetTabSize(vN)
-      pText:RefreshView()
-    end
+    if(IsValid(pText)) then pText:SetTabSize(vN) end
   end
 end, "luapad_tabsize")
+
+cvars.RemoveChangeCallback(VAR_SPR:GetName(), "luapad_showparagraph")
+cvars.AddChangeCallback(VAR_SPR:GetName(), function(sN, vO, vN)
+  local pSheet = luapad.PropertySheet
+  if(not IsValid(pSheet)) then return end
+  for _, tI in ipairs(pSheet:GetItems()) do
+    local pText = tI.Tab:GetTextArea()
+    if(IsValid(pText)) then pText:SetShowParagraph(tobool(vN)) end
+  end
+end, "luapad_showparagraph")
 
 local COLOR_STATUS = {
   ["#TEMCO#"] = Color(  0,   0,   0,   0),
@@ -1433,6 +1441,29 @@ function luapad.CloseTabAll()
 end
 
 --[[
+ * Attaches the view options to a tab menu
+ * pMenu > The sub-menu being populated
+ * vTre  > The tab the options apply to
+]]
+local function luapadAttachViewMenu(pMenu, vTre)
+  if(SERVER) then return end
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+  if(not IsValid(pMenu)) then return end
+  local pT = pS:GetTabSwitch(vTre)
+  if(not IsValid(pT)) then return end
+  local pA = pT:GetTextArea()
+  if(not IsValid(pA)) then return end
+  -- Add showing paragraph and tab insert
+  pMenu:AddOption("Show paragraph", function()
+    pA:SetShowParagraph(not pA:GetShowParagraph())
+  end):SetImage(luapad.ToIcon(pA:GetShowParagraph() and "note" or "note_go"))
+  pMenu:AddOption("Insert tab stop", function()
+    pA:SetTabInsert(not pA:GetTabInsert())
+  end):SetImage(luapad.ToIcon(pA:GetTabInsert() and "tab_go" or "tab"))
+end
+
+--[[
  * Adjusts the font size for the tabs
 ]]
 local function luapadAttachFontMenu(pMenu, vTre)
@@ -2073,6 +2104,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   pText:Dock(FILL)
   pText:SetTabSize(iTab)
   pText:SetFontInfo(iFon)
+  pText:SetShowParagraph(VAR_SPR:GetBool())
   pText:SetTabInsert(bTab or VAR_TBI:GetBool())
   pText[GLOB_CONFIG.STORKY] = {}
 
@@ -2183,34 +2215,49 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
     local pMenu = DermaMenu()
     if(not IsValid(pMenu)) then return end
     pMenu:SetPos(gui.MousePos())
+
     -- Copy tab internals
     local pIn, pOp = pMenu:AddSubMenu("Copy")
     pOp:SetIcon(luapad.ToIcon("table_multiple"))
     luapadAttachCopyMenu(pIn, self)
-    -- File operations
-    local pIn, pOp = pMenu:AddSubMenu("File")
-    pOp:SetIcon(luapad.ToIcon("table_lightning"))
-    luapadAttachFileMenu(pIn, self)
-    -- Change tab theme
-    local pIn, pOp = pMenu:AddSubMenu("Theme")
-    pOp:SetIcon(luapad.ToIcon("folder_palette"))
-    luapadAttachThemeMenu(pIn, self)
-    -- Change tab font
-    local pIn, pOp = pMenu:AddSubMenu("Font")
-    pOp:SetIcon(luapad.ToIcon("style"))
-    luapadAttachFontMenu(pIn, self)
-    -- Refresh a tab
-    local pIn, pOp = pMenu:AddSubMenu("Refresh")
-    pOp:SetIcon(luapad.ToIcon("table_refresh"))
-    luapadAttachRefreshMenu(pIn, self)
-    -- Execute a script
-    local pIn, pOp = pMenu:AddSubMenu("Execute")
-    pOp:SetIcon(luapad.ToIcon("table_go"))
-    luapadAttachExecuteMenu(pIn, self)
-    -- Close tabs
-    local pIn, pOp = pMenu:AddSubMenu("Close")
-    pOp:SetIcon(luapad.ToIcon("table_delete"))
-    luapadAttachCloseMenu(pIn, self)
+
+    -- Action menu with its sub-menus
+    local pIn, pOp = pMenu:AddSubMenu("Action")
+    pOp:SetIcon(luapad.ToIcon("lightning"))
+    -- Action > File operations
+    local sIn, sOp = pIn:AddSubMenu("File")
+    sOp:SetIcon(luapad.ToIcon("table"))
+    luapadAttachFileMenu(sIn, self)
+    -- Action > Refresh a tab
+    local sIn, sOp = pIn:AddSubMenu("Refresh")
+    sOp:SetIcon(luapad.ToIcon("table_refresh"))
+    luapadAttachRefreshMenu(sIn, self)
+    -- Action > Execute a script
+    local sIn, sOp = pIn:AddSubMenu("Execute")
+    sOp:SetIcon(luapad.ToIcon("table_go"))
+    luapadAttachExecuteMenu(sIn, self)
+    -- Action > Close tabs
+    local sIn, sOp = pIn:AddSubMenu("Close")
+    sOp:SetIcon(luapad.ToIcon("table_delete"))
+    luapadAttachCloseMenu(sIn, self)
+
+    -- View menu with its sub-menus
+    local pIn, pOp = pMenu:AddSubMenu("View")
+    pOp:SetIcon(luapad.ToIcon("eye"))
+    -- View > Change tab theme
+    local sIn, sOp = pIn:AddSubMenu("Theme")
+    sOp:SetIcon(luapad.ToIcon("folder_palette"))
+    luapadAttachThemeMenu(sIn, self)
+    -- View > Change tab font
+    local sIn, sOp = pIn:AddSubMenu("Font")
+    sOp:SetIcon(luapad.ToIcon("style"))
+    luapadAttachFontMenu(sIn, self)
+
+    -- Settings changes per tab
+    local pIn, pOp = pMenu:AddSubMenu("Settings")
+    pOp:SetIcon(luapad.ToIcon("cog"))
+    luapadAttachViewMenu(pIn, self)
+
     -- Open menu
     pMenu:Open()
   end
@@ -2224,6 +2271,10 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   if(sI == "!") then
     sTem = sTem:sub(2, -1)
     sI, bI = sTem:sub(1, 1), true
+    while(sI == "!") do
+      sTem = sTem:sub(2, -1)
+      sI, bI = sTem:sub(1, 1), (not bI)
+    end
   end
   -- Process the non-inverted meme
   if(sI == "#") then

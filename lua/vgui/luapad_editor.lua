@@ -5,6 +5,14 @@ if (SERVER) then
   return
 end
 
+local SHOW_PARAGRAPH = {
+  END = language.GetPhrase("luapad.show_paragraph.end"),
+  SPA = language.GetPhrase("luapad.show_paragraph.space"),
+  TAB = language.GetPhrase("luapad.show_paragraph.tab"),
+  NBS = language.GetPhrase("luapad.show_paragraph.nbsp"),
+  EOL = language.GetPhrase("luapad.show_paragraph.eol")
+}
+
 --[[
  * Default theme customization
  * https://www.w3schools.com/colors/colors_converter.asp
@@ -178,8 +186,24 @@ function PANEL:Init()
 
   self.LastClick = 0
   self:SetTabSize(4)
+  self:SetTabInsert(false)
   self:SetGutterWidth(4)
+  self:SetShowParagraph(false)
   self:SetThemeDefault()
+end
+
+--[[
+ * Helper method for rows count
+]]
+function PANEL:GetRownum()
+  return #self.Rows
+end
+
+--[[
+ * Returns the size of one font cell symbol
+]]
+function PANEL:GetFontSize()
+  return self.FontWidth, self.FontHeight
 end
 
 --[[
@@ -194,28 +218,41 @@ function PANEL:SetTabInsert(bool)
   self.UseTabs = tobool(bool)
 end
 
+--[[
+ * Updates the visual tab size being drawn
+]]
+function PANEL:GetTabSize()
+  return math.max(math.floor(tonumber(self.TabSize) or 4), 1)
+end
+
+function PANEL:SetTabSize(size)
+  local nSz = math.max(math.floor(tonumber(size) or 4), 1)
+  if(nSz == self.TabSize) then return end
+  pText:RefreshView()
+end
+
+--[[
+ * Whether the paragraph should be shown
+ * This draws symbols for invisible characters
+]]
+function PANEL:GetShowParagraph()
+  return tobool(self.ShowParag)
+end
+
+function PANEL:SetShowParagraph(bool)
+  self.ShowParag = tobool(bool)
+  -- self:RefreshView()
+end
+
+--[[
+ * Gutter is the place with the line numbers and breakpoints
+]]
 function PANEL:GetGutterWidth()
   return math.max(tonumber(self.GutterWidth) or 4, 4)
 end
 
 function PANEL:SetGutterWidth(width)
   self.GutterWidth = math.max((tonumber(width) or 4), 4)
-end
-
-function PANEL:GetRownum()
-  return #self.Rows
-end
-
-function PANEL:GetFontSize()
-  return self.FontWidth, self.FontHeight
-end
-
-function PANEL:GetTabSize()
-  return math.max(math.floor(tonumber(self.TabSize) or 4), 1)
-end
-
-function PANEL:SetTabSize(size)
-  self.TabSize = math.max(math.floor(tonumber(size) or 4), 1)
 end
 
 --[[
@@ -993,6 +1030,7 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
   if (row > self:GetRownum()) then return end
 
   local mG = self:GetGutterWidth()
+  local bShp = self:GetShowParagraph()
   local tRow = self:SyntaxColorRowID(row)
   local width, height = self.FontWidth, self.FontHeight
   local scstr, scend  = self.Scroll[1], self.Scroll[2]
@@ -1028,6 +1066,7 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
   local vcol, vscr = 0, (scend - 1) -- Visual column and horizontal scroll
   local tabw, posy = self:GetTabSize(), (row - scstr) * height
   local base = width * mG + 6
+  --
   for i, cell in ipairs(tRow) do
     local ccon, csr, cen = cell[1], cell[2][1], cell[2][2]
     local font = self:GetFontName(cen)
