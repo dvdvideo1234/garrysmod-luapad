@@ -18,6 +18,7 @@ local GLOB_CONFIG = {
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
   PATENM = "[A-Z_]+", -- General pattern matching a enumeration key
   DELIMS = {V = "|", I = "\t", N = "[\r\n]+"}, -- Symbols used for separator and exports
+  TEMSRC = {N = "!", S = "#", F = "@"}, -- Symbols controlling the theme source
   ADDONN = {"Luapad", "luapad"}, -- Generic addon name used for messages and hashes
   DATADR = {"data/", "luapad/"}, -- General data directory used in the entire application
   SAVTAB = {"settings/", "saved_tabs.txt"}, -- Saved tabs configuration from stream info
@@ -244,6 +245,42 @@ end
 ]]
 function luapad.ToColor(vA, nD)
   return math.floor(math.Clamp(tonumber(vA) or nD, 0, 255))
+end
+
+--[[
+ * Decodes a theme source string
+ * sT > Theme string to decode
+ * Returns:
+ * [1] > The theme is inverted
+ * [2] > Either file or skin char
+ * [3] > Actual theme name
+]]
+function luapad.DecodeTheme(sT)
+  local bI, sI, sD = false, "", ""
+  if(not isstring(sT)) then return bI, sI, sD end
+  local tT = GLOB_CONFIG.TEMSRC
+  local sI, bI = sT:sub(1, 1), false
+  if(sI == tT.N) then
+    local nS, nE = sT:find(sI.."+")
+    bI = ((nE - nS + 1) % 2) > 0
+    sI = sT:sub(nE + 1, nE + 1)
+    sI = (sI == tT.S or sI == tT.F) and sI or ""
+    sD = (sI == "") and sT:sub(nE + 1) or sT:sub(nE + 2)
+  else
+    sI = sT:sub(1, 1)
+    sI = (sI == tT.S or sI == tT.F) and sI or ""
+    sD = (sI == "") and sT or sT:sub(2, -1)
+  end
+  return bI, sI, sD
+end
+
+--[[
+ * The reverse process of the function above
+]]
+function luapad.EncodeTheme(bI, sI, sD)
+  local tT, bI = GLOB_CONFIG.TEMSRC, tobool(bI)
+  local sI, sD = tostring(sI or ""), tostring(sD or "")
+  return (bI and (tT.N..sI..sD) or (sI..sD))
 end
 
 --[[
@@ -1508,12 +1545,13 @@ local function luapadAttachThemeMenu(pMenu, vTre)
   if(not IsValid(pMenu)) then return end
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
-  local tT = GLOB_CONFIG.THMDEF
+  local tD = GLOB_CONFIG.THMDEF
+  local tT = GLOB_CONFIG.TEMSRC
   -- Export the current theme to a file
   pMenu:AddOption("Export", function()
     luapad.ShowConfirmDialog(
-      "You are about to save a theme under ["..tT[1].."], please enter the desired name.",
-      tT[2],
+      "You are about to save a theme under ["..tD[1].."], please enter the desired name.",
+      tD[2],
       function(sName)
         -- Configure parameters
         local tV = GLOB_CONFIG.VALDFS
@@ -1539,45 +1577,47 @@ local function luapadAttachThemeMenu(pMenu, vTre)
   -- Invert theme custom colors
   pMenu:AddOption("Invert", function()
     local sB = pT:GetStreamInfo().Teme
-    local bI = (sB:sub(1, 1) == "!")
-    local sT = (bI and sB:sub(2,-1) or "!"..sB)
+    local bI, sI, sT = luapad.DecodeTheme(sB)
+    local sD = luapad.EncodeTheme((not bI), sI, sT)
     pT:GetTextArea():SetThemeInvert()
-    pT:GetStreamInfo().Teme = sT
-    luapad.EqualizeThemeTab(pT, sT)
+    pT:GetStreamInfo().Teme = sD
+    luapad.EqualizeThemeTab(pT, sD)
   end):SetImage(luapad.ToIcon("contrast"))
   -- Update theme global variable
   pMenu:AddOption("Update", function()
-    local sT = pT:GetStreamInfo().Teme
-    RunConsoleCommand(VAR_THM:GetName(), sT)
-    luapad.SetStatus("Theme [%s] has been applied globally!", "STAT_OK", sT)
+    local sB = pT:GetStreamInfo().Teme
+    local bI, sI, sT = luapad.DecodeTheme(sB)
+    local sD = luapad.EncodeTheme(bI, sI, sT)
+    RunConsoleCommand(VAR_THM:GetName(), sD)
+    luapad.SetStatus("Theme [%s] has been applied globally!", "STAT_OK", sD)
   end):SetImage(luapad.ToIcon("paintbrush"))
   -- Attach default theme control options
   local pIn, pOp = pMenu:AddSubMenu("Default")
   if(not IsValid(pIn)) then return end
   pOp:SetIcon(luapad.ToIcon("report_picture"))
   pIn:AddOption("Light",
-    function() local sT = "XX"
+    function() local sD = "XX"
       pT:GetTextArea():SetThemeDefault(false, false)
-      pT:GetStreamInfo().Teme = sT
-      luapad.EqualizeThemeTab(pT, sT)
+      pT:GetStreamInfo().Teme = sD
+      luapad.EqualizeThemeTab(pT, sD)
     end):SetImage(luapad.ToIcon("picture"))
   pIn:AddOption("Dark",
-    function() local sT = "VX"
+    function() local sD = "VX"
       pT:GetTextArea():SetThemeDefault(true, false)
-      pT:GetStreamInfo().Teme = sT
-      luapad.EqualizeThemeTab(pT, sT)
+      pT:GetStreamInfo().Teme = sD
+      luapad.EqualizeThemeTab(pT, sD)
     end):SetImage(luapad.ToIcon("picture"))
   pIn:AddOption("Light bold",
-    function() local sT = "XV"
+    function() local sD = "XV"
       pT:GetTextArea():SetThemeDefault(false, true)
-      pT:GetStreamInfo().Teme = sT
-      luapad.EqualizeThemeTab(pT, sT)
+      pT:GetStreamInfo().Teme = sD
+      luapad.EqualizeThemeTab(pT, sD)
     end):SetImage(luapad.ToIcon("photo"))
   pIn:AddOption("Dark bold",
-    function() local sT = "VV"
+    function() local sD = "VV"
       pT:GetTextArea():SetThemeDefault(true, true)
-      pT:GetStreamInfo().Teme = sT
-      luapad.EqualizeThemeTab(pT, sT)
+      pT:GetStreamInfo().Teme = sD
+      luapad.EqualizeThemeTab(pT, sD)
     end):SetImage(luapad.ToIcon("photo"))
   -- Update the theme via a skin
   local pIn, pOp = pMenu:AddSubMenu("Skin")
@@ -1586,10 +1626,11 @@ local function luapadAttachThemeMenu(pMenu, vTre)
   local tS = derma.GetSkinTable()
   for sS, vS in pairs(tS) do
     pIn:AddOption(tostring(sS),
-      function() local sT = "#"..sS
+      function()
+        local sD = luapad.EncodeTheme(false, tT.S, sS)
         luapad.SetThemeSkin(pT, vS, sS)
-        pT:GetStreamInfo().Teme = sT
-        luapad.EqualizeThemeTab(pT, sT)
+        pT:GetStreamInfo().Teme = sD
+        luapad.EqualizeThemeTab(pT, sD)
       end):SetImage(luapad.ToIcon("palette"))
   end
   -- Update the theme via a file luapad/theme/*.txt
@@ -1603,10 +1644,11 @@ local function luapadAttachThemeMenu(pMenu, vTre)
     local vF = tF[iF]:gsub("%..*$", "")
     if(luapad.IsHere(vF)) then
       pIn:AddOption(vF,
-        function() local sT = "@"..vF
+        function() --
+          local sD = luapad.EncodeTheme(false, tT.F, vF)
           luapad.SetThemeFile(pT, vF)
-          luapad.EqualizeThemeTab(pT, sT)
-          pT:GetStreamInfo().Teme = sT
+          luapad.EqualizeThemeTab(pT, sD)
+          pT:GetStreamInfo().Teme = sD
         end):SetImage(luapad.ToIcon("palette"))
     end
   end
@@ -2117,7 +2159,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   end
 
   -- Configure stream info
-  local tSor = pText[GLOB_CONFIG.STORKY]
+  local tSor = pText:GetStreamInfo()
   tSor.Name = sNam -- The actual file name associated with the tab
   tSor.Path = sPth -- File path always relative to the game folder
   tSor.Term = sTag -- Tab term in case provided is displayed instead of name
@@ -2146,13 +2188,12 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
 
  --[[
    * Retrieves the storage info from the tab
-   * An alias for the panel stream info
+   * An alias for the text area stream info
   ]]
   function pTab:GetStreamInfo()
     local pT = self:GetTextArea()
     if(not IsValid(pT)) then return nil end
-    local tT = pT:GetTable()
-    return tT[GLOB_CONFIG.STORKY]
+    return pT:GetStreamInfo()
   end
 
   --[[
@@ -2266,39 +2307,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   pSheet:SetActiveTab(pTab)
   pSheet:InvalidateLayout()
 
-  -- Check for inversion and register
-  local sI, bI = sTem:sub(1, 1), false
-  if(sI == "!") then
-    sTem = sTem:sub(2, -1)
-    sI, bI = sTem:sub(1, 1), true
-    while(sI == "!") do
-      sTem = sTem:sub(2, -1)
-      sI, bI = sTem:sub(1, 1), (not bI)
-    end
-  end
-  -- Process the non-inverted meme
-  if(sI == "#") then
-    local sT = string.sub(sTem, 2, -1)
-    local tS = derma.GetNamedSkin(sT)
-    if(istable(tS)) then
-      luapad.SetThemeSkin(pTab, tS, sT)
-    else
-      pText:SetThemeDefault()
-      luapad.SetStatus("Theme from skin [%s] is unavailable! (apply default theme)", "STAT_WR", sT)
-    end
-  elseif(sI == "@") then
-    local sT = string.sub(sTem, 2, -1)
-    luapad.SetThemeFile(pTab, sT)
-  else
-    local bD = (sTem:sub(1, 1) == "V")
-    local bB = (sTem:sub(2, 2) == "V")
-    pText:SetThemeDefault(bD, bB)
-  end
-  -- Apply theme inversion
-  if(bI) then
-    tSor.Teme = "!"..sTem
-    pText:SetThemeInvert()
-  end
+  luapad.SetThemeEntry(pTab, sTem)
 
   return pTab
 end
@@ -2346,31 +2355,38 @@ end
 
 --[[
  * Apply a theme on a tab via the console variable
+ * vTre > Tab index to update the theme for
+ * sTem > Theme source to use. Defaults to convar
 ]]
-function luapad.SetThemeEntry(vTre)
+function luapad.SetThemeEntry(vTre, sTem)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
   local pT = pS:GetTabSwitch(vTre)
   if(not IsValid(pT)) then return end
-  local sV = VAR_THM:GetString()
-  local sI = sV:sub(1,1)
-  if(sI == "#") then
-    local sT = string.sub(sV, 2, -1)
-    local tD = derma.GetNamedSkin(sT)
-    if(not istable(tD)) then return end
-    luapad.SetThemeSkin(sT, tD, sT)
-    pT:GetStreamInfo().Teme = sV
-  elseif(sI == "@") then
-    local sT = string.sub(sV, 2, -1)
+  local sV = tostring(sTem or VAR_THM:GetString())
+  local tT = GLOB_CONFIG.TEMSRC
+  local bI, sI, sT = luapad.DecodeTheme(sV)
+  local sD = luapad.EncodeTheme(bI, sI, sT)
+  if(sI == tT.S) then
+    local tS = derma.GetNamedSkin(sT)
+    if(istable(tS)) then
+      luapad.SetThemeSkin(pTab, tS, sT)
+    else
+      pText:SetThemeDefault()
+      luapad.SetStatus("Theme from skin [%s] is unavailable! (apply default theme)", "STAT_WR", sT)
+    end
+  elseif(sI == tT.F) then
     luapad.SetThemeFile(pT, sT)
-    pT:GetStreamInfo().Teme = sV
   else
-    local bD = (sV:sub(1, 1) == "V")
-    local bB = (sV:sub(2, 2) == "V")
+    local bD = (sT:sub(1, 1) == "V")
+    local bB = (sT:sub(2, 2) == "V")
     pT:GetTextArea():SetThemeDefault(bD, bB)
-    pT:GetStreamInfo().Teme = sV
   end
+  -- Apply theme inversion
+  if(bI) then pText:SetThemeInvert() end
+  -- Save theme in the stream info
+  pT:GetStreamInfo().Teme = sD
   luapad.EqualizeThemeTab(pT)
 end
 
