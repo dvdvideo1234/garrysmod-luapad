@@ -35,7 +35,7 @@ local GLOB_CONFIG = {
   PRESND = "ambient/water/drip%d.wav", -- Sound format played on button press
   DATFMT = "%Y-%m-%d %H:%M:%S", -- Date and time general format
   SRCHFM = "%s: Found routine [%s] in %s!", -- Debug search messages
-  CFLAGS = bit.bor(FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY),
+  CFLAGS = bit.bor(FCVAR_USERINFO  , FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY),
   RFLAGS = bit.bor(FCVAR_REPLICATED, FCVAR_ARCHIVE, FCVAR_NOTIFY, FCVAR_PRINTABLEONLY)
 }
 
