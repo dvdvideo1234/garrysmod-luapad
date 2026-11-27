@@ -5,16 +5,28 @@ if (SERVER) then
   return
 end
 
-local SHOW_PARAGRAPH = {
-  ENDS = language.GetPhrase("luapad.show_paragraph.ends"),
-  SPAS = language.GetPhrase("luapad.show_paragraph.spas"),
-  TABS = language.GetPhrase("luapad.show_paragraph.tabs"),
-  NBSP = language.GetPhrase("luapad.show_paragraph.nbsp"),
-  EOLS = language.GetPhrase("luapad.show_paragraph.eols"),
-  EOTC = language.GetPhrase("luapad.show_paragraph.eotc"),
-  WRAP = language.GetPhrase("luapad.show_paragraph.wrap"),
-  PRLO = language.GetPhrase("luapad.show_paragraph.prlo")
-}
+--[[
+ * Symbols drawn for invisible characters when the paragraph is shown
+ * The localization file can override every symbol. When a phrase is missing
+ * `language.GetPhrase` returns the key itself, so a built-in default is used
+]]
+local SHOW_PARAGRAPH = {}
+do
+  local tDef = {
+    ENDS = {"luapad.show_paragraph.ends", "\194\182"    }, -- Pilcrow (reserved)
+    SPAS = {"luapad.show_paragraph.spas", "\194\183"    }, -- Space
+    TABS = {"luapad.show_paragraph.tabs", "\226\134\146"}, -- Tabulation
+    NBSP = {"luapad.show_paragraph.nbsp", "\194\176"    }, -- Non-breaking space
+    EOLS = {"luapad.show_paragraph.eols", "\226\134\181"}, -- Line break
+    EOTC = {"luapad.show_paragraph.eotc", "\194\164"    }, -- End of the text
+    WRAP = {"luapad.show_paragraph.wrap", "\194\172"    }, -- Soft wrap point
+    PRLO = {"luapad.show_paragraph.prlo", "\226\150\160"}  -- Other control characters
+  }
+  for sK, tV in pairs(tDef) do
+    local sP = language.GetPhrase(tV[1])
+    SHOW_PARAGRAPH[sK] = ((sP and sP ~= "" and sP ~= tV[1]) and sP or tV[2])
+  end
+end
 
 --[[
  * Default theme customization
@@ -172,6 +184,12 @@ function PANEL:Init()
   self.Span = {F = "", S = 0, E = 0} -- Span match
   self.Clips = nil -- Holds the current clipboard
   self.Blink = RealTime()
+  self.WrapText = false -- Word wrap is disabled by default
+  self.WrapDirty = true -- Visual lines layout must be rebuilt
+  self.WrapCache = {} -- Segments cache indexed by the row text
+  self.WrapFirst = {} -- First visual line of every row
+  self.WrapRow = {} -- Row of every visual line
+  self.WrapSeg = {} -- Segment index of every visual line
 
   self.ScrollBar = vgui.Create("DVScrollBar", self)
   self.ScrollBar:SetUp(1, 1)
@@ -237,7 +255,8 @@ end
 function PANEL:SetTabSize(size)
   local nSz = math.max(math.floor(tonumber(size) or 4), 1)
   if(nSz == self.TabSize) then return end
-  self:RefreshView()
+  self.TabSize = nSz -- Store the new size
+  self:RefreshView() -- Tab widths and wrap points change
 end
 
 --[[
@@ -250,7 +269,184 @@ end
 
 function PANEL:SetShowParagraph(bool)
   self.ShowParag = tobool(bool)
-  -- self:RefreshView()
+  -- Symbols are drawn on top of the cached rows. No refresh is needed
+end
+
+--[[
+ * Whether long rows are wrapped to fit the panel width
+ * When enabled the vertical scroll works with visual lines
+ * and the horizontal scroll is not used
+]]
+function PANEL:GetWordWrap()
+  return tobool(self.WrapText)
+end
+
+function PANEL:SetWordWrap(bool)
+  local bW = tobool(bool)
+  if(bW == self:GetWordWrap()) then return end
+  -- Keep the same row on the top of the view
+  local iT = math.max(math.floor(tonumber(self.Scroll[1]) or 1), 1)
+  if(self:GetWordWrap()) then -- Visual line to row
+    self:UpdateWrap(); iT = (self.WrapRow[iT] or 1)
+  end
+  self.WrapText = bW
+  self.WrapDirty = true
+  self.Scroll[2] = 1
+  if(bW) then -- Row to visual line
+    self:UpdateWrap()
+    iT = (self.WrapFirst[math.min(iT, self:GetRownum())] or 1)
+  else
+    self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
+  end
+  self.Scroll[1] = iT
+  self.ScrollBar:SetScroll(iT - 1)
+end
+
+--[[
+ * How many screen cells fit in one visual line when wrapping
+]]
+function PANEL:GetWrapWidth()
+  return math.max(math.floor(tonumber(self.Size[2]) or 0), 8)
+end
+
+--[[
+ * Splits one row into visual line segments
+ * Breaks after the last space or tab that fits, otherwise
+ * breaks at the last character that fits (never inside UTF-8)
+ * Visual offsets keep the tab stops of the whole row
+ * Returns: S > Byte column where every segment starts
+ *          V > Visual offset (0-based) where every segment starts
+ *          E > Visual width of the whole row
+]]
+function PANEL:BuildWrap(line, wide)
+  local tS, tV, tA = {1}, {0}, {}
+  local vis, seg, svis, brk = 0, 1, 0, nil
+  local pos, len = 1, string.len(line)
+  while (pos <= len) do
+    local byte = string.byte(line, pos)
+    local cell = self:GetCellWidth(byte, vis)
+    tA[pos] = vis -- Visual offset where this byte starts
+    if (cell > 0 and pos > seg and (vis + cell - svis) > wide) then
+      local cut = ((brk and brk > seg and brk <= pos) and brk or pos)
+      seg, svis, brk = cut, tA[cut], nil
+      tS[#tS + 1], tV[#tV + 1] = seg, svis
+    else -- The character fits in the segment
+      vis = vis + cell
+      if (byte == 32 or byte == 9) then brk = pos + 1 end
+      pos = pos + 1
+    end
+  end
+  return {S = tS, V = tV, E = vis}
+end
+
+--[[
+ * Rebuilds the visual lines layout when it is outdated
+ * Segments are cached by the row text, so editing a row
+ * or inserting rows only splits the rows that changed
+ * Returns true when the layout has been rebuilt
+]]
+function PANEL:UpdateWrap()
+  if(not self:GetWordWrap()) then return false end
+  if(not self.WrapDirty) then return false end
+  local nW, nT = self:GetWrapWidth(), self:GetTabSize()
+  local tO = self.WrapCache -- Previous cache
+  if(not tO or self.WrapSize ~= nW or self.WrapTabs ~= nT) then tO = {} end
+  local tN, tF, tR, tG = {}, {}, {}, {}
+  for iR = 1, self:GetRownum() do
+    local sL = self.Rows[iR]
+    local tC = (tN[sL] or tO[sL] or self:BuildWrap(sL, nW))
+    tN[sL], tF[iR] = tC, (#tR + 1)
+    for iK = 1, #tC.S do
+      tR[#tR + 1], tG[#tG + 1] = iR, iK
+    end
+  end
+  self.WrapCache, self.WrapSize, self.WrapTabs = tN, nW, nT
+  self.WrapFirst, self.WrapRow, self.WrapSeg = tF, tR, tG
+  self.WrapDirty = false
+  self.ScrollBar:SetUp(self.Size[1], #tR - 1)
+  return true
+end
+
+--[[
+ * Returns the wrap segments of a row
+]]
+function PANEL:GetWrapRow(row)
+  self:UpdateWrap()
+  local sL = (self.Rows[row] or "")
+  local tC = self.WrapCache[sL]
+  if(not tC) then -- Should not happen, but stay safe
+    tC = self:BuildWrap(sL, self:GetWrapWidth())
+    self.WrapCache[sL] = tC
+  end
+  return tC
+end
+
+--[[
+ * Returns the segment index that contains a column
+ * A column on a segment start belongs to that segment
+]]
+function PANEL:GetWrapSegment(wrap, col)
+  local tS, iK = wrap.S, 1
+  for iD = 2, #tS do
+    if (tS[iD] <= col) then iK = iD else break end
+  end
+  return iK
+end
+
+--[[
+ * Amount of lines the vertical scroll works with
+ * These are visual lines when wrapping, otherwise rows
+]]
+function PANEL:GetLineCount()
+  if(not self:GetWordWrap()) then return self:GetRownum() end
+  self:UpdateWrap()
+  return math.max(#self.WrapRow, 1)
+end
+
+--[[
+ * Converts a caret into a line and visual column (1-based)
+ * Without wrapping these are the row and its visual column
+ * With wrapping these are the visual line and the column inside it
+]]
+function PANEL:CaretToLine(caret)
+  local iR, iC = caret[1], caret[2]
+  local vC = self:ColumnToVisual(iR, iC)
+  if(not self:GetWordWrap()) then return iR, vC end
+  local tW = self:GetWrapRow(iR)
+  local iK = self:GetWrapSegment(tW, iC)
+  return (self.WrapFirst[iR] + iK - 1), (vC - tW.V[iK])
+end
+
+--[[
+ * Converts a line and visual column (1-based) into a caret
+ * Reverses `CaretToLine` and snaps on the closest character
+]]
+function PANEL:LineToCaret(line, vcol)
+  local nL = self:GetLineCount()
+  local iL = math.Clamp(math.floor(tonumber(line) or 1), 1, nL)
+  if(not self:GetWordWrap()) then
+    return {iL, self:VisualToColumn(iL, vcol)}
+  end
+  local iR, iK = self.WrapRow[iL], self.WrapSeg[iL]
+  local tW = self:GetWrapRow(iR)
+  local iC = self:VisualToColumn(iR, tW.V[iK] + math.max(vcol, 1))
+  iC = math.max(iC, tW.S[iK]) -- Stay inside this segment
+  if(iK < #tW.S) then -- The next segment start belongs to the next line
+    iC = self:SnapColumn(iR, math.min(iC, tW.S[iK + 1] - 1), -1)
+  end
+  return {iR, iC}
+end
+
+--[[
+ * Moves the caret with the given amount of lines
+ * keeping its visual column as close as possible
+]]
+function PANEL:MoveCaretLines(delta)
+  local iL, vC = self:CaretToLine(self.Caret)
+  local tG = self.WrapGoal -- Remembered column of the previous move
+  if (tG and tG[2] == self.Caret[1] and tG[3] == self.Caret[2]) then vC = tG[1] end
+  self.Caret = self:LineToCaret(iL + delta, vC)
+  self.WrapGoal = {vC, self.Caret[1], self.Caret[2]}
 end
 
 --[[
@@ -357,6 +553,7 @@ end
 function PANEL:RefreshView()
   local tR = self:GetTable().PaintRows -- Clear row cache
   if(istable(tR)) then table.Empty(tR) else self.PaintRows = {} end
+  self.WrapDirty = true -- Visual lines must be rebuilt
 end
 
 function PANEL:SetFontInfo(iD)
@@ -511,6 +708,10 @@ function PANEL:CursorToCaret()
   local iH = math.floor(iY / self.FontHeight)
   local iW = math.floor(iX / self.FontWidth + 0.5)
 
+  if (self:GetWordWrap()) then -- Visual line and column inside it
+    return self:LineToCaret(iH + self.Scroll[1], iW + 1)
+  end
+
   iH = iH + self.Scroll[1]
   iW = iW + self.Scroll[2] -- Visual column
   iH = ((iH > iR) and iR or iH)
@@ -654,7 +855,8 @@ function PANEL:SetText(text)
   self.Redo = {}
 
   self:RefreshView()
-  self.ScrollBar:SetUp(self.Size[1], last - 1)
+  self.ScrollBar:SetUp(self.Size[1], self:GetLineCount() - 1)
+  self.ScrollBar:SetScroll(0)
 end
 
 function PANEL:GetText()
@@ -1053,19 +1255,60 @@ function PANEL:SyntaxColorRowID(row)
   return self:FinalizeRow(tRow, row)
 end
 
-function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
-  if (row > self:GetRownum()) then return end
+--[[
+ * Finds the next character that is drawn as a single cell instead of text
+ * Tabs are always handled. When the paragraph is shown, spaces,
+ * non-breaking spaces and control characters are handled as well
+ * Returns the start and end bytes of the character or nil
+]]
+function PANEL:FindSpecial(text, pos, show)
+  if (not show) then
+    local iS = string.find(text, "\t", pos, true)
+    return iS, iS
+  end
+  local iA = string.find(text, "[%c ]", pos)
+  local iB = string.find(text, "\194\160", pos, true)
+  if (iA and (not iB or iA < iB)) then return iA, iA end
+  if (iB) then return iB, (iB + 1) end
+  return nil
+end
 
+--[[
+ * Draws plain text (no tabs) starting at visual offset `vcol` (0-based)
+ * Only the cells inside the window [voff, vlim) are drawn
+ * Returns the visual offset after the text
+]]
+function PANEL:PaintPlain(text, vcol, voff, vlim, font, color, base, posy)
+  local clen = self:GetCellCount(text)
+  local iA = math.max(voff - vcol, 0)
+  local iB = (vlim and math.min(clen, vlim - vcol) or clen)
+  if (iB > iA) then
+    local iF = self:GetCellByte(text, iA)
+    local iT = self:GetCellByte(text, iB) - 1
+    draw.SimpleText(string.sub(text, iF, iT), font, base + (vcol + iA - voff) * self.FontWidth, posy, color)
+  end
+  return (vcol + clen)
+end
+
+--[[
+ * Draws one visual line of a row. Without wrapping this is the whole row
+ * row  > Row index being drawn
+ * tRow > Highlighted cells of the row
+ * posy > Vertical position in pixels
+ * voff > Visual offset (0-based) drawn at the text start
+ * vlim > Visual offset where drawing stops (nil for no limit)
+ * tOpt > Flags and colors of the line
+]]
+function PANEL:PaintRowLine(row, tRow, posy, voff, vlim, tOpt)
   local mG = self:GetGutterWidth()
-  local bShp = self:GetShowParagraph()
-  local tRow = self:SyntaxColorRowID(row)
   local width, height = self.FontWidth, self.FontHeight
-  local scstr, scend  = self.Scroll[1], self.Scroll[2]
-  local castr, caend  = self.Caret[1] , self.Caret[2]
+  local base = width * mG + 6
+  local bShp = self:GetShowParagraph()
+  local tSym = SHOW_PARAGRAPH
 
-  if (row == castr and self.TextEntry:HasFocus()) then
-    surface.SetDrawColor(guiCL:Unpack())
-    surface.DrawRect(width * mG + 5, (row - scstr) * height, self:GetWide() - (width * mG + 5), height)
+  if (tOpt.Line) then -- Highlight the current line
+    surface.SetDrawColor(tOpt.CL:Unpack())
+    surface.DrawRect(width * mG + 5, posy, self:GetWide() - (width * mG + 5), height)
   end
 
   if (self:HasSelection()) then
@@ -1074,52 +1317,104 @@ function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
     local eline, echar =  stop[1],  stop[2]
 
     if (row >= sline and row <= eline) then
-      surface.SetDrawColor(guiSE:Unpack())
       -- Work in visual columns so tabs are covered by their real width
       local vS = (row == sline) and self:ColumnToVisual(row, schar) or 1
       local vE = (row == eline) and self:ColumnToVisual(row, echar)
                  or (self:ColumnToVisual(row, string.len(self.Rows[row]) + 1) + 1)
-      vS = math.max(vS - scend, 0)
-      vE = math.max(vE - scend, 0)
-      surface.DrawRect(vS * width + width * mG + 6, (row - scstr) * height, width * (vE - vS), height)
+      local iA = math.max(vS - 1, voff)
+      local iB = (vlim and math.min(vE - 1, vlim) or (vE - 1))
+      if (iB > iA) then
+        surface.SetDrawColor(tOpt.SE:Unpack())
+        surface.DrawRect(base + (iA - voff) * width, posy, width * (iB - iA), height)
+      end
     end
   end
 
-  draw.SimpleText(tostring(row), self:GetFontName(), width * mG, (row - scstr) * height, guiRN, TEXT_ALIGN_RIGHT)
+  if (tOpt.First) then -- Row numbers are drawn only on the first line
+    draw.SimpleText(tostring(row), self:GetFontName(), width * mG, posy, tOpt.RN, TEXT_ALIGN_RIGHT)
+  end
 
-  -- Tabs are never passed to the renderer. Every cell is split on "\t",
-  -- the plain chunks are drawn at their visual column and each tab
-  -- only advances the visual column to the next tab stop.
-  local vcol, vscr = 0, (scend - 1) -- Visual column and horizontal scroll
-  local tabw, posy = self:GetTabSize(), (row - scstr) * height
-  local base = width * mG + 6
-  --
-  for i, cell in ipairs(tRow) do
+  -- Tabs are never passed to the renderer. Every cell is split on special
+  -- characters, the plain chunks are drawn at their visual column and each
+  -- tab only advances the visual column to the next tab stop. When the
+  -- paragraph is shown, a symbol is drawn instead of every invisible character
+  local vcol, fsym, nrow, used = 0, self:GetFontName(), #tRow, 0
+  for _, cell in ipairs(tRow) do used = used + string.len(cell[1]) end
+  -- The highlighter does not register trailing white space as a cell
+  -- Draw it as plain text so tabs and paragraph symbols are placed there
+  local tail = string.sub(self.Rows[row] or "", used + 1)
+  if (tail ~= "") then nrow = nrow + 1 end
+  for icl = 1, nrow do
+    if (vlim and vcol >= vlim) then break end
+    local cell = (tRow[icl] or {tail, self:GetTable().Highlight["code.none"]})
     local ccon, csr, cen = cell[1], cell[2][1], cell[2][2]
-    local font = self:GetFontName(cen)
-    for chunk, tab in string.gmatch(ccon, "([^\t]*)(\t?)") do
-      if (chunk ~= "") then
-        local clen = self:GetCellCount(chunk)
-        if (vcol + clen > vscr) then
-          local cut = math.max(vscr - vcol, 0)
-          local from = self:GetCellByte(chunk, cut)
-          draw.SimpleText(string.sub(chunk, from), font, base + (vcol + cut - vscr) * width, posy, csr)
-        end
-        vcol = vcol + clen
+    local font, pos, len = self:GetFontName(cen), 1, string.len(ccon)
+    while (pos <= len) do
+      if (vlim and vcol >= vlim) then break end
+      local iS, iE = self:FindSpecial(ccon, pos, bShp)
+      local iP = (iS and (iS - 1) or len)
+      if (iP >= pos) then
+        vcol = self:PaintPlain(string.sub(ccon, pos, iP), vcol, voff, vlim, font, csr, base, posy)
       end
-      if (tab ~= "") then
-        vcol = vcol + (tabw - vcol % tabw)
+      if (not iS) then break end
+      local byte = string.byte(ccon, iS)
+      if (bShp and vcol >= voff and (not vlim or vcol < vlim)) then
+        local sym = ((byte == 9 and tSym.TABS) or (byte == 32 and tSym.SPAS)
+                  or (byte == 194 and tSym.NBSP) or tSym.PRLO)
+        draw.SimpleText(sym, fsym, base + (vcol - voff) * width, posy, tOpt.RN)
       end
+      vcol = vcol + self:GetCellWidth(byte, vcol)
+      pos = iE + 1
     end
   end
 
-  if (row == castr and self.TextEntry:HasFocus()) then
-    local vcar = self:ColumnToVisual(castr, caend)
-    if ((RealTime() - self.Blink) % 0.8 < 0.4 and vcar >= scend) then
-        surface.SetDrawColor(guiCB:Unpack())
-        surface.DrawRect((vcar - scend) * width + width * mG + 6,
-                         (castr - scstr) * height, 1, height)
+  if (bShp) then -- Line endings
+    if (tOpt.Last) then
+      local vend = self:ColumnToVisual(row, string.len(self.Rows[row]) + 1) - 1
+      if (vend >= voff and (not tOpt.Clip or vend < tOpt.Clip)) then
+        local sym = ((row < self:GetRownum()) and tSym.EOLS or tSym.EOTC)
+        draw.SimpleText(sym, fsym, base + (vend - voff) * width, posy, tOpt.RN)
+      end
+    elseif (vlim) then -- The row continues on the next visual line
+      draw.SimpleText(tSym.WRAP, fsym, base + (vlim - voff) * width, posy, tOpt.RN)
     end
+  end
+
+  if (tOpt.Caret) then
+    local vcar = self:ColumnToVisual(self.Caret[1], self.Caret[2]) - 1
+    if ((RealTime() - self.Blink) % 0.8 < 0.4 and vcar >= voff) then
+      surface.SetDrawColor(tOpt.CB:Unpack())
+      surface.DrawRect(base + (vcar - voff) * width, posy, 1, height)
+    end
+  end
+end
+
+function PANEL:PaintRowID(row, guiCB, guiSE, guiRN, guiCL)
+  if (row > self:GetRownum()) then return end
+
+  local tRow = self:SyntaxColorRowID(row)
+  local height, scstr = self.FontHeight, self.Scroll[1]
+  local bCur = (row == self.Caret[1] and self.TextEntry:HasFocus())
+  local tOpt = {CB = guiCB, SE = guiSE, RN = guiRN, CL = guiCL, Line = bCur}
+
+  if (self:GetWordWrap()) then
+    local tW = self:GetWrapRow(row)
+    local iF, nS = self.WrapFirst[row], #tW.S
+    local iK = (bCur and self:GetWrapSegment(tW, self.Caret[2]) or 0)
+    local iB = scstr + self.Size[1] + 1
+    for iD = 1, nS do
+      local iL = (iF + iD - 1)
+      if (iL > iB) then break end
+      if (iL >= scstr) then
+        tOpt.First, tOpt.Last, tOpt.Caret = (iD == 1), (iD == nS), (iD == iK)
+        self:PaintRowLine(row, tRow, (iL - scstr) * height, tW.V[iD], tW.V[iD + 1], tOpt)
+      end
+    end
+  else
+    local voff = self.Scroll[2] - 1 -- Horizontal scroll
+    local vlim = voff + self.Size[2] + 2 -- Skip cells after the panel edge
+    tOpt.First, tOpt.Last, tOpt.Caret, tOpt.Clip = true, true, bCur, vlim
+    self:PaintRowLine(row, tRow, (row - scstr) * height, voff, vlim, tOpt)
   end
 end
 
@@ -1128,12 +1423,27 @@ function PANEL:PerformLayout()
   local nW, nH = self:GetFontSize()
   local mW, mT = self:GetWide(), self:GetTall()
 
+  local bW, oC, iT = self:GetWordWrap(), self.Size[2], nil
+  if (bW and not self.WrapDirty) then -- Row on the top of the view
+    iT = self.WrapRow[self.Scroll[1]]
+  end
+
   self.ScrollBar:SetSize(16, mT)
   self.ScrollBar:SetPos(mW - 16, 0)
   self.Size[1] = math.floor(mT / nH) - 1
   self.Size[2] = math.floor((mW - (nW * mG + 6) - 16) / nW) - 1
 
-  self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
+  if (bW and oC ~= self.Size[2]) then
+    -- Re-wrap and keep the same row on the top of the view
+    self.WrapDirty = true
+    self:UpdateWrap()
+    if (iT and self.WrapFirst[iT]) then
+      self.Scroll[1] = self.WrapFirst[iT]
+      self.ScrollBar:SetScroll(self.Scroll[1] - 1)
+    end
+  end
+
+  self.ScrollBar:SetUp(self.Size[1], self:GetLineCount() - 1)
 end
 
 --[[
@@ -1146,6 +1456,11 @@ function PANEL:GetRenderBounds()
   local tPar = tTab.PaintRows
   local iS = tTab.Scroll[1]
   local iE = (iS + tTab.Size[1] + 1)
+  if(self:GetWordWrap()) then -- Convert visual lines to rows
+    local nL = self:GetLineCount()
+    iS = (tTab.WrapRow[math.Clamp(iS, 1, nL)] or 1)
+    iE = (tTab.WrapRow[math.Clamp(iE, 1, nL)] or iS)
+  end
   if(not tPar) then return 1, iE end
   if(table.IsEmpty(tPar)) then return 1, iE end
   while(iS > 1 and tPar[iS]) do
@@ -1177,6 +1492,7 @@ function PANEL:Paint(w, h)
   surface.SetDrawColor(self:GetTheme("gui.background"):Unpack())
   surface.DrawRect(self.FontWidth * mG + 5, 0, mW - (self.FontWidth * mG + 5), mT)
 
+  self:UpdateWrap() -- Rebuild visual lines when outdated
   self.Scroll[1] = math.floor(self.ScrollBar:GetScroll() + 1)
 
   local guiCB = self:GetTheme("gui.caretbase")
@@ -1303,9 +1619,8 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   end
 
   if (not text or text == "") then
-    self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
-
     self:RefreshView()
+    self.ScrollBar:SetUp(self.Size[1], self:GetLineCount() - 1)
     self:OnTextChanged()
 
     if (isredo) then
@@ -1343,9 +1658,9 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   self.PaintRows[eline] = false
 
   self:SetEmptyRow()
-  self.ScrollBar:SetUp(self.Size[1], self:GetRownum() - 1)
 
   self:RefreshView()
+  self.ScrollBar:SetUp(self.Size[1], self:GetLineCount() - 1)
   self:OnTextChanged()
 
   if (isredo) then
@@ -1373,7 +1688,7 @@ function PANEL:SetSelection(text)
 end
 
 function PANEL:GetSystemEOL()
-  local tO = TOKEN_CLASSIFY.SEL
+  local tO = TOKEN_CLASSIFY.OSE
   if(system.IsOSX()) then return tO.M end
   if(system.IsLinux()) then return tO.L end
   if(system.IsWindows()) then return tO.W end
@@ -1445,7 +1760,7 @@ function PANEL:OnMouseWheeled(delta)
     tI.Font = self:GetFontInfo()
   else
     m_Scroll[1] = math.max(m_Scroll[1] - 4 * delta, 1)
-    m_Scroll[1] = math.min(m_Scroll[1], self:GetRownum())
+    m_Scroll[1] = math.min(m_Scroll[1], self:GetLineCount())
     self.ScrollBar:SetScroll(m_Scroll[1] - 1)
   end
 end
@@ -1455,17 +1770,24 @@ function PANEL:ScrollCaret()
   local m_Caret = self.Caret
   local m_Scroll = self.Scroll
 
-  if (m_Caret[1] - m_Scroll[1] < 2) then
-    m_Scroll[1] = math.max(m_Caret[1] - 2, 1)
+  -- Vertical scroll is measured in visual lines when wrapping
+  local iLin, vCar = self:CaretToLine(m_Caret)
+
+  if (iLin - m_Scroll[1] < 2) then
+    m_Scroll[1] = math.max(iLin - 2, 1)
   end
 
-  if (m_Caret[1] - m_Scroll[1] > m_Size[1] - 2) then
-    m_Scroll[1] = math.max(m_Caret[1] - m_Size[1] + 2, 1)
+  if (iLin - m_Scroll[1] > m_Size[1] - 2) then
+    m_Scroll[1] = math.max(iLin - m_Size[1] + 2, 1)
+  end
+
+  if (self:GetWordWrap()) then -- Wrapped rows always fit horizontally
+    m_Scroll[2] = 1
+    self.ScrollBar:SetScroll(m_Scroll[1] - 1)
+    return
   end
 
   -- Horizontal scroll is measured in visual columns
-  local vCar = self:ColumnToVisual(m_Caret[1], m_Caret[2])
-
   if (vCar - m_Scroll[2] < 4) then
     m_Scroll[2] = math.max(vCar - 4, 1)
   end
@@ -1599,8 +1921,10 @@ function PANEL:CustomOnKeyCodeTyped(code)
       luapad.OpenSearch(self:GetSelection())
     elseif (code == KEY_UP) then
       self.Scroll[1] = math.max(self.Scroll[1] - 1, 1)
+      self.ScrollBar:SetScroll(self.Scroll[1] - 1)
     elseif (code == KEY_DOWN) then
-      self.Scroll[1] = self.Scroll[1] + 1
+      self.Scroll[1] = math.min(self.Scroll[1] + 1, self:GetLineCount())
+      self.ScrollBar:SetScroll(self.Scroll[1] - 1)
     elseif (code == KEY_LEFT) then
       if (self:HasSelection() and not shift) then
         self.Start = self:CopyPosition(self.Caret)
@@ -1658,6 +1982,30 @@ function PANEL:CustomOnKeyCodeTyped(code)
       local rsub = string.sub(row, 1, self.Caret[2] - 1)
       local tabs = string.match(rsub, "^[ \t]*") -- Keep tabs and spaces as-is
       self:SetSelection(g_NL .. tabs)
+    elseif (code == KEY_UP and self:GetWordWrap()) then
+      self:MoveCaretLines(-1) -- Moves through the visual lines
+      self:ScrollCaret()
+
+      if (not shift) then
+        self.Start = self:CopyPosition(self.Caret)
+      end
+    elseif (code == KEY_DOWN and self:GetWordWrap()) then
+      self:MoveCaretLines(1) -- Moves through the visual lines
+      self:ScrollCaret()
+
+      if (not shift) then
+        self.Start = self:CopyPosition(self.Caret)
+      end
+    elseif ((code == KEY_PAGEUP or code == KEY_PAGEDOWN) and self:GetWordWrap()) then
+      local half = math.ceil(self.Size[1] / 2)
+      local sign = ((code == KEY_PAGEUP) and -1 or 1)
+      self:MoveCaretLines(sign * half)
+      self.Scroll[1] = math.Clamp(self.Scroll[1] + sign * half, 1, self:GetLineCount())
+      self:ScrollCaret()
+
+      if (not shift) then
+        self.Start = self:CopyPosition(self.Caret)
+      end
     elseif (code == KEY_UP) then
       if (self.Caret[1] > 1) then
         local vcol = self:ColumnToVisual(self.Caret[1], self.Caret[2])
@@ -1873,7 +2221,7 @@ function PANEL:Indent(shift)
   if (shift) then
     for iD = 1, #tRows do tRows[iD] = self:UnIndent(tRows[iD]) end
   else
-    local srp = string.rep(" ", self:GetTabSize())
+    local srp = (self:GetTabInsert() and "\t" or string.rep(" ", self:GetTabSize()))
     for iD = 1, #tRows do tRows[iD] = srp .. tRows[iD] end
   end
   self:SetSelection(table.concat(tRows, g_NL))

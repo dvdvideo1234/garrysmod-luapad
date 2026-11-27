@@ -22,7 +22,7 @@ local GLOB_CONFIG = {
   ADDONN = {"Luapad", "luapad"}, -- Generic addon name used for messages and hashes
   DATADR = {"data/", "luapad/"}, -- General data directory used in the entire application
   SAVTAB = {"settings/", "saved_tabs.txt"}, -- Saved tabs configuration from stream info
-  SAVTNS = {"Name", "Path", "Term", "Icon", "Teme", "Font", "Tabs"}, -- Tab configuration
+  SAVTNS = {"Name", "Path", "Term", "Icon", "Teme", "Font", "Tabs", "Tabi", "Wrap"}, -- Tab configuration
   SYNTAX = {"settings/", "%s_syntax_globals.txt"}, -- Syntax global entries file
   THMDEF = {"themes/", "default"}, -- Default theme configuration
   VALDFS = {"[%/\\:%*%?\"<>|]", "^([^%.]+)"}, -- File system name validation
@@ -48,30 +48,57 @@ local VAR_EDT = CreateConVar(GLOB_CONFIG.ADDONN[2].."_endataorg",  1, GLOB_CONFI
 local VAR_TBI = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabinsert",   0, GLOB_CONFIG.CFLAGS, "Tab key inserts a real tab instead of spaces", 0, 1)
 local VAR_TBS = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabchsize",   2, GLOB_CONFIG.CFLAGS, "How many characters the tab uses when displayed", 1, 8)
 local VAR_SPR = CreateConVar(GLOB_CONFIG.ADDONN[2].."_shwprgrph",   0, GLOB_CONFIG.CFLAGS, "Show whitespace and paragraph characters", 0, 1)
+local VAR_WRP = CreateConVar(GLOB_CONFIG.ADDONN[2].."_wordwrap",    0, GLOB_CONFIG.CFLAGS, "Wrap long lines to fit the editor width", 0, 1)
 local VAR_MXF = CreateConVar(GLOB_CONFIG.ADDONN[2].."_maxunamed",  10, GLOB_CONFIG.CFLAGS, "Maximum number of new files in the folder", 0, 100)
 local VAR_STM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_statmsgtm",   1, GLOB_CONFIG.CFLAGS, "Status messages time visible fraction delta", 0, 100)
 local VAR_FSZ = CreateConVar(GLOB_CONFIG.ADDONN[2].."_fontisize",   2, GLOB_CONFIG.CFLAGS, "Default font size when argument is not here", 0, 6)
 local VAR_THM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_themename","XX", GLOB_CONFIG.CFLAGS, "Syntax highlighting theme being used")
 
-cvars.RemoveChangeCallback(VAR_TBS:GetName(), "luapad_tabsize")
-cvars.AddChangeCallback(VAR_TBS:GetName(), function(sN, vO, vN)
+--[[
+ * Applies a setting on the text area of every opened tab
+ * fA > Callback receiving the text area and its stream info
+]]
+local function luapadApplyAllTabs(fA, tS)
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
-  for _, tI in ipairs(pSheet:GetItems()) do
-    local pText = tI.Tab:GetTextArea()
-    if(IsValid(pText)) then pText:SetTabSize(vN) end
+  local tI = pS:GetItems()
+  for iD = 1, #tI do
+    local tP = tI[iD] -- Index the tab
+    local pT = tP.Tab:GetTextArea()
+    if(IsValid(pT)) then fA(pT) end
   end
+end
+
+cvars.RemoveChangeCallback(VAR_TBS:GetName(), "luapad_tabsize")
+cvars.AddChangeCallback(VAR_TBS:GetName(), function(sN, vO, vN)
+  luapadApplyAllTabs(function(pText)
+    pText:SetTabSize(vN)
+    pText:GetStreamInfo().Tabs = pText:GetTabSize()
+  end)
 end, "luapad_tabsize")
+
+cvars.RemoveChangeCallback(VAR_TBI:GetName(), "luapad_tabinsert")
+cvars.AddChangeCallback(VAR_TBI:GetName(), function(sN, vO, vN)
+  luapadApplyAllTabs(function(pText)
+    pText:SetTabInsert(tobool(vN))
+    pText:GetStreamInfo().Tabi = pText:GetTabInsert()
+  end)
+end, "luapad_tabinsert")
 
 cvars.RemoveChangeCallback(VAR_SPR:GetName(), "luapad_showparagraph")
 cvars.AddChangeCallback(VAR_SPR:GetName(), function(sN, vO, vN)
-  local pSheet = luapad.PropertySheet
-  if(not IsValid(pSheet)) then return end
-  for _, tI in ipairs(pSheet:GetItems()) do
-    local pText = tI.Tab:GetTextArea()
-    if(IsValid(pText)) then pText:SetShowParagraph(tobool(vN)) end
-  end
+  luapadApplyAllTabs(function(pText)
+    pText:SetShowParagraph(tobool(vN))
+  end)
 end, "luapad_showparagraph")
+
+cvars.RemoveChangeCallback(VAR_WRP:GetName(), "luapad_wordwrap")
+cvars.AddChangeCallback(VAR_WRP:GetName(), function(sN, vO, vN)
+  luapadApplyAllTabs(function(pText)
+    pText:SetWordWrap(tobool(vN))
+    pText:GetStreamInfo().Wrap = pText:GetWordWrap()
+  end)
+end, "luapad_wordwrap")
 
 local COLOR_STATUS = {
   ["#TEMCO#"] = Color(  0,   0,   0,   0),
@@ -980,7 +1007,7 @@ function luapad.SaveTabs()
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
-  local tN, tO, tW = GLOB_CONFIG.SAVTNS {}, {}
+  local tN, tW = GLOB_CONFIG.SAVTNS, {}
   local tI = pS:GetItems()
   local aT = pS:GetActiveTab()
   local sEx = GLOB_CONFIG.DELIMS.I
@@ -988,10 +1015,11 @@ function luapad.SaveTabs()
     local tP = tI[iD]
     local pT = tP.Tab
     if(IsValid(pT)) then
-      local tS = pT:GetStreamInfo()
+      local tS, tO = pT:GetStreamInfo(), {}
       for iN = 1, #tN do
         local sI = tN[iN]
-        local sV = tostring(tS[sM] or "")
+        local vV = tS[sI] -- Booleans are stored as text
+        local sV = ((vV == nil) and "" or tostring(vV))
         if(pT == aT and iN == 1) then
           sV = "*" .. sV -- Concat an asterisk
         end -- Active tab is marked with asterisk
@@ -1497,7 +1525,12 @@ local function luapadAttachViewMenu(pMenu, vTre)
   end):SetImage(luapad.ToIcon(pA:GetShowParagraph() and "note" or "note_go"))
   pMenu:AddOption("Insert tab stop", function()
     pA:SetTabInsert(not pA:GetTabInsert())
+    pT:GetStreamInfo().Tabi = pA:GetTabInsert()
   end):SetImage(luapad.ToIcon(pA:GetTabInsert() and "tab_go" or "tab"))
+  pMenu:AddOption("Word wrap", function()
+    pA:SetWordWrap(not pA:GetWordWrap())
+    pT:GetStreamInfo().Wrap = pA:GetWordWrap()
+  end):SetImage(luapad.ToIcon(pA:GetWordWrap() and "text_align_justify" or "text_align_left"))
 end
 
 --[[
@@ -1517,7 +1550,7 @@ local function luapadAttachFontMenu(pMenu, vTre)
     local tS = pT:GetStreamInfo()
     pA:SetFontInfo(iD)
     tS.Font = pA:GetFontInfo()
-    RunConsoleCommand(VAR_FSZ:GetInt(), tS.Font)
+    RunConsoleCommand(VAR_FSZ:GetName(), tS.Font)
   end):SetImage(luapad.ToIcon("shape_square_key"))
   -- Add font size options
   if(iF <= 0 or #tF == 0) then return end
@@ -1530,7 +1563,7 @@ local function luapadAttachFontMenu(pMenu, vTre)
         local tS = pT:GetStreamInfo()
         pA:SetFontInfo(iS) -- Current size will have an arrow
         tS.Font = pA:GetFontInfo()
-        RunConsoleCommand(VAR_FSZ:GetInt(), tS.Font)
+        RunConsoleCommand(VAR_FSZ:GetName(), tS.Font)
       end):SetImage(luapad.ToIcon(sI))
   end
 end
@@ -2122,7 +2155,7 @@ end
  * icon > The icon being displayed on the tab node
  * them > The theme being used for this specific tab
 ]]
-function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
+function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs, tabi, wrap)
   if(SERVER) then return end
 
   local sNam = (luapad.IsHere(name) and tostring(name or "") or GLOB_CONFIG.FMNAME:format(0))
@@ -2134,6 +2167,10 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   local iFon = math.floor(tonumber(font) or VAR_FSZ:GetFloat())
   local iTab = (tonumber(tabs) or VAR_TBS:GetInt())
   local bTab = (sCon:sub(1, 1) == "\t" or sCon:find("\n\t", 1, true) ~= nil)
+  -- Saved tab settings win. Otherwise detect tabs or use the user settings
+  if(luapad.IsHere(tabi)) then bTab = tobool(tabi) else bTab = (bTab or VAR_TBI:GetBool()) end
+  local bWrp = VAR_WRP:GetBool() -- A saved "false" must not fall back to the user setting
+  if(luapad.IsHere(wrap)) then bWrp = tobool(wrap) end
 
   local pSheet = luapad.PropertySheet
   if(not IsValid(pSheet)) then return end
@@ -2147,7 +2184,8 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   pText:SetTabSize(iTab)
   pText:SetFontInfo(iFon)
   pText:SetShowParagraph(VAR_SPR:GetBool())
-  pText:SetTabInsert(bTab or VAR_TBI:GetBool())
+  pText:SetTabInsert(bTab)
+  pText:SetWordWrap(bWrp)
   pText[GLOB_CONFIG.STORKY] = {}
 
  --[[
@@ -2167,6 +2205,8 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs)
   tSor.Teme = sTem -- The theme being used for the tab text area
   tSor.Font = pText:GetFontInfo() -- The font being applied on the text area
   tSor.Tabs = pText:GetTabSize()  -- The tab size used when opening a file
+  tSor.Tabi = pText:GetTabInsert() -- Whether the tab key inserts a real tab
+  tSor.Wrap = pText:GetWordWrap() -- Whether long lines are wrapped
 
   -- Configure the export values. Remove storage delimiter
   for sN, sS in pairs(tSor) do
