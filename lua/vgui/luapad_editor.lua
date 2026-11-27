@@ -6,11 +6,14 @@ if (SERVER) then
 end
 
 local SHOW_PARAGRAPH = {
-  END = language.GetPhrase("luapad.show_paragraph.end"),
-  SPA = language.GetPhrase("luapad.show_paragraph.space"),
-  TAB = language.GetPhrase("luapad.show_paragraph.tab"),
-  NBS = language.GetPhrase("luapad.show_paragraph.nbsp"),
-  EOL = language.GetPhrase("luapad.show_paragraph.eol")
+  ENDS = language.GetPhrase("luapad.show_paragraph.ends"),
+  SPAS = language.GetPhrase("luapad.show_paragraph.spas"),
+  TABS = language.GetPhrase("luapad.show_paragraph.tabs"),
+  NBSP = language.GetPhrase("luapad.show_paragraph.nbsp"),
+  EOLS = language.GetPhrase("luapad.show_paragraph.eols"),
+  EOTC = language.GetPhrase("luapad.show_paragraph.eotc"),
+  WRAP = language.GetPhrase("luapad.show_paragraph.wrap"),
+  PRLO = language.GetPhrase("luapad.show_paragraph.prlo")
 }
 
 --[[
@@ -91,7 +94,7 @@ local TOKEN_CLASSIFY = {
     ["true"]     = true, ["false"]    = true, ["nil"]      = true,
     ["NULL"]     = true, ["and"]      = true, ["not"]      = true,
     ["or"]       = true, ["return"]   = true, ["continue"] = true,
-    ["goto"]     = true, ["repeat"]   = true, ["until"]    = true,
+    ["goto"]     = true, ["repeat"]   = true, ["until"]    = true
   },
   OPS = {
     ["+"] = true, ["-"] = true, ["*"] = true,
@@ -107,15 +110,21 @@ local TOKEN_CLASSIFY = {
     ["..."] = true -- Varargs
   },
   SKP = {E = "%s+", A = ".*$", W = "^%w$"}, -- Skip characters
-  SEL = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
+  OSE = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
   EOL = {E = "[\r\n]+", I = "\n", N = "\r\n?"}, -- General pattern for splitting
-  MUL = {S = "%[=*%[", E = "%]=*%]", L = ".*$"}, -- Multi line pattern
   URL = "https?://%S+%.%S+", -- URL pattern matching
-  COM = {B = ".*$", C = {["-"] = "%-[%-]+", ["/"] = "/[/]+"}}, -- Comments
+  COM = { -- Comments configuration
+    S = {["-"] = "%-[%-]+", ["/"] = "/[/]+"}, -- Comments single
+    M = { -- Start character for every multi-line type
+      {S = "%-%-%[=*%[", E = "%]=*%]", D = 2},
+      {S =   "//%[=*%[", E = "%]=*%]", D = 2}
+    } -- Finishes the multi-line comment definitions
+  }, -- Finishes the total comment definitions
   NUM = {"0[xX]%x+", "%d*%.?%d+"}, -- A number literals matching numbers
   STR = { -- String patterns literal matching
     B = "%s[^%s]*%s", C = "[^%s]*%s", E = "[^%s]*$", L = "%s[^%s]*$",
-    U = { -- Dedicated configuration for every character opening a string
+    M = {{S = "%[=*%[", E = "%]=*%]"}},
+    S = { -- Dedicated configuration for every character opening a string
       ["\""] = {R = "\\\"", T = "code.string" }, -- Double quote
       ["\'"] = {R = "\\\'", T = "code.string2"}  -- Single quote
     } -- Includes whenever escape sequence is present
@@ -160,7 +169,7 @@ function PANEL:Init()
   self.Pos = 0 -- Current processed line position
   self.Char = "" -- The current read character
   self.Buff = {"", ""} -- General concatenation
-  self.Span = {"", 0, 0} -- Patter span match
+  self.Span = {F = "", S = 0, E = 0} -- Span match
   self.Clips = nil -- Holds the current clipboard
   self.Blink = RealTime()
 
@@ -228,7 +237,7 @@ end
 function PANEL:SetTabSize(size)
   local nSz = math.max(math.floor(tonumber(size) or 4), 1)
   if(nSz == self.TabSize) then return end
-  pText:RefreshView()
+  self:RefreshView()
 end
 
 --[[
@@ -402,12 +411,12 @@ function PANEL:SetTheme(sT, vC)
 end
 
 function PANEL:SetThemeArea(pD, bR)
-  local tS = self:GetTable().Highlight
-  if(not istable(tS)) then return nil end
+  local tH = self:GetTable().Highlight
+  if(not istable(tH)) then return nil end
   if(not IsValid(pD)) then return nil end
   local tD = pD:GetTable().Highlight
   if(not istable(tD)) then return nil end
-  for sT, vT in pairs(tS) do
+  for sT, vT in pairs(tH) do
     local vD = tD[sT]
     if(bR) then
       vD[1] = vT[1]
@@ -653,15 +662,16 @@ function PANEL:GetText()
   return string.Implode(g_NL, self.Rows)
 end
 
-function PANEL:SetRowBlock(vM, vT)
+function PANEL:SetRowBlock(vM, vT, vC)
   local tT = self.Token
   if(vM ~= nil) then tT.M = vM end
   if(vT ~= nil) then tT.T = vT end
+  if(vC ~= nil) then tT.C = vC end
 end
 
 function PANEL:GetRowBlock()
   local tT = self.Token
-  return tT.M, tT.T
+  return tT.M, tT.T, tT.C
 end
 
 function PANEL:InitColorRowID(row)
@@ -711,21 +721,22 @@ end
  * sP > Pattern that must be checked
  * bN > Pass true to search as plain text
  * bF > Pass true to match only from the next position
+ * tC > Multi-line configuration when provided
 ]]
-function PANEL:CaptureSpan(sP, bN, bF)
+function PANEL:CaptureSpan(sP, bN, bF, tC)
   local sP = tostring(sP or "")
   if(sP == "") then return false end
   local cP = self.Pos
   local sL = self.Line
   local tS = self.Span
   local iL = string.len(sL)
-  tS[1], tS[2], tS[3] = "", 0, 0
+  tS.F, tS.S, tS.E, tS.C = "", 0, 0, nil
   if(cP > iL) then return false end
   local iS, iE = string.find(sL, sP, cP, bN)
   if(not (iS and iE)) then return false end
   if(bF and iS ~= cP) then return false end
-  tS[1] = string.sub(sL, iS, iE)
-  tS[2], tS[3] = iS, iE
+  tS.F = string.sub(sL, iS, iE)
+  tS.S, tS.E, tS.C = iS, iE, tC
   return true
 end
 
@@ -740,7 +751,7 @@ function PANEL:AdvanceSpan(iP)
   local sL = self.Line
   local tS = self.Span
   local iL = string.len(sL)
-  local iP = (tonumber(iP) or tS[3])
+  local iP = (tonumber(iP) or tS.E)
   if(not iP or iP <= cP) then iP = cP end
   if(cP > iL) then self.Char = nil; return end
   self.Str = self:GetConcat(sS, string.sub(sL, cP, iP))
@@ -816,6 +827,21 @@ function PANEL:ConsumeArray(tP, bN)
 end
 
 --[[
+ * Consume text from the contents via pattern
+ * that is enclosed with keys start (S) and end (E)
+ * tP > Pattern struct that must be checked
+ * bN > Pass true to search as plain text
+]]
+function PANEL:ConsumeBetween(tP, bN)
+  if(not istable(tP)) then return false end
+  for iP = 1, #tP do -- Array of patterns
+    local tC = tP[iP] -- Multi-line config
+    local bC = self:CaptureSpan(tC.S, bN, true, tC)
+    if(bC) then self:AdvanceSpan(); return bC end
+  end; return false -- Not found
+end
+
+--[[
  * Returns the current character or scans ahead
  * iC > How many characters ahead should scan
  * bS > On success return the entire span
@@ -842,7 +868,8 @@ function PANEL:GetSpan(bD)
   if(bD) then
     return self.Span
   else
-    return unpack(self.Span)
+    local tS = self.Span
+    return tS.F, tS.S, tS.E, tS.C
   end
 end
 
@@ -859,7 +886,6 @@ function PANEL:SyntaxColorRowID(row)
   local g_Keyw = TOKEN_CLASSIFY.KEY
   local g_Lifn = TOKEN_CLASSIFY.FNL
   local g_Strm = TOKEN_CLASSIFY.STR
-  local g_Muln = TOKEN_CLASSIFY.MUL
   local g_Opts = TOKEN_CLASSIFY.OPS
 
   self:InitColorRowID(row)
@@ -875,11 +901,11 @@ function PANEL:SyntaxColorRowID(row)
 
     if(not char) then break end
 
-    local multy, mtoken = self:GetRowBlock()
+    local multy, mtoken, conf = self:GetRowBlock()
 
     if(mtoken) then
       if(multy) then
-        if(self:CaptureSpan(g_Muln.E)) then
+        if(self:CaptureSpan(conf.E)) then
           local sM, iS, iE = self:GetSpan()
            -- Equals are same amount as start
           if(multy == sM:len()) then
@@ -929,8 +955,23 @@ function PANEL:SyntaxColorRowID(row)
         tLib.Nam = nil
         token = "code.none"
       end
-    elseif(g_Strm.U[char]) then
-      local tU = g_Strm.U[char]
+    elseif(self:ConsumeBetween(g_Coms.M)) then
+      token = "code.comment"
+      local sF, iS, iE, tC = self:GetSpan()
+      local iS = (tonumber(tC.D) or 0)
+      self:SetRowBlock(sF:len() - iS, token, tC)
+      if(self:CaptureSpan(tC.E)) then
+        self:AdvanceSpan()
+        self:SetRowBlock(false, false)
+      else
+        self:ConsumeSpan(g_Skip.A)
+      end
+    elseif(self:ConsumeSpan(g_Coms.S[char])) then
+      token = "code.comment"
+      self:SetRowBlock(false, token)
+      self:ConsumeSpan(g_Skip.A)
+    elseif(g_Strm.S[char]) then
+      local tU = g_Strm.S[char]
       local sE = g_Strm.E:format(char)
       local sC = g_Strm.C:format(char,char)
       local sL = g_Strm.L:format(char,char)
@@ -951,30 +992,16 @@ function PANEL:SyntaxColorRowID(row)
         end -- Language has same quote that escapes entry
       else self:ConsumeSpan(sL) end
       token = tU.T -- Read the token from config
-    elseif(self:ConsumeSpan(g_Coms.C[char])) then
-      token = "code.comment"
-      if(self:ConsumeSpan(g_Muln.S)) then
-        local sM = self:GetSpan()
-        self:SetRowBlock(sM:len(), token)
-        if(self:CaptureSpan(g_Muln.E)) then
-          self:AdvanceSpan()
-          self:SetRowBlock(false, false)
-        else
-          self:ConsumeSpan(g_Muln.L)
-        end
-      else
-        self:SetRowBlock(false, token)
-        self:ConsumeSpan(g_Coms.B)
-      end
-    elseif(self:ConsumeSpan(g_Muln.S)) then
+    elseif(self:ConsumeBetween(g_Strm.M)) then
       token = "code.string"
-      local sM = self:GetSpan()
-      self:SetRowBlock(sM:len(), token)
-      if(self:CaptureSpan(g_Muln.E)) then
+      local sF, iS, iE, tC = self:GetSpan()
+      local iS = (tonumber(tC.D) or 0)
+      self:SetRowBlock(sF:len() - iS, token, tC)
+      if(self:CaptureSpan(tC.E)) then
         self:AdvanceSpan()
         self:SetRowBlock(false, false)
       else
-        self:ConsumeSpan(g_Muln.L)
+        self:ConsumeSpan(g_Skip.A)
       end
     else
       local sS, iC = self:GetChar()
@@ -1346,11 +1373,11 @@ function PANEL:SetSelection(text)
 end
 
 function PANEL:GetSystemEOL()
-  local tS = TOKEN_CLASSIFY.SEL
-  if(system.IsOSX()) then return tS.M end
-  if(system.IsLinux()) then return tS.L end
-  if(system.IsWindows()) then return tS.W end
-  return tS.L -- Defaults to Linux
+  local tO = TOKEN_CLASSIFY.SEL
+  if(system.IsOSX()) then return tO.M end
+  if(system.IsLinux()) then return tO.L end
+  if(system.IsWindows()) then return tO.W end
+  return tO.L -- Defaults to Linux
 end
 
 function PANEL:ToSelection()
@@ -1413,9 +1440,9 @@ function PANEL:OnMouseWheeled(delta)
   if(control and sign ~= 0) then
     local iF = self:GetFontInfo() + sign
     local iS = ((iF == 0) and 1 or iF)
-    local tS = self:GetStreamInfo()
+    local tI = self:GetStreamInfo()
     self:SetFontInfo(iS)
-    tS.Font = self:GetFontInfo()
+    tI.Font = self:GetFontInfo()
   else
     m_Scroll[1] = math.max(m_Scroll[1] - 4 * delta, 1)
     m_Scroll[1] = math.min(m_Scroll[1], self:GetRownum())
