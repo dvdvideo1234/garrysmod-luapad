@@ -10,23 +10,16 @@ end
  * The localization file can override every symbol. When a phrase is missing
  * `language.GetPhrase` returns the key itself, so a built-in default is used
 ]]
-local SHOW_PARAGRAPH = {}
-do
-  local tDef = {
-    ENDS = {"luapad.show_paragraph.ends", "\194\182"    }, -- Pilcrow (reserved)
-    SPAS = {"luapad.show_paragraph.spas", "\194\183"    }, -- Space
-    TABS = {"luapad.show_paragraph.tabs", "\226\134\146"}, -- Tabulation
-    NBSP = {"luapad.show_paragraph.nbsp", "\194\176"    }, -- Non-breaking space
-    EOLS = {"luapad.show_paragraph.eols", "\226\134\181"}, -- Line break
-    EOTC = {"luapad.show_paragraph.eotc", "\194\164"    }, -- End of the text
-    WRAP = {"luapad.show_paragraph.wrap", "\194\172"    }, -- Soft wrap point
-    PRLO = {"luapad.show_paragraph.prlo", "\226\150\160"}  -- Other control characters
-  }
-  for sK, tV in pairs(tDef) do
-    local sP = language.GetPhrase(tV[1])
-    SHOW_PARAGRAPH[sK] = ((sP and sP ~= "" and sP ~= tV[1]) and sP or tV[2])
-  end
-end
+local SHOW_PARAGRAPH = {
+  ENDS = language.GetPhrase("luapad.show_paragraph.ends"),
+  SPAS = language.GetPhrase("luapad.show_paragraph.spas"),
+  TABS = language.GetPhrase("luapad.show_paragraph.tabs"),
+  NBSP = language.GetPhrase("luapad.show_paragraph.nbsp"),
+  EOLS = language.GetPhrase("luapad.show_paragraph.eols"),
+  EOTC = language.GetPhrase("luapad.show_paragraph.eotc"),
+  WRAP = language.GetPhrase("luapad.show_paragraph.wrap"),
+  PRLO = language.GetPhrase("luapad.show_paragraph.prlo")
+}
 
 --[[
  * Default theme customization
