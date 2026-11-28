@@ -322,27 +322,40 @@ function PANEL:SwitchBookMark(bP)
 end
 
 --[[
- * Removes bookmarks on deleted rows iS..iE and moves the ones below up
+ * Updates the bookmarks after a text range spanning rows was deleted
+ * Rows iS..iE merge into row iS. A row that lost all its text moves its
+ * bookmark to the previous row. The rest follow the surviving text
+ * iS > First row of the range
+ * iC > First column of the range
+ * iE > Last row of the range
+ * bD > The range is only deleted, not replaced by text
 ]]
-function PANEL:DropBookMarkRows(iS, iE)
+function PANEL:JoinBookMarkRows(iS, iC, iE, bD)
   local tB = self:GetTable().Book
   if(not istable(tB)) then return end
-  local nD = iE - iS + 1
-  local function Move(iR) -- Stored caret rows can sit inside the range too
+  if(iE <= iS) then return end -- No line break is removed
+  local nD = iE - iS -- Removed rows
+  local bK = not (bD and iC == 1) -- Row iS keeps text after the deletion
+  local iU = math.max(iS - 1, 1) -- Target of rows that lost all their text
+  local function Map(iR)
+    if(iR < iS) then return iR end
     if(iR > iE) then return iR - nD end
-    return math.min(iR, iS - 1)
+    if(iR == iE) then return iS end -- Surviving text joined the first row
+    return (bK and iS or iU) -- Rows iS .. iE - 1
   end
-  for iD = #tB, 1, -1 do
+  local tN, tU = {}, {}
+  for iD = 1, #tB do
     local tP = tB[iD]
-    local iR = tP[1][1]
-    if(iR >= iS and iR <= iE) then
-      table.remove(tB, iD)
-      if(iD < tB.ID) then tB.ID = tB.ID - 1 end
-    elseif(iR > iE) then
-      tP[1][1], tP[2][1] = Move(tP[1][1]), Move(tP[2][1])
+    local iT = Map(tP[1][1])
+    if(not tU[iT]) then -- Keep one bookmark per row. The array is sorted
+      tU[iT] = true
+      tP[1][1], tP[2][1] = iT, Map(tP[2][1])
+      table.insert(tN, tP)
     end
   end
-  tB.ID = math.min(tB.ID, #tB)
+  for iD = #tB, 1, -1 do table.remove(tB, iD) end -- Keep the ID and Row keys
+  for iD = 1, #tN do tB[iD] = tN[iD] end
+  tB.ID = math.max(math.min(tonumber(tB.ID) or 0, #tB), 0)
   self:RefreshBookMarks()
 end
 
@@ -1770,6 +1783,13 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   local buffer = self:GetArea(selection)
   local sline, schar = start[1], start[2]
   local eline, echar =  stop[1],  stop[2]
+  -- Rows of the inserted text. Always a table, empty when there is no text
+  local bText = (text ~= nil and text ~= "")
+  local tRows = (bText and self:SplitLines(text) or {})
+  local nRows = #tRows
+  -- A replacement that keeps the row count (indent, trim) leaves every
+  -- row in place, so the bookmarks must not move
+  local bSame = (bText and nRows == (eline - sline + 1))
 
   if (sline ~= eline or schar ~= echar) then
     -- Clear selection
@@ -1785,12 +1805,12 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
 
     self:SetEmptyRow()
 
-    if (eline > sline) then
-      self:DropBookMarkRows(sline + 1, eline)
+    if (eline > sline and not bSame) then
+      self:JoinBookMarkRows(sline, schar, eline, not bText)
     end
   end
 
-  if (not text or text == "") then
+  if (not bText) then
     self:RefreshView()
     self.ScrollBar:SetUp(self.Size[1], self:GetLineCount() - 1)
     self:OnTextChanged()
@@ -1811,9 +1831,6 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     end
   end
 
-  local tRows = self:SplitLines(text) -- Insert text
-  local nRows = #tRows -- Count the marked lines once
-
   local remainder = string.sub(self.Rows[sline], schar)
   self.Rows[sline] = string.sub(self.Rows[sline], 1, schar - 1) .. tRows[1]
   self.PaintRows[sline] = false
@@ -1824,14 +1841,14 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     self:RefreshView() -- TODO: fix for cache errors
   end
 
-  if (nRows > 1) then
-    self:PushBookMarkRows(sline + 1, nRows - 1)
+  if (nRows > 1 and not bSame) then
+    local iP = ((schar == 1 and tRows[1] == "") and sline or (sline + 1))
+    self:PushBookMarkRows(iP, nRows - 1)
   end
 
-  local stop = {sline + nRows - 1, string.len(self.Rows[sline + nRows - 1]) + 1}
-
-  self.Rows[eline] = self.Rows[eline] .. remainder
-  self.PaintRows[eline] = false
+  local smir = {sline + nRows - 1, string.len(self.Rows[sline + nRows - 1]) + 1}
+  self.Rows[smir[1]] = self.Rows[smir[1]] .. remainder
+  self.PaintRows[smir[1]] = false
 
   self:SetEmptyRow()
 
@@ -1840,18 +1857,18 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
   self:OnTextChanged()
 
   if (isredo) then
-    local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
+    local tU = {self:CopyPosition(start), self:CopyPosition(smir)}
     table.insert(self.Undo, {tU, buffer, after, before})
     return before
   elseif (isundo) then
-    local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
+    local tU = {self:CopyPosition(start), self:CopyPosition(smir)}
     table.insert(self.Redo, {tU, buffer, after, before})
     return before
   else
-    local tU = {self:CopyPosition(start), self:CopyPosition(stop)}
+    local tU = {self:CopyPosition(start), self:CopyPosition(smir)}
     self.Redo = self.Redo or {}; table.Empty(self.Redo)
-    table.insert(self.Undo, {tU, buffer, self:CopyPosition(selection[1]), self:CopyPosition(stop)})
-    return stop
+    table.insert(self.Undo, {tU, buffer, self:CopyPosition(selection[1]), self:CopyPosition(smir)})
+    return smir
   end
 end
 
@@ -2047,7 +2064,6 @@ end
 
 function PANEL:CustomOnKeyCodePressed(code)
   local control = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
-  print(control, code)
   if (control) then
     if (code == KEY_F2) then
       self:ToggleBookMark(); return true

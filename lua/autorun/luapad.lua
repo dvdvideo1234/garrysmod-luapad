@@ -15,6 +15,7 @@ local GLOB_CONFIG = {
   PANLSZ = 3 / 4, -- The ratio panel will use according to the screen size
   DAYINS = 86400, -- The amount of second present in one day
   MAXMSL = 60000, -- As the maximum write string limit is 65532
+  TIMSFM = {D = "%y/%m/%d", T = "%H:%M:%S"}, -- General timestamp format
   FMQUOT = "\"%s\"", -- Format something to put it in double quotes
   PATENM = "[A-Z_]+", -- General pattern matching a enumeration key
   DELIMS = {V = "|", I = "\t", N = "[\r\n]+"}, -- Symbols used for separator and exports
@@ -45,6 +46,7 @@ local VAR_ADM = CreateConVar(GLOB_CONFIG.ADDONN[2].."_adminonly",  1, GLOB_CONFI
 local VAR_EDT = CreateConVar(GLOB_CONFIG.ADDONN[2].."_endataorg",  1, GLOB_CONFIG.RFLAGS, "File operation in the whole data folder", 0, 1)
 
 -- These are the client specific configurations
+local VAR_GTW = CreateConVar(GLOB_CONFIG.ADDONN[2].."_gutterwin",   4, GLOB_CONFIG.CFLAGS, "Tab key inserts a real tab instead of spaces", 4, 10)
 local VAR_TBI = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabinsert",   0, GLOB_CONFIG.CFLAGS, "Tab key inserts a real tab instead of spaces", 0, 1)
 local VAR_TBS = CreateConVar(GLOB_CONFIG.ADDONN[2].."_tabchsize",   2, GLOB_CONFIG.CFLAGS, "How many characters the tab uses when displayed", 1, 8)
 local VAR_SPR = CreateConVar(GLOB_CONFIG.ADDONN[2].."_shwprgrph",   0, GLOB_CONFIG.CFLAGS, "Show whitespace and paragraph characters", 0, 1)
@@ -1506,6 +1508,50 @@ function luapad.CloseTabAll()
 end
 
 --[[
+ * Reads the current file date/time in format
+ * vTre > The tab reference that must be closed
+]]
+function luapad.GetTimeTabView(sFmt, vTre)
+  if(SERVER) then return end
+
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT, pT = pS:GetTabIndex(vTre)
+  if(not iT) then return end
+  if(not IsValid(pT)) then return end
+
+  local tS = pT:GetStreamInfo()
+  local sP, sN = tS.Path, tS.Name
+  local bB, sB, oB = luapad.GetPath(sP)
+  local sF = (bB and sB..sN or oB..sN)
+  local sO = (bB and "DATA" or "GAME")
+  return os.date(sFmt, file.Time(sF, sO))
+end
+
+--[[
+ * Reads the current file size in bytes
+ * vTre > The tab reference that must be closed
+]]
+function luapad.GetSizeTabView(vTre)
+  if(SERVER) then return end
+
+  local pS = luapad.PropertySheet
+  if(not IsValid(pS)) then return end
+
+  local iT, pT = pS:GetTabIndex(vTre)
+  if(not iT) then return end
+  if(not IsValid(pT)) then return end
+
+  local tS = pT:GetStreamInfo()
+  local sP, sN = tS.Path, tS.Name
+  local bB, sB, oB = luapad.GetPath(sP)
+  local sF = (bB and sB..sN or oB..sN)
+  local sO = (bB and "DATA" or "GAME")
+  return file.Size(sF, sO)
+end
+
+--[[
  * Attaches the view options to a tab menu
  * pMenu > The sub-menu being populated
  * vTre  > The tab the options apply to
@@ -1519,19 +1565,33 @@ local function luapadAttachSettingMenu(pMenu, vTre)
   if(not IsValid(pT)) then return end
   local pA = pT:GetTextArea()
   if(not IsValid(pA)) then return end
-  -- Add showing paragraph and tab insert
-  pMenu:AddOption("Trim spaces", function()
+  -- Trim trailing or leading spaces
+  local pO = pMenu:AddOption("Trim spaces", function()
     local bSe = input.IsKeyDown(KEY_LSHIFT)
     local bSr = input.IsKeyDown(KEY_RSHIFT)
     pA:TrimSpaces(bSe or bSr)
-  end):SetImage(luapad.ToIcon("textfield_rename"))
+  end)
+  pO:SetImage(luapad.ToIcon("textfield_rename"))
+  pO:SetTooltip("Trims trailing spaces. Hold Shift to trim the leading spaces")
+  local pO = pMenu:AddOption("Adjust gutter", function()
+    local iG = pA:GetGutterWidth()
+    local bSe = input.IsKeyDown(KEY_LSHIFT)
+    local bSr = input.IsKeyDown(KEY_RSHIFT)
+    iG = iG + ((bSe or bSr) and -1 or 1)
+    pA:SetGutterWidth(iG)
+  end)
+  pO:SetImage(luapad.ToIcon("application_side_expand"))
+  pO:SetTooltip("Increases the gutter width. Hold Shift to decreases it")
+  -- Show paragraph is disabled by default
   pMenu:AddOption("Show paragraph", function()
     pA:SetShowParagraph(not pA:GetShowParagraph())
   end):SetImage(luapad.ToIcon(pA:GetShowParagraph() and "note_go" or "note"))
+  -- Force it to insert tabs instead of spaces
   pMenu:AddOption("Insert tab stop", function()
     pA:SetTabInsert(not pA:GetTabInsert())
     pT:GetStreamInfo().Tabi = pA:GetTabInsert()
   end):SetImage(luapad.ToIcon(pA:GetTabInsert() and "tab_go" or "tab"))
+  -- Enable word wrap only if the rows are long. Disabled by default
   pMenu:AddOption("Word wrap", function()
     pA:SetWordWrap(not pA:GetWordWrap())
     pT:GetStreamInfo().Wrap = pA:GetWordWrap()
@@ -1721,6 +1781,17 @@ local function luapadAttachCopyMenu(pMenu, vTre)
   pMenu:AddOption("Theme", function()
     SetClipboardText(pT:GetStreamInfo().Teme)
   end):SetImage(luapad.ToIcon("palette"))
+  pMenu:AddOption("Date", function()
+    local sF = GLOB_CONFIG.TIMSFM.D
+    SetClipboardText(luapad.GetTimeTabView(sF, pT))
+  end):SetImage(luapad.ToIcon("calendar"))
+  pMenu:AddOption("Time", function()
+    local sF = GLOB_CONFIG.TIMSFM.T
+    SetClipboardText(luapad.GetTimeTabView(sF, pT))
+  end):SetImage(luapad.ToIcon("clock"))
+  pMenu:AddOption("Size", function()
+    SetClipboardText(luapad.GetSizeTabView(pT))
+  end):SetImage(luapad.ToIcon("drive"))
   pMenu:AddOption("Index", function()
     local pS = pT:GetPropertySheet()
     local iT = pS:GetTabIndex(pT)
@@ -2188,9 +2259,10 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs, tabi, wra
   pText:Dock(FILL)
   pText:SetTabSize(iTab)
   pText:SetFontInfo(iFon)
-  pText:SetShowParagraph(VAR_SPR:GetBool())
   pText:SetTabInsert(bTab)
   pText:SetWordWrap(bWrp)
+  pText:SetGutterWidth(VAR_GTW:GetInt())
+  pText:SetShowParagraph(VAR_SPR:GetBool())
   pText[GLOB_CONFIG.STORKY] = {}
 
  --[[
