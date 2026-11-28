@@ -117,7 +117,7 @@ local TOKEN_CLASSIFY = {
   SKP = {E = "%s+", A = ".*$", W = "^%w$"}, -- Skip characters
   OSE = {W = "\r\n", L = "\n", M = "\r"}, -- System EOLs
   EOL = {E = "[\r\n]+", I = "\n", N = "\r\n?"}, -- General pattern for splitting
-  URL = "https?://%S+%.%S+", -- URL pattern matching
+  URL = "https?://[^%s<>\"']+%.[^%s<>\"']+", -- URL pattern matching
   COM = { -- Comments configuration
     S = {["-"] = "%-[%-]+", ["/"] = "/[/]+"}, -- Comments single
     M = { -- Start character for every multi-line type
@@ -166,6 +166,7 @@ function PANEL:Init()
   self.Start = {1, 1}
   self.Scroll = {1, 1}
   self.Size = {1, 1}
+  self.Book = {ID = 0, Row = {}} -- Bookmarked
   self.Undo = {} -- Undo action stack
   self.Redo = {} -- Redo action stack
   self.Token = {} -- Multi-line comment token info
@@ -204,6 +205,10 @@ function PANEL:Init()
     self:GetParent():CustomOnKeyCodeTyped(code)
   end
 
+  function self.TextEntry:OnKeyCodePressed(code)
+    self:GetParent():CustomOnKeyCodePressed(code)
+  end
+
   self.LastClick = 0
   self:SetTabSize(4)
   self:SetTabInsert(false)
@@ -236,6 +241,170 @@ end
 
 function PANEL:SetTabInsert(bool)
   self.UseTabs = tobool(bool)
+end
+
+--[[
+ * Rebuilds the row lookup from the bookmark array
+ * The array is the only source of truth, the lookup is a cache for painting
+]]
+function PANEL:RefreshBookMarks()
+  local tB = self:GetTable().Book
+  if(not istable(tB)) then return end
+  tB.Row = {}
+  for iD = 1, #tB do
+    tB.Row[tostring(tB[iD][1][1])] = true
+  end
+end
+
+--[[
+ * Toggles a bookmark on a row. The array is kept sorted by row
+ * iR > Row to toggle. Defaults to the row of the selection start
+]]
+function PANEL:ToggleBookMark(iR)
+  local tT = self:GetTable()
+  local tR, tB = tT.Rows, tT.Book
+  if(not istable(tR)) then return end
+  if(not istable(tB)) then return end
+  local iR = math.floor(tonumber(iR) or 0)
+  local bR = (iR >= 1 and iR <= #tR) -- A valid row was passed
+  local iB = (bR and iR or tT.Start[1]) -- Row of the bookmark
+  local iF = 0 -- Bookmarks above the row
+  for iD = 1, #tB do
+    local vS = tB[iD][1][1]
+    if(vS == iB) then -- Already bookmarked so remove it
+      table.remove(tB, iD)
+      if(iD < tB.ID) then tB.ID = tB.ID - 1 end
+      tB.ID = math.min(tB.ID, #tB)
+      self:RefreshBookMarks()
+      return
+    elseif(vS < iB) then
+      iF = iF + 1
+    end
+  end
+  local tS, tC -- A passed row gets its own position, not the current caret
+  if(bR) then tS, tC = {iB, 1}, {iB, 1}
+  else tS, tC = self:CopyPosition(tT.Start), self:CopyPosition(tT.Caret) end
+  table.insert(tB, iF + 1, {tS, tC})
+  tB.ID = iF + 1
+  self:RefreshBookMarks()
+end
+
+--[[
+ * Jumps to the next or previous bookmark relative to the caret row
+ * bP > Go to the previous one. Wraps around at both ends
+]]
+function PANEL:SwitchBookMark(bP)
+  local tT = self:GetTable()
+  local tB, tR = tT.Book, tT.Rows
+  if(not istable(tB)) then return end
+  local nB = #tB
+  if(nB == 0) then tB.ID = 0; return end
+  local iC, iN = tT.Caret[1], nil
+  if(bP) then
+    for iD = nB, 1, -1 do
+      if(tB[iD][1][1] < iC) then iN = iD; break end
+    end
+    iN = iN or nB -- Wrap to the last
+  else
+    for iD = 1, nB do
+      if(tB[iD][1][1] > iC) then iN = iD; break end
+    end
+    iN = iN or 1 -- Wrap to the first
+  end
+  local function Place(tD, tV) -- Clamp in case the text changed
+    local iRow = math.min(math.max(tV[1], 1), #tR)
+    tD[1], tD[2] = iRow, math.min(math.max(tV[2], 1), string.len(tR[iRow]) + 1)
+  end
+  tB.ID = iN
+  Place(tT.Start, tB[iN][1])
+  Place(tT.Caret, tB[iN][2])
+  self:ScrollCaret()
+end
+
+--[[
+ * Removes bookmarks on deleted rows iS..iE and moves the ones below up
+]]
+function PANEL:DropBookMarkRows(iS, iE)
+  local tB = self:GetTable().Book
+  if(not istable(tB)) then return end
+  local nD = iE - iS + 1
+  local function Move(iR) -- Stored caret rows can sit inside the range too
+    if(iR > iE) then return iR - nD end
+    return math.min(iR, iS - 1)
+  end
+  for iD = #tB, 1, -1 do
+    local tP = tB[iD]
+    local iR = tP[1][1]
+    if(iR >= iS and iR <= iE) then
+      table.remove(tB, iD)
+      if(iD < tB.ID) then tB.ID = tB.ID - 1 end
+    elseif(iR > iE) then
+      tP[1][1], tP[2][1] = Move(tP[1][1]), Move(tP[2][1])
+    end
+  end
+  tB.ID = math.min(tB.ID, #tB)
+  self:RefreshBookMarks()
+end
+
+--[[
+ * Moves the bookmarks from row iS downwards after nC rows were inserted
+]]
+function PANEL:PushBookMarkRows(iS, nC)
+  local tB = self:GetTable().Book
+  if(not istable(tB)) then return end
+  for iD = 1, #tB do
+    local tP = tB[iD]
+    if(tP[1][1] >= iS) then tP[1][1] = tP[1][1] + nC end
+    if(tP[2][1] >= iS) then tP[2][1] = tP[2][1] + nC end
+  end
+  self:RefreshBookMarks()
+end
+
+function PANEL:IsBookMarkRow(iR)
+  local tB = self:GetTable().Book
+  if(not istable(tB) or not istable(tB.Row)) then return false end
+  return (tB.Row[tostring(iR)] == true)
+end
+
+--[[
+ * Trim trailing spaces
+ * Registered as a single undo step covering only the changed rows
+ * bF > Trim the leading spaces instead
+]]
+function PANEL:TrimSpaces(bF)
+  local tR = self:GetTable().Rows
+  if(not istable(tR)) then return end
+  local sP = (bF and "^%s+" or "%s+$")
+  local nR = self:GetRownum()
+  local tN, iF, iL = {}, nil, nil -- Trimmed rows, first and last changed row
+  for iR = 1, nR do
+    local sO = tR[iR]
+    local sN = string.gsub(sO, sP, "") -- Keep only the first return value
+    tN[iR] = sN
+    if(sN ~= sO) then iF = (iF or iR); iL = iR end
+  end
+  if(not iF) then return end -- Nothing changed so keep the undo stack clean
+
+  -- Carets after the trim. Same row, column shifted by the removed leading spaces
+  local function trimAdust(tP)
+    local sO, sN, nC = tR[tP[1]], tN[tP[1]], tP[2]
+    if(bF) then nC = math.max(nC - (#sO - #sN), 1) end
+    return {tP[1], math.min(nC, #sN + 1)}
+  end
+
+  local tC = self:CopyPosition(self.Caret)
+  local tS = self:CopyPosition(self.Start)
+  local tCa, tSa = trimAdust(tC), trimAdust(tS)
+
+  -- Replace only the changed rows. Same row count so the rows do not shift
+  local tA = {{iF, 1}, {iL, string.len(tR[iL]) + 1}}
+  self:SetArea(tA, table.concat(tN, "\n", iF, iL))
+
+  self.Caret, self.Start = tCa, tSa
+  -- SetArea stored {range, old text, caret before, caret after}
+  -- Point them at the real carets, otherwise undo jumps to the first changed row
+  local tU = self.Undo[#self.Undo]
+  if(tU) then tU[3], tU[4] = tC, self:CopyPosition(tCa) end
 end
 
 --[[
@@ -846,6 +1015,7 @@ function PANEL:SetText(text)
   self.Scroll = {1, 1}
   self.Undo = {}
   self.Redo = {}
+  self.Book = {ID = 0, Row = {}}
 
   self:RefreshView()
   self.ScrollBar:SetUp(self.Size[1], self:GetLineCount() - 1)
@@ -1082,6 +1252,7 @@ function PANEL:SyntaxColorRowID(row)
   local g_Lifn = TOKEN_CLASSIFY.FNL
   local g_Strm = TOKEN_CLASSIFY.STR
   local g_Opts = TOKEN_CLASSIFY.OPS
+  local g_Wurl = TOKEN_CLASSIFY.URL
 
   self:InitColorRowID(row)
 
@@ -1122,34 +1293,8 @@ function PANEL:SyntaxColorRowID(row)
       end
     elseif (self:ConsumeArray(g_Patn)) then
       token = "code.number"
-    elseif (self:ConsumeSpan(g_Lifn)) then
-      local sstr = string.Trim(self.Str)
-      local gstr = luapad.CheckGlobal(sstr, tLib)
-      local tgstr, keyw = type(gstr), g_Keyw[sstr]
-      if (keyw and isbool(keyw)) then
-        token = "code.construct"
-      elseif ((gstr and (g_Type[tgstr] or g_Glob[gstr])) or
-              (sstr and tLib.Src and tLib.Src[sstr]))
-      then
-        if (tgstr == "table") then
-          tLib.Src, token = gstr, "code.library"
-          if(tLib.Nam) then
-            tLib.Nam = self:GetConcat(tLib.Nam, sstr, ".")
-          else
-            tLib.Nam = sstr
-          end
-        elseif ((gstr == "e" or not g_Type[tgstr]) and sstr == string.upper(sstr)) then
-          token = "code.enumerator" -- Neither function nor table capitalized
-        elseif (gstr == "m") then
-          token = "code.metatable"
-        else
-          token = "code.function"
-        end
-      else
-        tLib.Src = nil
-        tLib.Nam = nil
-        token = "code.none"
-      end
+    elseif(self:ConsumeSpan(g_Wurl)) then
+      token = "code.hyperlink"
     elseif(self:ConsumeBetween(g_Coms.M)) then
       token = "code.comment"
       local sF, iS, iE, tC = self:GetSpan()
@@ -1197,6 +1342,34 @@ function PANEL:SyntaxColorRowID(row)
         self:SetRowBlock(false, false)
       else
         self:ConsumeSpan(g_Skip.A)
+      end
+    elseif (self:ConsumeSpan(g_Lifn)) then
+      local sstr = string.Trim(self.Str)
+      local gstr = luapad.CheckGlobal(sstr, tLib)
+      local tgstr, keyw = type(gstr), g_Keyw[sstr]
+      if (keyw and isbool(keyw)) then
+        token = "code.construct"
+      elseif ((gstr and (g_Type[tgstr] or g_Glob[gstr])) or
+              (sstr and tLib.Src and tLib.Src[sstr]))
+      then
+        if (tgstr == "table") then
+          tLib.Src, token = gstr, "code.library"
+          if(tLib.Nam) then
+            tLib.Nam = self:GetConcat(tLib.Nam, sstr, ".")
+          else
+            tLib.Nam = sstr
+          end
+        elseif ((gstr == "e" or not g_Type[tgstr]) and sstr == string.upper(sstr)) then
+          token = "code.enumerator" -- Neither function nor table capitalized
+        elseif (gstr == "m") then
+          token = "code.metatable"
+        else
+          token = "code.function"
+        end
+      else
+        tLib.Src = nil
+        tLib.Nam = nil
+        token = "code.none"
       end
     else
       local sS, iC = self:GetChar()
@@ -1324,7 +1497,8 @@ function PANEL:PaintRowLine(row, tRow, posy, voff, vlim, tOpt)
   end
 
   if (tOpt.First) then -- Row numbers are drawn only on the first line
-    draw.SimpleText(tostring(row), self:GetFontName(), width * mG, posy, tOpt.RN, TEXT_ALIGN_RIGHT)
+    local sM = (self:IsBookMarkRow(row) and "*" or " ")
+    draw.SimpleText(tostring(row)..sM, self:GetFontName(), width * mG, posy, tOpt.RN, TEXT_ALIGN_RIGHT)
   end
 
   -- Tabs are never passed to the renderer. Every cell is split on special
@@ -1335,11 +1509,12 @@ function PANEL:PaintRowLine(row, tRow, posy, voff, vlim, tOpt)
   for _, cell in ipairs(tRow) do used = used + string.len(cell[1]) end
   -- The highlighter does not register trailing white space as a cell
   -- Draw it as plain text so tabs and paragraph symbols are placed there
+  local none = self:GetTable().Highlight["code.none"]
   local tail = string.sub(self.Rows[row] or "", used + 1)
   if (tail ~= "") then nrow = nrow + 1 end
   for icl = 1, nrow do
     if (vlim and vcol >= vlim) then break end
-    local cell = (tRow[icl] or {tail, self:GetTable().Highlight["code.none"]})
+    local cell = (tRow[icl] or {tail, none})
     local ccon, csr, cen = cell[1], cell[2][1], cell[2][2]
     local font, pos, len = self:GetFontName(cen), 1, string.len(ccon)
     while (pos <= len) do
@@ -1609,6 +1784,10 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     end
 
     self:SetEmptyRow()
+
+    if (eline > sline) then
+      self:DropBookMarkRows(sline + 1, eline)
+    end
   end
 
   if (not text or text == "") then
@@ -1643,6 +1822,10 @@ function PANEL:SetArea(selection, text, isundo, isredo, before, after)
     table.insert(self.Rows, sline + i - 1, tRows[i])
     table.insert(self.PaintRows, sline + i - 1, false)
     self:RefreshView() -- TODO: fix for cache errors
+  end
+
+  if (nRows > 1) then
+    self:PushBookMarkRows(sline + 1, nRows - 1)
   end
 
   local stop = {sline + nRows - 1, string.len(self.Rows[sline + nRows - 1]) + 1}
@@ -1860,6 +2043,20 @@ function PANEL:SelectAll()
   self.Start = {1, 1}
   self.Caret = {nR, string.len(self.Rows[nR]) + 1}
   self:ScrollCaret()
+end
+
+function PANEL:CustomOnKeyCodePressed(code)
+  local control = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
+  print(control, code)
+  if (control) then
+    if (code == KEY_F2) then
+      self:ToggleBookMark(); return true
+    end
+  else
+    if (code == KEY_F2) then
+      self:SwitchBookMark(); return true
+    end
+  end
 end
 
 function PANEL:CustomOnKeyCodeTyped(code)

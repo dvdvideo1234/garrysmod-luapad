@@ -1510,7 +1510,7 @@ end
  * pMenu > The sub-menu being populated
  * vTre  > The tab the options apply to
 ]]
-local function luapadAttachViewMenu(pMenu, vTre)
+local function luapadAttachSettingMenu(pMenu, vTre)
   if(SERVER) then return end
   local pS = luapad.PropertySheet
   if(not IsValid(pS)) then return end
@@ -1520,9 +1520,14 @@ local function luapadAttachViewMenu(pMenu, vTre)
   local pA = pT:GetTextArea()
   if(not IsValid(pA)) then return end
   -- Add showing paragraph and tab insert
+  pMenu:AddOption("Trim spaces", function()
+    local bSe = input.IsKeyDown(KEY_LSHIFT)
+    local bSr = input.IsKeyDown(KEY_RSHIFT)
+    pA:TrimSpaces(bSe or bSr)
+  end):SetImage(luapad.ToIcon("textfield_rename"))
   pMenu:AddOption("Show paragraph", function()
     pA:SetShowParagraph(not pA:GetShowParagraph())
-  end):SetImage(luapad.ToIcon(pA:GetShowParagraph() and "note" or "note_go"))
+  end):SetImage(luapad.ToIcon(pA:GetShowParagraph() and "note_go" or "note"))
   pMenu:AddOption("Insert tab stop", function()
     pA:SetTabInsert(not pA:GetTabInsert())
     pT:GetStreamInfo().Tabi = pA:GetTabInsert()
@@ -1530,7 +1535,7 @@ local function luapadAttachViewMenu(pMenu, vTre)
   pMenu:AddOption("Word wrap", function()
     pA:SetWordWrap(not pA:GetWordWrap())
     pT:GetStreamInfo().Wrap = pA:GetWordWrap()
-  end):SetImage(luapad.ToIcon(pA:GetWordWrap() and "text_align_justify" or "text_align_left"))
+  end):SetImage(luapad.ToIcon(pA:GetWordWrap() and "book_go" or "book"))
 end
 
 --[[
@@ -2337,7 +2342,7 @@ function luapad.AddTab(name, cont, path, term, icon, teme, font, tabs, tabi, wra
     -- Settings changes per tab
     local pIn, pOp = pMenu:AddSubMenu("Settings")
     pOp:SetIcon(luapad.ToIcon("cog"))
-    luapadAttachViewMenu(pIn, self)
+    luapadAttachSettingMenu(pIn, self)
 
     -- Open menu
     pMenu:Open()
